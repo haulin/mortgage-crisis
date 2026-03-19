@@ -3,7 +3,7 @@ PD.bootTick = function () {
 
   var title = "Property Deal";
   var subtitle = "Build OK";
-  var seed = "Seed: " + PD.config.seed;
+  var seed = "SeedBase: " + PD.config.seedBase;
 
   print(title, 6, 6, 12, true, 1, false);
   print(subtitle, 6, 16, 12, true, 1, false);

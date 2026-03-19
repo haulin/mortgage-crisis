@@ -44,7 +44,16 @@ Notes:
 
 - `game.js` is **generated**; edit `src/*` instead.
 - Build details and guardrails are in `docs/phase00.md`.
- - Keep a TIC-80 cart with your sprites; pasting `game.js` updates code while preserving sprite assets.
+- Keep a TIC-80 cart with your sprites; pasting `game.js` updates code while preserving sprite assets.
+
+### Phase workflow (important)
+
+We work in small increments:
+
+- Plan one phase in `docs/phaseXX.md` (two-digit numbering: `phase00`, `phase01`, …)
+- Implement that phase
+- Update `docs/plan.md` → **Current progress** (mark the phase ✅)
+- Update this `README.md` if the developer workflow changes
 
 ## Key Constraints
 - No DOM, no Node.js, no browser APIs — this is a fantasy console

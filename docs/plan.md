@@ -4,7 +4,8 @@ This document captures the **shared MVP1 spec** and a **piece-by-piece implement
 
 ## Current progress
 
-- **Phase 0 ✅**: build pipeline + committed `game.js` artifact + minimal boot cart + `node --test` scaffold. See `docs/phase00.md`.
+- **Phase 00 ✅**: build pipeline + committed `game.js` artifact + minimal boot cart + `node --test` scaffold. See `docs/phase00.md`.
+- **Phase 01 ✅**: deterministic RNG (xorshift32) + shuffle + tests + `saveid` metadata injection. See `docs/phase01.md`.
 
 ## Goals + Constraints
 
@@ -199,16 +200,16 @@ AI is required in MVP1, but intentionally simple.
 
 ## Implementation Plan (Piece-by-piece)
 
-### Phase 0 — Repo workflow ✅
+### Phase 00 ✅ — Repo workflow
 
 - Author modular code under `src/`
 - Generate paste-ready `game.js` via a **light build step** (pure concatenation; no runtime deps)
 - Ensure `game.js` includes required TIC-80 headers:
   - `// script: js`
   - `// title: Property Deal`
-  - (Phase 0 complete and validated in TIC-80; details in `docs/phase00.md`.)
+  - (Phase 00 complete and validated in TIC-80; details in `docs/phase00.md`.)
 
-### Phase 1 — Foundations (data + RNG + state)
+### Phase 01 ✅ — Foundations (data + RNG + state)
 
 - Implement deterministic PRNG (seeded by a constant in MVP1) and deterministic shuffle
 - Define card definitions (data-driven):
@@ -220,7 +221,7 @@ AI is required in MVP1, but intentionally simple.
   - current turn, phase, playsRemaining
   - active prompts / UI mode state
 
-### Phase 2 — Rules engine + commands API (single source of truth)
+### Phase 02 — Rules engine + commands API (single source of truth)
 
 Implement a command-driven rules engine so **UI and AI share the same primitives**.
 
@@ -247,7 +248,7 @@ Command examples (exact naming can vary, but shape should match):
 - Wild replace-window:
   - Optional “move 1 Wild from source set to destination”
 
-### Phase 3 — Rendering + 5-row layout baseline
+### Phase 03 — Rendering + 5-row layout baseline
 
 - Implement renderer for:
   - card rectangles, stack peeks, highlights
@@ -255,7 +256,7 @@ Command examples (exact naming can vary, but shape should match):
   - center panel: preview + prompt text + bank totals + deck/discard counts
 - Keep drawing deterministic: highlight drawn last; stacks draw top last.
 
-### Phase 4 — UI state machine (controller UX)
+### Phase 04 — UI state machine (controller UX)
 
 - Implement selection model by zone:
   - opponent hand (inspect only)
@@ -271,14 +272,14 @@ Command examples (exact naming can vary, but shape should match):
   - received property placement UI
   - wild replace-window prompt
 
-### Phase 5 — Turn loop + discard down to 7
+### Phase 05 — Turn loop + discard down to 7
 
 - Implement start-of-turn draw 2
 - Track playsRemaining (3)
 - Implement discard-down-to-7 at end of turn (selection UI)
 - Reshuffle discard into deck when needed
 
-### Phase 6 — Debt/payment + “faux-turn placement”
+### Phase 06 — Debt/payment + “faux-turn placement”
 
 - Implement debt context:
   - payer selects from bank/properties
@@ -286,17 +287,17 @@ Command examples (exact naming can vary, but shape should match):
   - transfer to recipient (bank/properties)
 - Implement recipient placement step for each received property, including Wild assignment
 
-### Phase 7 — Actions + responses
+### Phase 07 — Actions + responses
 
 - Implement Rent + JSN response window
 - Implement Sly Deal + JSN response window + legality (not from complete set)
 
-### Phase 8 — Wild replace-window
+### Phase 08 — Wild replace-window
 
 - Detect replace-window eligibility after property plays
 - Offer optional prompt to move exactly 1 Wild if legal (source remains complete)
 
-### Phase 9 — AI (random legal) + narrated pacing
+### Phase 09 — AI (random legal) + narrated pacing
 
 - Implement AI as:
   - `legalMoves(state)` → choose random → enqueue commands

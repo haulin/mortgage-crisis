@@ -8,6 +8,7 @@ const OUT_FILE = path.join(REPO_ROOT, "game.js");
 const HEADER_LINES = [
   "// script: js",
   "// title: Property Deal",
+  "// saveid: PropertyDeal",
   "// generated: do not edit by hand (edit src/* instead)",
   ""
 ];
@@ -25,7 +26,7 @@ function hasForbiddenModuleSyntax(source) {
 }
 
 function hasForbiddenTicHeaders(source) {
-  return /^\s*\/\/\s*(script|title)\s*:/im.test(source);
+  return /^\s*\/\/\s*(script|title|saveid)\s*:/im.test(source);
 }
 
 function countTicDefinitions(source) {
