@@ -2,6 +2,10 @@
 
 This document captures the **shared MVP1 spec** and a **piece-by-piece implementation plan** for building Property Deal (Monopoly Deal–inspired) on **TIC-80 JS**.
 
+## Current progress
+
+- **Phase 0 ✅**: build pipeline + committed `game.js` artifact + minimal boot cart + `node --test` scaffold. See `docs/phase00.md`.
+
 ## Goals + Constraints
 
 - **Platform**: TIC-80 fantasy console, **JavaScript** (duktape)
@@ -9,6 +13,7 @@ This document captures the **shared MVP1 spec** and a **piece-by-piece implement
 - **Constraints**: no DOM/Node/browser APIs, no external libs, ~64KB code limit
 - **Target**: **1v1 player vs AI**, controller-first (Google TV couch play)
 - **UI space**: 240×136 usable area
+- **Sprites**: `print()` text cannot be rotated 180°; use **sprites** for card values/rent/icons (rotate sprites with `spr(..., rotate=2)` for opponent). See `docs/sprites.md`.
 
 ## Locked MVP1 Rules (Source of Truth)
 
@@ -194,13 +199,14 @@ AI is required in MVP1, but intentionally simple.
 
 ## Implementation Plan (Piece-by-piece)
 
-### Phase 0 — Repo workflow
+### Phase 0 — Repo workflow ✅
 
 - Author modular code under `src/`
 - Generate paste-ready `game.js` via a **light build step** (pure concatenation; no runtime deps)
 - Ensure `game.js` includes required TIC-80 headers:
   - `// script: js`
   - `// title: Property Deal`
+  - (Phase 0 complete and validated in TIC-80; details in `docs/phase00.md`.)
 
 ### Phase 1 — Foundations (data + RNG + state)
 

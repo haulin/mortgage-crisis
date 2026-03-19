@@ -6,12 +6,45 @@ Working title: Property Deal (cannot use Monopoly branding, mechanics are not co
 Target: 1v1 player vs AI, controller-first design for couch gaming on Google TV.
 
 ## Language
-JavaScript (TIC-80 JS mode via duktape). Every file must start with `// script: js` and other JS headers.
+JavaScript (TIC-80 JS mode via duktape).
+
+- The **runtime cartridge** is `game.js` (paste into TIC-80). It must start with TIC-80 JS headers (`// script: js`, etc.).
+- The **source of truth** lives in `src/` and is concatenated into `game.js`.
 
 ## Documentation
 - TIC80_API.md — full TIC-80 API reference, pasted from official docs
 - TIC-80.wiki/ — full offline clone of the TIC-80 GitHub wiki (do not commit)
 Always consult these before suggesting APIs or capabilities.
+
+## Sprites & iconography
+
+TIC-80 can rotate **sprites** (e.g. 180° via `spr(..., rotate=2)`), but cannot rotate `print()` text.
+
+So **card values, rent amounts, and key icons** should be rendered using a small sprite atlas (digits + action icons). The mapping lives in `docs/sprites.md`.
+
+## Development workflow
+
+- **Build**: generate the paste-ready cart:
+
+```bash
+npm run build
+```
+
+- **Test**: minimal dependency-free test scaffold (loads `src/*.js` via Node `vm`):
+
+```bash
+npm test
+```
+
+- **Run in TIC-80**:
+  - Open a JS cart in TIC-80
+  - Copy/paste the contents of `game.js` into the TIC-80 code editor
+
+Notes:
+
+- `game.js` is **generated**; edit `src/*` instead.
+- Build details and guardrails are in `docs/phase00.md`.
+ - Keep a TIC-80 cart with your sprites; pasting `game.js` updates code while preserving sprite assets.
 
 ## Key Constraints
 - No DOM, no Node.js, no browser APIs — this is a fantasy console
