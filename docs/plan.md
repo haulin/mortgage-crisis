@@ -6,6 +6,7 @@ This document captures the **shared MVP1 spec** and a **piece-by-piece implement
 
 - **Phase 00 ✅**: build pipeline + committed `game.js` artifact + minimal boot cart + `node --test` scaffold. See `docs/phase00.md`.
 - **Phase 01 ✅**: deterministic RNG (xorshift32) + shuffle + tests + `saveid` metadata injection. See `docs/phase01.md`.
+- **Phase 02 ✅**: rules engine + command API + scenarios + tests. See `docs/phase02.md`.
 
 ## Goals + Constraints
 
@@ -15,6 +16,12 @@ This document captures the **shared MVP1 spec** and a **piece-by-piece implement
 - **Target**: **1v1 player vs AI**, controller-first (Google TV couch play)
 - **UI space**: 240×136 usable area
 - **Sprites**: `print()` text cannot be rotated 180°; use **sprites** for card values/rent/icons (rotate sprites with `spr(..., rotate=2)` for opponent). See `docs/sprites.md`.
+
+### Naming conventions (codebase)
+
+- **Namespaces / enums**: PascalCase objects (e.g. `PD.ActionKind`, `PD.CardKind`)
+- **Scalar constants**: ALL_CAPS (e.g. `PD.HOUSE_RENT_BONUS`)
+- **Functions**: camelCase (e.g. `PD.applyCommand`, `PD.legalMoves`)
 
 ## Locked MVP1 Rules (Source of Truth)
 
@@ -71,7 +78,7 @@ House rules:
 
 Included action cards:
 
-- **Rent (color)** ×5
+- **Rent** ×5 (2× Magenta/Orange, 2× Cyan/Black, 1× Any)
 - **Sly Deal** ×2
 - **Just Say No** ×2
 
@@ -119,7 +126,7 @@ Concrete rent tables (Option A):
 
 - **Cyan(2)**: \[1, 3]
 - **Magenta(3)**: \[1, 2, 4]
-- **Orange(3)**: \[1, 3, 5]
+- **Orange(3)**: \[2, 3, 5]
 - **Black(4)**: \[1, 2, 3, 6]
 - **House bonus**: **+3** (only when charging rent from a completed set that has a House)
 
@@ -221,7 +228,7 @@ AI is required in MVP1, but intentionally simple.
   - current turn, phase, playsRemaining
   - active prompts / UI mode state
 
-### Phase 02 — Rules engine + commands API (single source of truth)
+### Phase 02 ✅ — Rules engine + commands API (single source of truth)
 
 Implement a command-driven rules engine so **UI and AI share the same primitives**.
 
@@ -335,4 +342,6 @@ flowchart TD
   rules --> win[WinEvaluator]
   rules --> legal[LegalMoves]
 ```
+
+
 

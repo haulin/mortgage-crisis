@@ -150,3 +150,12 @@ Implementation detail:
 
 - Later we can add seed display and time-based seeding once we actually start playtesting.
 
+## Notes for Phase 02 (rules engine + state)
+
+- Keep `src/*` **TIC-safe** (no `import`/`export`). Use `test/helpers/loadSrcIntoVm.mjs` to unit test `PD.*` code from Node.
+- When Phase 02 introduces new TIC-80 globals in `src/*`, stub them in tests (either via `extraGlobals` passed to `loadSrcIntoVm` or default stubs) so tests stay frictionless.
+- `// saveid: PropertyDeal` is now injected into generated `game.js`. If Phase 02+ starts using `pmem()`, reserve and document a small slot range early (e.g. 0–31) so saves/debug state don’t collide.
+- Treat `game.js` as the canonical paste artifact: after any `src/*` change, run `npm run build` before validating behavior in TIC-80.
+- Sprite workflow gotcha: keep a dedicated TIC cart with sprite assets; pasting updated `game.js` updates code while preserving sprites.
+- Guard against Phase 02 scope creep: Phase 02 should focus on **state + commands + legality + tests**. Keep UI/rendering minimal until the command layer is stable.
+

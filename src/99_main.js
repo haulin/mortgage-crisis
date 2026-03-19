@@ -1,4 +1,5 @@
 function TIC() {
-  PD.bootTick();
+  if (PD.mainTick) PD.mainTick();
+  else PD.bootTick();
 }
 
