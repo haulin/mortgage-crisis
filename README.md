@@ -13,8 +13,15 @@ JavaScript (TIC-80 JS mode via duktape).
 
 ## Documentation
 - TIC80_API.md — full TIC-80 API reference, pasted from official docs
-- TIC-80.wiki/ — full offline clone of the TIC-80 GitHub wiki (do not commit)
+- TIC-80.wiki/ — full offline clone of the TIC-80 GitHub wiki (local reference only)
 Always consult these before suggesting APIs or capabilities.
+
+Wiki workflow:
+
+- `TIC-80.wiki/` is **gitignored** so it won’t be committed by accident.
+- To keep it readable for Cursor context/features, `.cursorignore` explicitly un-ignores it:
+  - `!TIC-80.wiki/`
+  - `!TIC-80.wiki/**`
 
 ## Sprites & iconography
 
@@ -40,6 +47,10 @@ npm test
 
 - **Regression-first**: when fixing a bug (especially a visual/render bug), add at least one **assertion** or a small **new test** so we don’t re-break it later.
 - **Renderer tests**: Phase 03 uses “draw-call recording” tests (stub TIC-80 draw APIs like `rect`, `spr`, etc. and assert call ordering/positions). See `test/11_render.test.mjs`.
+- **Phase 03 render harness controls (debug-first)**:
+  - `Y`: cycle Boot → DebugText → Render
+  - In Render mode: `A` steps a random legal move, `B` switches scenario, `X` resets scenario
+  - This is intentionally not the final UX (Phase 04 introduces A/B confirm/back menus and real prompts)
 
 - **Run in TIC-80**:
   - Open a JS cart in TIC-80

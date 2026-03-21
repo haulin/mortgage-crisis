@@ -9,7 +9,7 @@ PD.resetForScenario = function (state) {
   state.players[1].sets = [];
   state.activeP = 0;
   state.playsLeft = 3;
-  state.prompt = null;
+  PD.clearPrompt(state);
   state.winnerP = PD.NO_WINNER;
   // Ensure pool exists.
   PD.cardPoolInit(state);
@@ -50,7 +50,20 @@ PD.fillDeckFromPool = function (state) {
 PD.applyScenario = function (state, scenarioId) {
   PD.resetForScenario(state);
 
-  if (scenarioId === "placeFixed") {
+  var fn = PD._scenarioApplyById && PD._scenarioApplyById[scenarioId];
+  if (!fn) throw new Error("unknown_scenario:" + scenarioId);
+  fn(state);
+
+  PD.fillDeckFromPool(state);
+  // Keep deck deterministic for scenarios; callers can shuffle if desired.
+  return state;
+};
+
+// Scenario registry (single source of truth).
+PD.SCENARIO_IDS = ["placeFixed", "placeWild", "houseOnComplete", "winCheck"];
+
+PD._scenarioApplyById = {
+  placeFixed: function (state) {
     // P0 has 2 orange properties + $1. P0 also has an existing Orange set with 1 property.
     var setO = PD.newEmptySet();
     PD.setAddPropByDefId(state, setO, "prop_orange", PD.NO_COLOR);
@@ -59,11 +72,15 @@ PD.applyScenario = function (state, scenarioId) {
     state.players[0].hand.push(PD.takeUid(state, "prop_orange"));
     state.players[0].hand.push(PD.takeUid(state, "prop_orange"));
     state.players[0].hand.push(PD.takeUid(state, "money_1"));
-  } else if (scenarioId === "placeWild") {
+  },
+
+  placeWild: function (state) {
     // P0 has Wild(M/O) and $1.
     state.players[0].hand.push(PD.takeUid(state, "wild_mo"));
     state.players[0].hand.push(PD.takeUid(state, "money_1"));
-  } else if (scenarioId === "houseOnComplete") {
+  },
+
+  houseOnComplete: function (state) {
     // P0 has two Houses in hand.
     state.players[0].hand.push(PD.takeUid(state, "house"));
     state.players[0].hand.push(PD.takeUid(state, "house"));
@@ -80,7 +97,9 @@ PD.applyScenario = function (state, scenarioId) {
     PD.setAddPropByDefId(state, setB, "prop_black", PD.NO_COLOR);
     PD.setAddPropByDefId(state, setB, "prop_black", PD.NO_COLOR);
     state.players[0].sets.push(setB);
-  } else if (scenarioId === "winCheck") {
+  },
+
+  winCheck: function (state) {
     // P0 has 3 complete sets: Cyan(2), Magenta(3), Orange(3).
     var setC2 = PD.newEmptySet();
     PD.setAddPropByDefId(state, setC2, "prop_cyan", PD.NO_COLOR);
@@ -100,13 +119,7 @@ PD.applyScenario = function (state, scenarioId) {
     state.players[0].sets.push(setO3);
 
     state.playsLeft = 0;
-    state.winnerP = PD.evaluateWin(state) | 0;
-  } else {
-    throw new Error("unknown_scenario:" + scenarioId);
+    state.winnerP = PD.evaluateWin(state);
   }
-
-  PD.fillDeckFromPool(state);
-  // Keep deck deterministic for scenarios; callers can shuffle if desired.
-  return state;
 };
 

@@ -8,6 +8,7 @@ This document captures the **shared MVP1 spec** and a **piece-by-piece implement
 - **Phase 01 ✅**: deterministic RNG (xorshift32) + shuffle + tests + `saveid` metadata injection. See `docs/phase01.md`.
 - **Phase 02 ✅**: rules engine + command API + scenarios + debug screen + tests. See `docs/phase02.md`.
 - **Phase 03 ✅**: rendering baseline (5-row layout), navigation + camera, mini-card templates, rent special rendering, and draw-call render tests. See `docs/phase03.md`.
+- **Phase 03b ⏳**: center-panel “big preview” + prompt scaffolding (missing pieces from the original Phase 03 description). See `docs/phase03b.md`.
 
 ## Goals + Constraints
 
@@ -267,20 +268,32 @@ Command examples (exact naming can vary, but shape should match):
 - Wild replace-window:
   - Optional “move 1 Wild from source set to destination”
 
-### Phase 03 — Rendering + 5-row layout baseline
+### Phase 03 ✅ — Rendering + 5-row layout baseline
 
 - Implement renderer for:
   - card rectangles, stack peeks, highlights
   - row scroll camera
-  - center panel: preview + prompt text + bank totals + deck/discard counts
+  - center panel: deck/discard/bank widgets + minimal debug overlays (preview/prompt UI deferred to Phase 03b)
 - Keep drawing deterministic: highlight drawn last; stacks draw top last.
 
 Status:
 
 - Phase 03 baseline renderer is **complete** (see `docs/phase03.md` for exact shipped behavior and constraints).
-- **Phase 03b (optional polish)** candidates before Phase 04:
-  - center-panel “big card preview” + short description text (incl. opponent hand reveal)
-  - prompt text scaffolding in center panel (Phase 04 will need this anyway)
+
+### Phase 03b — Center preview + prompt scaffolding
+
+Phase 03 grew larger than originally expected, so we split the missing “center panel UX” into a small bridging phase before Phase 04.
+
+- Implement:
+  - Center-panel **big card preview** for the currently-selected item (hand/table/bank/deck/discard)
+  - Center-panel **prompt scaffolding** (a deterministic text/layout slot that Phase 04 prompt flows can plug into)
+  - One or two additional render tests that lock the preview/prompt output invariants (draw order + anchors)
+
+Definition of done:
+
+- `npm test` passes, including updated render draw-call tests
+- Center preview updates as you navigate selection in Render mode
+- Prompt area exists and is stable even if `state.prompt` is null (Phase 04 will populate it)
 
 ### Phase 04 — UI state machine (controller UX)
 
@@ -336,16 +349,15 @@ Status:
 
 ## Recommended file layout (after Phase 0)
 
-- `src/`
-  - `main.js` (TIC loop + wiring)
-  - `rng.js`
-  - `defs.js` (card + set rules)
-  - `state.js`
-  - `rules.js` (applyCommand, legalMoves, evaluators)
-  - `ui/` (state machine, menus, prompts)
-  - `render/` (layout + drawing)
-  - `ai.js`
-  - `scenarios.js`
+- `src/` (flat, numeric prefixes; deterministic concatenation order)
+  - `00_prelude.js` (`PD` namespace)
+  - `01_config.js` (palette + render config)
+  - `03_rng.js`, `05_shuffle.js`, `06_defs.js`, `07_state.js`, `08_rules.js`, `09_scenarios.js`
+  - `10_debug.js` (debug harness)
+  - `11_render.js` (renderer; namespaced under `PD.render.*`)
+  - `99_main.js` (single `TIC()` entry point)
++
+Module organization is enforced via namespaces (e.g. `PD.render`, future `PD.ui`) rather than subfolders, because the build/test tooling currently only includes top-level `src/*.js`.
 - `scripts/build.mjs` (Node; generates `game.js`)
 - `game.js` (generated, paste into TIC-80)
 

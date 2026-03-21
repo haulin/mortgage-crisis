@@ -153,3 +153,33 @@ test("winCheck scenario: evaluateWin detects winner", async () => {
   assert.equal(state.winnerP, 0);
 });
 
+test("legalMoves only returns commands that applyCommand accepts", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  function cloneState(s) {
+    return JSON.parse(JSON.stringify(s));
+  }
+
+  const cases = [
+    { label: "default newGame", build: () => ctx.PD.newGame({ seedU32: 1 }) },
+    { label: "scenario placeFixed", build: () => ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 }) },
+    { label: "scenario placeWild", build: () => ctx.PD.newGame({ scenarioId: "placeWild", seedU32: 1 }) },
+    { label: "scenario houseOnComplete", build: () => ctx.PD.newGame({ scenarioId: "houseOnComplete", seedU32: 1 }) },
+    { label: "scenario winCheck (game over)", build: () => ctx.PD.newGame({ scenarioId: "winCheck", seedU32: 1 }) }
+  ];
+
+  for (const tcase of cases) {
+    const state = tcase.build();
+    const moves = ctx.PD.legalMoves(state);
+    assert.ok(Array.isArray(moves), `${tcase.label}: expected legalMoves to return an array`);
+
+    for (const move of moves) {
+      const copy = cloneState(state);
+      assert.doesNotThrow(
+        () => ctx.PD.applyCommand(copy, move),
+        `${tcase.label}: expected move kind=${move && move.kind} to be applyable`
+      );
+    }
+  }
+});
+

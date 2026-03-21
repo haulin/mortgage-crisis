@@ -27,8 +27,8 @@ PD.Pal = {
 
 PD.config.render = {
   cfg: {
-    screenW: (PD.config && PD.config.screenW) ? (PD.config.screenW | 0) : 240,
-    screenH: (PD.config && PD.config.screenH) ? (PD.config.screenH | 0) : 136,
+    screenW: PD.config.screenW,
+    screenH: PD.config.screenH,
 
     // Row bands (0-based, inclusive bounds are derived).
     rowY: [0, 12, 39, 82, 109],
@@ -53,22 +53,19 @@ PD.config.render = {
     camMarginX: 12,
     rowPadX: 4,
 
-    // Controls HUD (bottom-right, overlay-only)
-    hudEnabled: true,
-    hudMarginR: 7,
-    hudMarginB: 5,
-    hudPad: 2,
-    hudLineH: 7,
-    hudCharW: 6, // TIC-80 built-in font is ~6px wide
-    hudBgCol: PD.Pal.DarkBlue,
-    hudBorderCol: PD.Pal.White,
-    hudTextCol: PD.Pal.White,
-
     // Controls line (simple single print)
     hudLineEnabled: true,
     hudLineX: 6,
     hudLineY: 74,
     hudLineCol: PD.Pal.White,
+
+    // Center row widgets (deck/discard/banks)
+    centerBoxH: 15,
+    centerTopInsetY: 4,
+    centerBoxW: 40,
+    centerGapX: 6,
+    centerDeckX: 6,
+    centerBankGapX: 18,
 
     // Top-left status overlay (5 lines)
     topStatusEnabled: true,

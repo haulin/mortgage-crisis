@@ -48,19 +48,19 @@ PD.render = PD.render || {};
   }
 
   function rectSafe(x, y, w, h, c) {
-    if (typeof rect === "function") rect(x | 0, y | 0, w | 0, h | 0, c | 0);
+    rect(x | 0, y | 0, w | 0, h | 0, c | 0);
   }
 
   function rectbSafe(x, y, w, h, c) {
-    if (typeof rectb === "function") rectb(x | 0, y | 0, w | 0, h | 0, c | 0);
+    rectb(x | 0, y | 0, w | 0, h | 0, c | 0);
   }
 
   function sprSafe(id, x, y, colorkey, scale, flip, rotate, w, h) {
-    if (typeof spr === "function") spr(id | 0, x | 0, y | 0, colorkey, scale, flip, rotate, w, h);
+    spr(id | 0, x | 0, y | 0, colorkey, scale, flip, rotate, w, h);
   }
 
   function printSafe(s, x, y, c) {
-    if (typeof print === "function") print(String(s), x | 0, y | 0, c | 0);
+    print(String(s), x | 0, y | 0, c | 0);
   }
 
   function rowY0(row) { return R.cfg.rowY[row]; }
@@ -172,12 +172,12 @@ PD.render = PD.render || {};
   function drawDigitGlyph(n, xGlyphTL, yGlyphTL, flip180) {
     if (n < 0 || n > 9) return;
     var id = digitSpriteId(n);
-    var ck = (R.cfg.glyphColorkey != null) ? R.cfg.glyphColorkey : -1;
-    var insetX = (R.cfg.glyphInsetX != null) ? R.cfg.glyphInsetX : 0;
-    var insetY = (R.cfg.glyphInsetY != null) ? R.cfg.glyphInsetY : 0;
-    var tile = (R.cfg.digitTile != null) ? R.cfg.digitTile : 8;
-    var w = (R.cfg.digitGlyphW != null) ? R.cfg.digitGlyphW : 3;
-    var h = (R.cfg.digitGlyphH != null) ? R.cfg.digitGlyphH : 5;
+    var ck = R.cfg.glyphColorkey;
+    var insetX = R.cfg.glyphInsetX;
+    var insetY = R.cfg.glyphInsetY;
+    var tile = R.cfg.digitTile;
+    var w = R.cfg.digitGlyphW;
+    var h = R.cfg.digitGlyphH;
     if (!flip180) {
       sprSafe(id, xGlyphTL - insetX, yGlyphTL - insetY, ck, 1, 0, 0, 1, 1);
       return;
@@ -290,7 +290,7 @@ PD.render = PD.render || {};
 
   function drawCenterIcon(xFace, yFace, iconId, flip180) {
     if (!iconId) return;
-    var ck = (R.cfg.glyphColorkey != null) ? R.cfg.glyphColorkey : -1;
+    var ck = R.cfg.glyphColorkey;
     // Icon sprites are assumed full 8x8; no anchor offsets needed.
     var p = cardLocalRectToScreen(xFace, yFace, R.cfg.iconX, R.cfg.iconY, 8, 8, flip180);
     sprSafe(iconId, p.x, p.y, ck, 1, 0, flip180 ? 2 : 0, 1, 1);
@@ -400,6 +400,7 @@ PD.render = PD.render || {};
           kind: kind,
           row: row,
           p: p,
+          stackKey: (kind === "bank") ? ("bank:p" + p + ":row" + row) : null,
           uid: uid,
           depth: depth,
           fanDir: fanDir,
@@ -494,6 +495,7 @@ PD.render = PD.render || {};
               kind: cards[depth].kind,
               row: row,
               p: p,
+              stackKey: "set:p" + p + ":set" + i,
               setI: cards[depth].setI,
               depth: cards[depth].depth,
               fanDir: fanDir,
@@ -537,6 +539,7 @@ PD.render = PD.render || {};
               kind: cardsO[d2].kind,
               row: row,
               p: p,
+              stackKey: "set:p" + p + ":set" + i,
               setI: cardsO[d2].setI,
               depth: cardsO[d2].depth,
               fanDir: fanDir,
@@ -573,14 +576,14 @@ PD.render = PD.render || {};
       // Center selectable widgets: deck, discard, bank P0, bank P1
       var y0 = rowY0(row);
       var y1 = rowY1(row);
-      var boxH = 15;
-      var top = y0 + 4;
-      var wBox = 40;
-      var gap = 6;
+      var boxH = cfg.centerBoxH;
+      var top = y0 + cfg.centerTopInsetY;
+      var wBox = cfg.centerBoxW;
+      var gap = cfg.centerGapX;
 
-      var xDeck = 6;
+      var xDeck = cfg.centerDeckX;
       var xDiscard = xDeck + wBox + gap;
-      var xBank0 = xDiscard + wBox + 18;
+      var xBank0 = xDiscard + wBox + cfg.centerBankGapX;
       var xBank1 = xBank0 + wBox + gap;
 
       var widgets = [
@@ -698,50 +701,10 @@ PD.render = PD.render || {};
     }
   }
 
-  function drawControlsHud() {
-    var cfg = R.cfg;
-    if (!cfg.hudEnabled) return;
-
-    var lines = [
-      "D:Move",
-      "A:Step",
-      "B:Next",
-      "X:Reset",
-      "Y:Mode"
-    ];
-
-    var maxLen = 0;
-    var i;
-    for (i = 0; i < lines.length; i++) {
-      var n = lines[i] ? lines[i].length : 0;
-      if (n > maxLen) maxLen = n;
-    }
-
-    var w = maxLen * cfg.hudCharW + 2 * cfg.hudPad;
-    var h = lines.length * cfg.hudLineH + 2 * cfg.hudPad;
-    var x0 = cfg.screenW - cfg.hudMarginR - w;
-    var y0 = cfg.screenH - cfg.hudMarginB - h;
-
-    rectSafe(x0, y0, w, h, cfg.hudBgCol);
-    rectbSafe(x0, y0, w, h, cfg.hudBorderCol);
-
-    for (i = 0; i < lines.length; i++) {
-      printSafe(
-        lines[i],
-        x0 + cfg.hudPad,
-        y0 + cfg.hudPad + i * cfg.hudLineH,
-        cfg.hudTextCol
-      );
-    }
-  }
-
   function drawControlsLine() {
     var cfg = R.cfg;
     if (cfg.hudLineEnabled === false) return;
-    var x = (cfg.hudLineX != null) ? cfg.hudLineX : 0;
-    var y = (cfg.hudLineY != null) ? cfg.hudLineY : 0;
-    var c = (cfg.hudLineCol != null) ? cfg.hudLineCol : cfg.colText;
-    printSafe("D:Move A:Step B:Next X:Reset Y:Mode", x, y, c);
+    printSafe("D:Move A:Step B:Next X:Reset Y:Mode", cfg.hudLineX, cfg.hudLineY, cfg.hudLineCol);
   }
 
   function drawTopLeftStatus(debug, selectedItem) {
@@ -809,6 +772,44 @@ PD.render = PD.render || {};
     }
   }
 
+  function groupStacksByKey(items, camX) {
+    var byKey = {};
+    var keys = [];
+    var i;
+    for (i = 0; i < items.length; i++) {
+      var it = items[i];
+      if (!it || !it.stackKey) continue;
+      var k = String(it.stackKey);
+      var a = byKey[k];
+      if (!a) {
+        a = [];
+        byKey[k] = a;
+        keys.push(k);
+      }
+      a.push(it);
+    }
+
+    // Stable visual ordering: sort stacks by their left edge on screen (after camera).
+    keys.sort(function (ka, kb) {
+      var aa = byKey[ka];
+      var bb = byKey[kb];
+      var mina = 999999;
+      var minb = 999999;
+      var j;
+      for (j = 0; j < aa.length; j++) {
+        var xa = aa[j].x - camX;
+        if (xa < mina) mina = xa;
+      }
+      for (j = 0; j < bb.length; j++) {
+        var xb = bb[j].x - camX;
+        if (xb < minb) minb = xb;
+      }
+      return mina - minb;
+    });
+
+    return { byKey: byKey, keys: keys };
+  }
+
   function drawRowCards(debug, rowModel, row, selected) {
     var cfg = R.cfg;
     var cam = R.ui.camX[row];
@@ -818,43 +819,15 @@ PD.render = PD.render || {};
     if (row === R.ROW_OP_TABLE || row === R.ROW_P_TABLE) {
       // Table rows must be drawn by stack depth (bottom->top), not x-order,
       // otherwise fan-left stacks layer incorrectly.
-      var bySet = {};
-      var setKeys = [];
-      for (i = 0; i < rowModel.items.length; i++) {
-        var itT = rowModel.items[i];
-        var k = String(itT.setI);
-        var a = bySet[k];
-        if (!a) {
-          a = [];
-          bySet[k] = a;
-          setKeys.push(k);
-        }
-        a.push(itT);
-      }
-
-      // Sort stacks by their left edge on screen (after camera) for stable visual ordering.
-      setKeys.sort(function (ka, kb) {
-        var aa = bySet[ka];
-        var bb = bySet[kb];
-        var mina = 999999;
-        var minb = 999999;
-        var j;
-        for (j = 0; j < aa.length; j++) {
-          var xa = aa[j].x - cam;
-          if (xa < mina) mina = xa;
-        }
-        for (j = 0; j < bb.length; j++) {
-          var xb = bb[j].x - cam;
-          if (xb < minb) minb = xb;
-        }
-        return mina - minb;
-      });
+      var grouped = groupStacksByKey(rowModel.items, cam);
+      var byKey = grouped.byKey;
+      var keys = grouped.keys;
 
       // Draw all stacks bottom->top, skipping selected.
       var si;
-      for (si = 0; si < setKeys.length; si++) {
-        var key = setKeys[si];
-        var cards = bySet[key];
+      for (si = 0; si < keys.length; si++) {
+        var key = keys[si];
+        var cards = byKey[key];
         var fanDir = (cards.length > 0 && cards[0].fanDir != null) ? cards[0].fanDir : (flipCards ? -1 : 1);
         drawFannedStack(cards, { state: debug.state, fanDir: fanDir, flip180: !!flipCards, camX: cam, selectedItem: selected, drawSelected: false });
       }
@@ -862,24 +835,22 @@ PD.render = PD.render || {};
       // Selected last + highlight.
       if (selected) {
         var sFan = (selected.fanDir != null) ? selected.fanDir : (flipCards ? -1 : 1);
-        var sk = String(selected.setI);
-        var stack = bySet[sk] || [selected];
+        var sk = String(selected.stackKey);
+        var stack = byKey[sk] || [selected];
         drawFannedStack(stack, { state: debug.state, fanDir: sFan, flip180: !!flipCards, camX: cam, selectedItem: selected, onlySelected: true });
       }
       return;
     }
 
-    // Hand rows (and opponent back row): simple x-order is fine.
-    var bankItems = [];
-    for (i = 0; i < rowModel.items.length; i++) {
-      var it0 = rowModel.items[i];
-      if (it0 && it0.kind === "bank") bankItems.push(it0);
-    }
+    // Hand rows (and opponent back row): simple x-order is fine for non-stack items.
+    var groupedH = groupStacksByKey(rowModel.items, cam);
+    var byKeyH = groupedH.byKey;
+    var keysH = groupedH.keys;
 
     // Draw non-bank hand items in x-order first.
     for (i = 0; i < rowModel.items.length; i++) {
       var it = rowModel.items[i];
-      if (!it || it.kind === "bank") continue;
+      if (!it || it.stackKey) continue;
       if (selected && it === selected) continue;
       var x = it.x - cam;
       var y = it.y;
@@ -892,30 +863,36 @@ PD.render = PD.render || {};
       }
     }
 
-    // Draw bank stacks bottom->top so overlap shadows remain visible.
-    if (bankItems.length > 0) {
-      var fanDirB = (bankItems[0].fanDir != null) ? bankItems[0].fanDir : 1;
+    // Draw stack(s) bottom->top so overlap shadows remain visible (bank is a stack in hand rows).
+    var ki;
+    for (ki = 0; ki < keysH.length; ki++) {
+      var k0 = keysH[ki];
+      var stack0 = byKeyH[k0];
+      if (!stack0 || stack0.length === 0) continue;
+      var fanDirB = (stack0[0].fanDir != null) ? stack0[0].fanDir : 1;
       var flipBank = (row === R.ROW_OP_HAND);
-      var selBank = (selected && selected.kind === "bank") ? selected : null;
-      drawFannedStack(bankItems, { state: debug.state, fanDir: fanDirB, flip180: !!flipBank, camX: cam, selectedItem: selBank, drawSelected: false });
+      var selInThis = (selected && selected.stackKey === k0) ? selected : null;
+      drawFannedStack(stack0, { state: debug.state, fanDir: fanDirB, flip180: !!flipBank, camX: cam, selectedItem: selInThis, drawSelected: false });
     }
 
     if (selected) {
       var xs = selected.x - cam;
       var ys = selected.y;
       if (row === R.ROW_OP_HAND) {
-        if (selected.kind === "bank") {
+        if (selected.stackKey) {
           var sFanO = (selected.fanDir != null) ? selected.fanDir : -1;
-          drawFannedStack(bankItems, { state: debug.state, fanDir: sFanO, flip180: true, camX: cam, selectedItem: selected, onlySelected: true });
+          var stackO = byKeyH[String(selected.stackKey)] || [selected];
+          drawFannedStack(stackO, { state: debug.state, fanDir: sFanO, flip180: true, camX: cam, selectedItem: selected, onlySelected: true });
         } else {
           drawShadowBar(xs, ys);
           drawCardBack(xs, ys, true);
           drawHighlight(xs, ys);
         }
       } else if (row === R.ROW_P_HAND) {
-        if (selected.kind === "bank") {
+        if (selected.stackKey) {
           var sFanP = (selected.fanDir != null) ? selected.fanDir : 1;
-          drawFannedStack(bankItems, { state: debug.state, fanDir: sFanP, flip180: false, camX: cam, selectedItem: selected, onlySelected: true });
+          var stackP = byKeyH[String(selected.stackKey)] || [selected];
+          drawFannedStack(stackP, { state: debug.state, fanDir: sFanP, flip180: false, camX: cam, selectedItem: selected, onlySelected: true });
         } else {
           drawShadowBar(xs, ys);
           drawMiniCard(debug.state, selected.uid, xs, ys, !!flipCards);
@@ -952,7 +929,6 @@ PD.render = PD.render || {};
   }
 
   function handleNav(models) {
-    if (typeof btnp !== "function") return;
     var cfg = R.cfg;
     var row = R.ui.row;
     var m = models[row];
@@ -1020,7 +996,7 @@ PD.render = PD.render || {};
     var sel = selectedItemFromModels(models);
 
     // Clear background.
-    if (typeof cls === "function") cls(cfg.colBg);
+    cls(cfg.colBg);
 
     // Draw rows: opponent hand, opponent table, center, player table, player hand.
     var row;
@@ -1055,16 +1031,13 @@ PD.render = PD.render || {};
   R.tick = function (debug) {
     if (!debug) return;
     if (!debug.state) {
-      if (typeof PD.debugReset === "function") PD.debugReset();
-      else return;
+      PD.debugReset();
     }
 
     // Keep existing debug controls in render mode.
-    if (typeof btnp === "function") {
-      if (btnp(4) && typeof PD.debugStep === "function") PD.debugStep();
-      if (btnp(5) && typeof PD.debugNextScenario === "function") PD.debugNextScenario();
-      if (btnp(6) && typeof PD.debugReset === "function") PD.debugReset();
-    }
+    if (btnp(4)) PD.debugStep();
+    if (btnp(5)) PD.debugNextScenario();
+    if (btnp(6)) PD.debugReset();
 
     R.drawFrame(debug);
   };

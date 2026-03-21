@@ -1,11 +1,15 @@
+if (!PD.SCENARIO_IDS) throw new Error("scenario_ids_missing");
+
 PD.debug = PD.debug || {
   seedU32: 1001,
   scenarioI: 0,
-  scenarios: ["default", "placeFixed", "placeWild", "houseOnComplete", "winCheck"],
+  scenarios: null,
   state: null,
   lastCmd: "",
   lastEvents: []
 };
+
+PD.debug.scenarios = ["default"].concat(PD.SCENARIO_IDS);
 
 PD.debugReset = function () {
   var d = PD.debug;

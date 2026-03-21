@@ -35,8 +35,8 @@ PD.Pal = {
 
 PD.config.render = {
   cfg: {
-    screenW: (PD.config && PD.config.screenW) ? (PD.config.screenW | 0) : 240,
-    screenH: (PD.config && PD.config.screenH) ? (PD.config.screenH | 0) : 136,
+    screenW: PD.config.screenW,
+    screenH: PD.config.screenH,
 
     // Row bands (0-based, inclusive bounds are derived).
     rowY: [0, 12, 39, 82, 109],
@@ -61,22 +61,19 @@ PD.config.render = {
     camMarginX: 12,
     rowPadX: 4,
 
-    // Controls HUD (bottom-right, overlay-only)
-    hudEnabled: true,
-    hudMarginR: 7,
-    hudMarginB: 5,
-    hudPad: 2,
-    hudLineH: 7,
-    hudCharW: 6, // TIC-80 built-in font is ~6px wide
-    hudBgCol: PD.Pal.DarkBlue,
-    hudBorderCol: PD.Pal.White,
-    hudTextCol: PD.Pal.White,
-
     // Controls line (simple single print)
     hudLineEnabled: true,
     hudLineX: 6,
     hudLineY: 74,
     hudLineCol: PD.Pal.White,
+
+    // Center row widgets (deck/discard/banks)
+    centerBoxH: 15,
+    centerTopInsetY: 4,
+    centerBoxW: 40,
+    centerGapX: 6,
+    centerDeckX: 6,
+    centerBankGapX: 18,
 
     // Top-left status overlay (5 lines)
     topStatusEnabled: true,
@@ -422,13 +419,36 @@ PD.DEF_INDEX_BY_ID = {};
 PD.NO_COLOR = -1;
 PD.NO_WINNER = -1;
 
+PD.assertPromptShape = function (prompt) {
+  if (prompt == null) return;
+  if (typeof prompt !== "object") throw new Error("bad_prompt");
+  if (!prompt.kind || typeof prompt.kind !== "string") throw new Error("bad_prompt");
+  if (prompt.p == null) throw new Error("bad_prompt");
+};
+
+PD.clearPrompt = function (state) {
+  state.prompt = null;
+};
+
+PD.setPrompt = function (state, prompt) {
+  PD.assertPromptShape(prompt);
+  if (prompt == null) {
+    state.prompt = null;
+    return;
+  }
+  state.prompt = {
+    kind: String(prompt.kind),
+    p: prompt.p | 0
+  };
+};
+
 PD.otherPlayer = function (p) {
   return (p ^ 1) & 1;
 };
 
 PD.getSetColor = function (props) {
-  if (!props || (props.length | 0) === 0) return PD.NO_COLOR;
-  return props[0][1] | 0;
+  if (!props || props.length === 0) return PD.NO_COLOR;
+  return props[0][1];
 };
 
 PD.isBankableDef = function (def) {
@@ -443,12 +463,12 @@ PD.isWildDef = function (def) {
 PD.wildAllowsColor = function (def, color) {
   if (!PD.isWildDef(def)) return false;
   color = color | 0;
-  return (def.wildColors[0] | 0) === color || (def.wildColors[1] | 0) === color;
+  return def.wildColors[0] === color || def.wildColors[1] === color;
 };
 
 PD.shuffleUidsInPlace = function (state, arr) {
   var i;
-  for (i = (arr.length | 0) - 1; i > 0; i--) {
+  for (i = arr.length - 1; i > 0; i--) {
     var j = PD.rngNextInt(state, i + 1);
     var tmp = arr[i];
     arr[i] = arr[j];
@@ -463,7 +483,7 @@ PD.buildAllUids = function (state) {
   var di;
   for (di = 0; di < PD.CARD_DEFS.length; di++) {
     var def = PD.CARD_DEFS[di];
-    var c = def.count | 0;
+    var c = def.count;
     var k;
     for (k = 0; k < c; k++) {
       uidToDefI[uid] = di;
@@ -471,12 +491,12 @@ PD.buildAllUids = function (state) {
     }
   }
   state.uidToDefI = uidToDefI;
-  state.totalUids = (uidToDefI.length | 0) - 1;
+  state.totalUids = uidToDefI.length - 1;
 };
 
 PD.defByUid = function (state, uid) {
   uid = uid | 0;
-  var di = state.uidToDefI[uid] | 0;
+  var di = state.uidToDefI[uid];
   return PD.CARD_DEFS[di];
 };
 
@@ -493,14 +513,14 @@ PD.drawToHand = function (state, p, n, events) {
   p = p | 0;
   n = n | 0;
   if (n <= 0) return;
-  if (!state.deck || (state.deck.length | 0) < n) throw new Error("deck_underflow");
+  if (!state.deck || state.deck.length < n) throw new Error("deck_underflow");
 
   var uids = [];
-  while ((n | 0) > 0) {
-    var uid = state.deck.pop() | 0;
+  var k;
+  for (k = 0; k < n; k++) {
+    var uid = state.deck.pop();
     state.players[p].hand.push(uid);
     uids.push(uid);
-    n = (n - 1) | 0;
   }
 
   if (events) events.push({ kind: "draw", p: p, uids: uids });
@@ -508,10 +528,10 @@ PD.drawToHand = function (state, p, n, events) {
 
 PD.startTurn = function (state, events) {
   state.playsLeft = 3;
-  state.prompt = null;
+  PD.clearPrompt(state);
   // Draw 2 at start of turn.
-  PD.drawToHand(state, state.activeP | 0, 2, events);
-  if (events) events.push({ kind: "plays", p: state.activeP | 0, playsLeft: state.playsLeft | 0 });
+  PD.drawToHand(state, state.activeP, 2, events);
+  if (events) events.push({ kind: "plays", p: state.activeP, playsLeft: state.playsLeft });
 };
 
 PD.newGame = function (opts) {
@@ -548,15 +568,15 @@ PD.newGame = function (opts) {
   // Default game start: shuffle full deck, deal 5 each, choose first player randomly,
   // then start their turn (draw 2, playsLeft=3).
   var uid;
-  for (uid = 1; uid <= (state.totalUids | 0); uid++) state.deck.push(uid | 0);
+  for (uid = 1; uid <= state.totalUids; uid++) state.deck.push(uid);
   PD.shuffleUidsInPlace(state, state.deck);
 
   PD.drawToHand(state, 0, 5, null);
   PD.drawToHand(state, 1, 5, null);
 
-  state.activeP = PD.rngNextInt(state, 2) | 0;
+  state.activeP = PD.rngNextInt(state, 2);
   var events = [];
-  events.push({ kind: "turn", activeP: state.activeP | 0 });
+  events.push({ kind: "turn", activeP: state.activeP });
   PD.startTurn(state, events);
   // Default newGame doesn't expose events, but tests may call startTurn/endTurn directly.
 
@@ -567,15 +587,15 @@ PD.newGame = function (opts) {
 PD.cardPoolInit = function (state) {
   var pool = {};
   var uid;
-  for (uid = 1; uid <= (state.totalUids | 0); uid++) {
-    var di = state.uidToDefI[uid] | 0;
+  for (uid = 1; uid <= state.totalUids; uid++) {
+    var di = state.uidToDefI[uid];
     var defId = PD.CARD_DEFS[di].id;
     var a = pool[defId];
     if (!a) {
       a = [];
       pool[defId] = a;
     }
-    a.push(uid | 0);
+    a.push(uid);
   }
   state._pool = pool;
   return pool;
@@ -584,8 +604,8 @@ PD.cardPoolInit = function (state) {
 PD.takeUid = function (state, defId) {
   if (!state._pool) PD.cardPoolInit(state);
   var a = state._pool[defId];
-  if (!a || (a.length | 0) === 0) throw new Error("pool_exhausted:" + defId);
-  return a.pop() | 0;
+  if (!a || a.length === 0) throw new Error("pool_exhausted:" + defId);
+  return a.pop();
 };
 
 // ---- src/08_rules.js ----
@@ -595,26 +615,26 @@ PD.evaluateWin = function (state) {
     var sets = state.players[p].sets;
     var complete = 0;
     var si;
-    for (si = 0; si < (sets.length | 0); si++) {
+    for (si = 0; si < sets.length; si++) {
       var set = sets[si];
       if (!set) continue;
       var color = PD.getSetColor(set.props);
       if (color === PD.NO_COLOR) continue;
-      var req = PD.SET_RULES[color].requiredSize | 0;
-      if (((set.props.length | 0) >= req) && req > 0) complete++;
+      var req = PD.SET_RULES[color].requiredSize;
+      if (set.props.length >= req && req > 0) complete++;
     }
-    if (complete >= 3) return p | 0;
+    if (complete >= 3) return p;
   }
   return PD.NO_WINNER;
 };
 
 PD.assertCanApply = function (state) {
-  if ((state.winnerP | 0) !== PD.NO_WINNER) throw new Error("game_over");
+  if (state.winnerP !== PD.NO_WINNER) throw new Error("game_over");
   if (state.prompt) throw new Error("prompt_active");
 };
 
 PD.locEqZone = function (loc, zone) {
-  return !!(loc && loc.zone === zone);
+  return !!loc && loc.zone === zone;
 };
 
 PD.removeHandAtLoc = function (state, card) {
@@ -623,7 +643,7 @@ PD.removeHandAtLoc = function (state, card) {
   var i = loc.i | 0;
   var uid = card.uid | 0;
   var hand = state.players[p].hand;
-  if ((hand[i] | 0) !== uid) throw new Error("bad_loc");
+  if (hand[i] !== uid) throw new Error("bad_loc");
   hand.splice(i, 1);
 };
 
@@ -632,147 +652,163 @@ PD.applyCommand = function (state, cmd) {
   if (!cmd || !cmd.kind) throw new Error("bad_cmd");
 
   var events = [];
-  var p = state.activeP | 0;
+  var p = state.activeP;
 
-  if (cmd.kind === "endTurn") {
-    state.activeP = PD.otherPlayer(state.activeP | 0);
-    events.push({ kind: "turn", activeP: state.activeP | 0 });
-    PD.startTurn(state, events);
-    return { events: events };
+  function decPlays() {
+    state.playsLeft -= 1;
+    events.push({ kind: "plays", p: p, playsLeft: state.playsLeft });
   }
 
-  if ((state.playsLeft | 0) <= 0) throw new Error("no_plays_left");
+  function applyEndTurn() {
+    state.activeP = PD.otherPlayer(state.activeP);
+    events.push({ kind: "turn", activeP: state.activeP });
+    PD.startTurn(state, events);
+  }
 
-  if (cmd.kind === "bank") {
-    var card = cmd.card;
+  function applyBank(cmdBank) {
+    var card = cmdBank.card;
     if (!card || !card.loc) throw new Error("bad_cmd");
     if (!PD.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
-    if ((card.loc.p | 0) !== p) throw new Error("not_your_card");
+    if ((card.loc.p | 0) !== (p | 0)) throw new Error("not_your_card");
 
-    var def = PD.defByUid(state, card.uid | 0);
+    var uid = card.uid | 0;
+    var def = PD.defByUid(state, uid);
     if (!PD.isBankableDef(def)) throw new Error("not_bankable");
 
     PD.removeHandAtLoc(state, card);
-    state.players[p].bank.push(card.uid | 0);
+    state.players[p].bank.push(uid);
 
-    state.playsLeft = (state.playsLeft - 1) | 0;
     events.push({
       kind: "move",
-      uid: card.uid | 0,
+      uid: uid,
       from: card.loc,
-      to: { p: p, zone: "bank", i: (state.players[p].bank.length | 0) - 1 }
+      to: { p: p, zone: "bank", i: state.players[p].bank.length - 1 }
     });
-    events.push({ kind: "plays", p: p, playsLeft: state.playsLeft | 0 });
-  } else if (cmd.kind === "playProp") {
-    var cardP = cmd.card;
-    var dest = cmd.dest;
-    if (!cardP || !cardP.loc || !dest) throw new Error("bad_cmd");
-    if (!PD.locEqZone(cardP.loc, "hand")) throw new Error("bad_loc");
-    if ((cardP.loc.p | 0) !== p) throw new Error("not_your_card");
+    decPlays();
+  }
 
-    var defP = PD.defByUid(state, cardP.uid | 0);
-    if (!defP || defP.kind !== PD.CardKind.Property) throw new Error("not_property");
+  function applyPlayProp(cmdProp) {
+    var card = cmdProp.card;
+    var dest = cmdProp.dest;
+    if (!card || !card.loc || !dest) throw new Error("bad_cmd");
+    if (!PD.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if ((card.loc.p | 0) !== (p | 0)) throw new Error("not_your_card");
+
+    var uid = card.uid | 0;
+    var def = PD.defByUid(state, uid);
+    if (!def || def.kind !== PD.CardKind.Property) throw new Error("not_property");
 
     var placedColor = PD.NO_COLOR;
-    if (PD.isWildDef(defP)) {
-      placedColor = cmd.color | 0;
-      if (!PD.wildAllowsColor(defP, placedColor)) throw new Error("wild_color_illegal");
+    if (PD.isWildDef(def)) {
+      placedColor = cmdProp.color | 0;
+      if (!PD.wildAllowsColor(def, placedColor)) throw new Error("wild_color_illegal");
     } else {
-      placedColor = defP.propertyColor | 0;
+      placedColor = def.propertyColor;
     }
 
-    var setsP = state.players[p].sets;
+    var sets = state.players[p].sets;
     var setI;
     if (dest.newSet) {
       var newSet = PD.newEmptySet();
-      setI = setsP.length | 0;
-      setsP.push(newSet);
-      events.push({ kind: "createSet", p: p, setI: setI, color: placedColor | 0 });
+      setI = sets.length;
+      sets.push(newSet);
+      events.push({ kind: "createSet", p: p, setI: setI, color: placedColor });
     } else {
       setI = dest.setI | 0;
-      if (setI < 0 || setI >= (setsP.length | 0)) throw new Error("bad_set");
-      var setExisting = setsP[setI];
+      if (setI < 0 || setI >= sets.length) throw new Error("bad_set");
+      var setExisting = sets[setI];
       var setColor = PD.getSetColor(setExisting.props);
       if (setColor === PD.NO_COLOR) throw new Error("empty_set");
-      if ((setColor | 0) !== (placedColor | 0)) throw new Error("set_color_mismatch");
+      if (setColor !== placedColor) throw new Error("set_color_mismatch");
     }
 
-    PD.removeHandAtLoc(state, cardP);
-    var setT = setsP[setI];
-    setT.props.push([cardP.uid | 0, placedColor | 0]);
+    PD.removeHandAtLoc(state, card);
+    var setT = sets[setI];
+    setT.props.push([uid, placedColor]);
 
-    state.playsLeft = (state.playsLeft - 1) | 0;
     events.push({
       kind: "move",
-      uid: cardP.uid | 0,
-      from: cardP.loc,
-      to: { p: p, zone: "setProps", setI: setI, i: (setT.props.length | 0) - 1 }
+      uid: uid,
+      from: card.loc,
+      to: { p: p, zone: "setProps", setI: setI, i: setT.props.length - 1 }
     });
-    events.push({ kind: "plays", p: p, playsLeft: state.playsLeft | 0 });
+    decPlays();
 
-    var winner = PD.evaluateWin(state) | 0;
+    var winner = PD.evaluateWin(state);
     if (winner !== PD.NO_WINNER) {
-      state.winnerP = winner | 0;
-      events.push({ kind: "win", winnerP: winner | 0 });
+      state.winnerP = winner;
+      events.push({ kind: "win", winnerP: winner });
     }
-  } else if (cmd.kind === "playHouse") {
-    var cardH = cmd.card;
-    var destH = cmd.dest;
-    if (!cardH || !cardH.loc || !destH) throw new Error("bad_cmd");
-    if (!PD.locEqZone(cardH.loc, "hand")) throw new Error("bad_loc");
-    if ((cardH.loc.p | 0) !== p) throw new Error("not_your_card");
+  }
 
-    var defH = PD.defByUid(state, cardH.uid | 0);
-    if (!defH || defH.kind !== PD.CardKind.House) throw new Error("not_house");
+  function applyPlayHouse(cmdHouse) {
+    var card = cmdHouse.card;
+    var dest = cmdHouse.dest;
+    if (!card || !card.loc || !dest) throw new Error("bad_cmd");
+    if (!PD.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if ((card.loc.p | 0) !== (p | 0)) throw new Error("not_your_card");
 
-    var setsH = state.players[p].sets;
-    var siH = destH.setI | 0;
-    if (siH < 0 || siH >= (setsH.length | 0)) throw new Error("bad_set");
-    var setH = setsH[siH];
-    if ((setH.houseUid | 0) !== 0) throw new Error("house_already");
+    var uid = card.uid | 0;
+    var def = PD.defByUid(state, uid);
+    if (!def || def.kind !== PD.CardKind.House) throw new Error("not_house");
 
-    var colorH = PD.getSetColor(setH.props);
-    if (colorH === PD.NO_COLOR) throw new Error("empty_set");
-    var reqH = PD.SET_RULES[colorH].requiredSize | 0;
-    if ((setH.props.length | 0) < reqH) throw new Error("set_not_complete");
+    var sets = state.players[p].sets;
+    var setI = dest.setI | 0;
+    if (setI < 0 || setI >= sets.length) throw new Error("bad_set");
+    var set = sets[setI];
+    if (set.houseUid !== 0) throw new Error("house_already");
 
-    PD.removeHandAtLoc(state, cardH);
-    setH.houseUid = cardH.uid | 0;
+    var color = PD.getSetColor(set.props);
+    if (color === PD.NO_COLOR) throw new Error("empty_set");
+    var req = PD.SET_RULES[color].requiredSize;
+    if (set.props.length < req) throw new Error("set_not_complete");
 
-    state.playsLeft = (state.playsLeft - 1) | 0;
+    PD.removeHandAtLoc(state, card);
+    set.houseUid = uid;
+
     events.push({
       kind: "move",
-      uid: cardH.uid | 0,
-      from: cardH.loc,
-      to: { p: p, zone: "setHouse", setI: siH }
+      uid: uid,
+      from: card.loc,
+      to: { p: p, zone: "setHouse", setI: setI }
     });
-    events.push({ kind: "plays", p: p, playsLeft: state.playsLeft | 0 });
-  } else {
-    throw new Error("unknown_cmd:" + cmd.kind);
+    decPlays();
   }
+
+  if (cmd.kind === "endTurn") {
+    applyEndTurn();
+    return { events: events };
+  }
+
+  if (state.playsLeft <= 0) throw new Error("no_plays_left");
+
+  if (cmd.kind === "bank") applyBank(cmd);
+  else if (cmd.kind === "playProp") applyPlayProp(cmd);
+  else if (cmd.kind === "playHouse") applyPlayHouse(cmd);
+  else throw new Error("unknown_cmd:" + cmd.kind);
 
   return { events: events };
 };
 
 PD.legalMoves = function (state) {
-  if ((state.winnerP | 0) !== PD.NO_WINNER) return [];
+  if (state.winnerP !== PD.NO_WINNER) return [];
   if (state.prompt) return [];
 
   var moves = [];
-  var p = state.activeP | 0;
+  var p = state.activeP;
 
   // End turn is always allowed (\"play up to 3\").
   moves.push({ kind: "endTurn" });
 
-  if ((state.playsLeft | 0) <= 0) return moves;
+  if (state.playsLeft <= 0) return moves;
 
   var hand = state.players[p].hand;
   var sets = state.players[p].sets;
 
   var i;
-  for (i = 0; i < (hand.length | 0); i++) {
-    var uid = hand[i] | 0;
-    var def = PD.defByUid(state, uid);
+  for (i = 0; i < hand.length; i++) {
+    var uid = hand[i];
+    var def = PD.defByUid(state, uid | 0);
     var cardRef = { uid: uid, loc: { p: p, zone: "hand", i: i } };
 
     if (PD.isBankableDef(def)) {
@@ -782,43 +818,43 @@ PD.legalMoves = function (state) {
     if (def.kind === PD.CardKind.Property) {
       if (PD.isWildDef(def)) {
         // New set for each allowed color.
-        moves.push({ kind: "playProp", card: cardRef, dest: { p: p, newSet: true }, color: def.wildColors[0] | 0 });
-        moves.push({ kind: "playProp", card: cardRef, dest: { p: p, newSet: true }, color: def.wildColors[1] | 0 });
+        moves.push({ kind: "playProp", card: cardRef, dest: { p: p, newSet: true }, color: def.wildColors[0] });
+        moves.push({ kind: "playProp", card: cardRef, dest: { p: p, newSet: true }, color: def.wildColors[1] });
 
         // Existing sets that match allowed colors.
         var si;
-        for (si = 0; si < (sets.length | 0); si++) {
+        for (si = 0; si < sets.length; si++) {
           var set = sets[si];
           var setColor = PD.getSetColor(set.props);
           if (setColor === PD.NO_COLOR) continue;
           if (PD.wildAllowsColor(def, setColor)) {
-            moves.push({ kind: "playProp", card: cardRef, dest: { p: p, setI: si }, color: setColor | 0 });
+            moves.push({ kind: "playProp", card: cardRef, dest: { p: p, setI: si }, color: setColor });
           }
         }
       } else {
-        var c = def.propertyColor | 0;
+        var c = def.propertyColor;
         // New set.
         moves.push({ kind: "playProp", card: cardRef, dest: { p: p, newSet: true } });
         // Existing sets of same color.
         var sj;
-        for (sj = 0; sj < (sets.length | 0); sj++) {
+        for (sj = 0; sj < sets.length; sj++) {
           var setJ = sets[sj];
           var setColorJ = PD.getSetColor(setJ.props);
           if (setColorJ === PD.NO_COLOR) continue;
-          if ((setColorJ | 0) === (c | 0)) {
+          if (setColorJ === c) {
             moves.push({ kind: "playProp", card: cardRef, dest: { p: p, setI: sj } });
           }
         }
       }
     } else if (def.kind === PD.CardKind.House) {
       var sh;
-      for (sh = 0; sh < (sets.length | 0); sh++) {
+      for (sh = 0; sh < sets.length; sh++) {
         var setH = sets[sh];
-        if ((setH.houseUid | 0) !== 0) continue;
+        if (setH.houseUid !== 0) continue;
         var col = PD.getSetColor(setH.props);
         if (col === PD.NO_COLOR) continue;
-        var req = PD.SET_RULES[col].requiredSize | 0;
-        if ((setH.props.length | 0) >= req) {
+        var req = PD.SET_RULES[col].requiredSize;
+        if (setH.props.length >= req) {
           moves.push({ kind: "playHouse", card: cardRef, dest: { p: p, setI: sh } });
         }
       }
@@ -840,7 +876,7 @@ PD.resetForScenario = function (state) {
   state.players[1].sets = [];
   state.activeP = 0;
   state.playsLeft = 3;
-  state.prompt = null;
+  PD.clearPrompt(state);
   state.winnerP = PD.NO_WINNER;
   // Ensure pool exists.
   PD.cardPoolInit(state);
@@ -881,7 +917,20 @@ PD.fillDeckFromPool = function (state) {
 PD.applyScenario = function (state, scenarioId) {
   PD.resetForScenario(state);
 
-  if (scenarioId === "placeFixed") {
+  var fn = PD._scenarioApplyById && PD._scenarioApplyById[scenarioId];
+  if (!fn) throw new Error("unknown_scenario:" + scenarioId);
+  fn(state);
+
+  PD.fillDeckFromPool(state);
+  // Keep deck deterministic for scenarios; callers can shuffle if desired.
+  return state;
+};
+
+// Scenario registry (single source of truth).
+PD.SCENARIO_IDS = ["placeFixed", "placeWild", "houseOnComplete", "winCheck"];
+
+PD._scenarioApplyById = {
+  placeFixed: function (state) {
     // P0 has 2 orange properties + $1. P0 also has an existing Orange set with 1 property.
     var setO = PD.newEmptySet();
     PD.setAddPropByDefId(state, setO, "prop_orange", PD.NO_COLOR);
@@ -890,11 +939,15 @@ PD.applyScenario = function (state, scenarioId) {
     state.players[0].hand.push(PD.takeUid(state, "prop_orange"));
     state.players[0].hand.push(PD.takeUid(state, "prop_orange"));
     state.players[0].hand.push(PD.takeUid(state, "money_1"));
-  } else if (scenarioId === "placeWild") {
+  },
+
+  placeWild: function (state) {
     // P0 has Wild(M/O) and $1.
     state.players[0].hand.push(PD.takeUid(state, "wild_mo"));
     state.players[0].hand.push(PD.takeUid(state, "money_1"));
-  } else if (scenarioId === "houseOnComplete") {
+  },
+
+  houseOnComplete: function (state) {
     // P0 has two Houses in hand.
     state.players[0].hand.push(PD.takeUid(state, "house"));
     state.players[0].hand.push(PD.takeUid(state, "house"));
@@ -911,7 +964,9 @@ PD.applyScenario = function (state, scenarioId) {
     PD.setAddPropByDefId(state, setB, "prop_black", PD.NO_COLOR);
     PD.setAddPropByDefId(state, setB, "prop_black", PD.NO_COLOR);
     state.players[0].sets.push(setB);
-  } else if (scenarioId === "winCheck") {
+  },
+
+  winCheck: function (state) {
     // P0 has 3 complete sets: Cyan(2), Magenta(3), Orange(3).
     var setC2 = PD.newEmptySet();
     PD.setAddPropByDefId(state, setC2, "prop_cyan", PD.NO_COLOR);
@@ -931,25 +986,23 @@ PD.applyScenario = function (state, scenarioId) {
     state.players[0].sets.push(setO3);
 
     state.playsLeft = 0;
-    state.winnerP = PD.evaluateWin(state) | 0;
-  } else {
-    throw new Error("unknown_scenario:" + scenarioId);
+    state.winnerP = PD.evaluateWin(state);
   }
-
-  PD.fillDeckFromPool(state);
-  // Keep deck deterministic for scenarios; callers can shuffle if desired.
-  return state;
 };
 
 // ---- src/10_debug.js ----
+if (!PD.SCENARIO_IDS) throw new Error("scenario_ids_missing");
+
 PD.debug = PD.debug || {
   seedU32: 1001,
   scenarioI: 0,
-  scenarios: ["default", "placeFixed", "placeWild", "houseOnComplete", "winCheck"],
+  scenarios: null,
   state: null,
   lastCmd: "",
   lastEvents: []
 };
+
+PD.debug.scenarios = ["default"].concat(PD.SCENARIO_IDS);
 
 PD.debugReset = function () {
   var d = PD.debug;
@@ -1134,19 +1187,19 @@ PD.render = PD.render || {};
   }
 
   function rectSafe(x, y, w, h, c) {
-    if (typeof rect === "function") rect(x | 0, y | 0, w | 0, h | 0, c | 0);
+    rect(x | 0, y | 0, w | 0, h | 0, c | 0);
   }
 
   function rectbSafe(x, y, w, h, c) {
-    if (typeof rectb === "function") rectb(x | 0, y | 0, w | 0, h | 0, c | 0);
+    rectb(x | 0, y | 0, w | 0, h | 0, c | 0);
   }
 
   function sprSafe(id, x, y, colorkey, scale, flip, rotate, w, h) {
-    if (typeof spr === "function") spr(id | 0, x | 0, y | 0, colorkey, scale, flip, rotate, w, h);
+    spr(id | 0, x | 0, y | 0, colorkey, scale, flip, rotate, w, h);
   }
 
   function printSafe(s, x, y, c) {
-    if (typeof print === "function") print(String(s), x | 0, y | 0, c | 0);
+    print(String(s), x | 0, y | 0, c | 0);
   }
 
   function rowY0(row) { return R.cfg.rowY[row]; }
@@ -1258,12 +1311,12 @@ PD.render = PD.render || {};
   function drawDigitGlyph(n, xGlyphTL, yGlyphTL, flip180) {
     if (n < 0 || n > 9) return;
     var id = digitSpriteId(n);
-    var ck = (R.cfg.glyphColorkey != null) ? R.cfg.glyphColorkey : -1;
-    var insetX = (R.cfg.glyphInsetX != null) ? R.cfg.glyphInsetX : 0;
-    var insetY = (R.cfg.glyphInsetY != null) ? R.cfg.glyphInsetY : 0;
-    var tile = (R.cfg.digitTile != null) ? R.cfg.digitTile : 8;
-    var w = (R.cfg.digitGlyphW != null) ? R.cfg.digitGlyphW : 3;
-    var h = (R.cfg.digitGlyphH != null) ? R.cfg.digitGlyphH : 5;
+    var ck = R.cfg.glyphColorkey;
+    var insetX = R.cfg.glyphInsetX;
+    var insetY = R.cfg.glyphInsetY;
+    var tile = R.cfg.digitTile;
+    var w = R.cfg.digitGlyphW;
+    var h = R.cfg.digitGlyphH;
     if (!flip180) {
       sprSafe(id, xGlyphTL - insetX, yGlyphTL - insetY, ck, 1, 0, 0, 1, 1);
       return;
@@ -1376,7 +1429,7 @@ PD.render = PD.render || {};
 
   function drawCenterIcon(xFace, yFace, iconId, flip180) {
     if (!iconId) return;
-    var ck = (R.cfg.glyphColorkey != null) ? R.cfg.glyphColorkey : -1;
+    var ck = R.cfg.glyphColorkey;
     // Icon sprites are assumed full 8x8; no anchor offsets needed.
     var p = cardLocalRectToScreen(xFace, yFace, R.cfg.iconX, R.cfg.iconY, 8, 8, flip180);
     sprSafe(iconId, p.x, p.y, ck, 1, 0, flip180 ? 2 : 0, 1, 1);
@@ -1486,6 +1539,7 @@ PD.render = PD.render || {};
           kind: kind,
           row: row,
           p: p,
+          stackKey: (kind === "bank") ? ("bank:p" + p + ":row" + row) : null,
           uid: uid,
           depth: depth,
           fanDir: fanDir,
@@ -1580,6 +1634,7 @@ PD.render = PD.render || {};
               kind: cards[depth].kind,
               row: row,
               p: p,
+              stackKey: "set:p" + p + ":set" + i,
               setI: cards[depth].setI,
               depth: cards[depth].depth,
               fanDir: fanDir,
@@ -1623,6 +1678,7 @@ PD.render = PD.render || {};
               kind: cardsO[d2].kind,
               row: row,
               p: p,
+              stackKey: "set:p" + p + ":set" + i,
               setI: cardsO[d2].setI,
               depth: cardsO[d2].depth,
               fanDir: fanDir,
@@ -1659,14 +1715,14 @@ PD.render = PD.render || {};
       // Center selectable widgets: deck, discard, bank P0, bank P1
       var y0 = rowY0(row);
       var y1 = rowY1(row);
-      var boxH = 15;
-      var top = y0 + 4;
-      var wBox = 40;
-      var gap = 6;
+      var boxH = cfg.centerBoxH;
+      var top = y0 + cfg.centerTopInsetY;
+      var wBox = cfg.centerBoxW;
+      var gap = cfg.centerGapX;
 
-      var xDeck = 6;
+      var xDeck = cfg.centerDeckX;
       var xDiscard = xDeck + wBox + gap;
-      var xBank0 = xDiscard + wBox + 18;
+      var xBank0 = xDiscard + wBox + cfg.centerBankGapX;
       var xBank1 = xBank0 + wBox + gap;
 
       var widgets = [
@@ -1784,50 +1840,10 @@ PD.render = PD.render || {};
     }
   }
 
-  function drawControlsHud() {
-    var cfg = R.cfg;
-    if (!cfg.hudEnabled) return;
-
-    var lines = [
-      "D:Move",
-      "A:Step",
-      "B:Next",
-      "X:Reset",
-      "Y:Mode"
-    ];
-
-    var maxLen = 0;
-    var i;
-    for (i = 0; i < lines.length; i++) {
-      var n = lines[i] ? lines[i].length : 0;
-      if (n > maxLen) maxLen = n;
-    }
-
-    var w = maxLen * cfg.hudCharW + 2 * cfg.hudPad;
-    var h = lines.length * cfg.hudLineH + 2 * cfg.hudPad;
-    var x0 = cfg.screenW - cfg.hudMarginR - w;
-    var y0 = cfg.screenH - cfg.hudMarginB - h;
-
-    rectSafe(x0, y0, w, h, cfg.hudBgCol);
-    rectbSafe(x0, y0, w, h, cfg.hudBorderCol);
-
-    for (i = 0; i < lines.length; i++) {
-      printSafe(
-        lines[i],
-        x0 + cfg.hudPad,
-        y0 + cfg.hudPad + i * cfg.hudLineH,
-        cfg.hudTextCol
-      );
-    }
-  }
-
   function drawControlsLine() {
     var cfg = R.cfg;
     if (cfg.hudLineEnabled === false) return;
-    var x = (cfg.hudLineX != null) ? cfg.hudLineX : 0;
-    var y = (cfg.hudLineY != null) ? cfg.hudLineY : 0;
-    var c = (cfg.hudLineCol != null) ? cfg.hudLineCol : cfg.colText;
-    printSafe("D:Move A:Step B:Next X:Reset Y:Mode", x, y, c);
+    printSafe("D:Move A:Step B:Next X:Reset Y:Mode", cfg.hudLineX, cfg.hudLineY, cfg.hudLineCol);
   }
 
   function drawTopLeftStatus(debug, selectedItem) {
@@ -1895,6 +1911,44 @@ PD.render = PD.render || {};
     }
   }
 
+  function groupStacksByKey(items, camX) {
+    var byKey = {};
+    var keys = [];
+    var i;
+    for (i = 0; i < items.length; i++) {
+      var it = items[i];
+      if (!it || !it.stackKey) continue;
+      var k = String(it.stackKey);
+      var a = byKey[k];
+      if (!a) {
+        a = [];
+        byKey[k] = a;
+        keys.push(k);
+      }
+      a.push(it);
+    }
+
+    // Stable visual ordering: sort stacks by their left edge on screen (after camera).
+    keys.sort(function (ka, kb) {
+      var aa = byKey[ka];
+      var bb = byKey[kb];
+      var mina = 999999;
+      var minb = 999999;
+      var j;
+      for (j = 0; j < aa.length; j++) {
+        var xa = aa[j].x - camX;
+        if (xa < mina) mina = xa;
+      }
+      for (j = 0; j < bb.length; j++) {
+        var xb = bb[j].x - camX;
+        if (xb < minb) minb = xb;
+      }
+      return mina - minb;
+    });
+
+    return { byKey: byKey, keys: keys };
+  }
+
   function drawRowCards(debug, rowModel, row, selected) {
     var cfg = R.cfg;
     var cam = R.ui.camX[row];
@@ -1904,43 +1958,15 @@ PD.render = PD.render || {};
     if (row === R.ROW_OP_TABLE || row === R.ROW_P_TABLE) {
       // Table rows must be drawn by stack depth (bottom->top), not x-order,
       // otherwise fan-left stacks layer incorrectly.
-      var bySet = {};
-      var setKeys = [];
-      for (i = 0; i < rowModel.items.length; i++) {
-        var itT = rowModel.items[i];
-        var k = String(itT.setI);
-        var a = bySet[k];
-        if (!a) {
-          a = [];
-          bySet[k] = a;
-          setKeys.push(k);
-        }
-        a.push(itT);
-      }
-
-      // Sort stacks by their left edge on screen (after camera) for stable visual ordering.
-      setKeys.sort(function (ka, kb) {
-        var aa = bySet[ka];
-        var bb = bySet[kb];
-        var mina = 999999;
-        var minb = 999999;
-        var j;
-        for (j = 0; j < aa.length; j++) {
-          var xa = aa[j].x - cam;
-          if (xa < mina) mina = xa;
-        }
-        for (j = 0; j < bb.length; j++) {
-          var xb = bb[j].x - cam;
-          if (xb < minb) minb = xb;
-        }
-        return mina - minb;
-      });
+      var grouped = groupStacksByKey(rowModel.items, cam);
+      var byKey = grouped.byKey;
+      var keys = grouped.keys;
 
       // Draw all stacks bottom->top, skipping selected.
       var si;
-      for (si = 0; si < setKeys.length; si++) {
-        var key = setKeys[si];
-        var cards = bySet[key];
+      for (si = 0; si < keys.length; si++) {
+        var key = keys[si];
+        var cards = byKey[key];
         var fanDir = (cards.length > 0 && cards[0].fanDir != null) ? cards[0].fanDir : (flipCards ? -1 : 1);
         drawFannedStack(cards, { state: debug.state, fanDir: fanDir, flip180: !!flipCards, camX: cam, selectedItem: selected, drawSelected: false });
       }
@@ -1948,24 +1974,22 @@ PD.render = PD.render || {};
       // Selected last + highlight.
       if (selected) {
         var sFan = (selected.fanDir != null) ? selected.fanDir : (flipCards ? -1 : 1);
-        var sk = String(selected.setI);
-        var stack = bySet[sk] || [selected];
+        var sk = String(selected.stackKey);
+        var stack = byKey[sk] || [selected];
         drawFannedStack(stack, { state: debug.state, fanDir: sFan, flip180: !!flipCards, camX: cam, selectedItem: selected, onlySelected: true });
       }
       return;
     }
 
-    // Hand rows (and opponent back row): simple x-order is fine.
-    var bankItems = [];
-    for (i = 0; i < rowModel.items.length; i++) {
-      var it0 = rowModel.items[i];
-      if (it0 && it0.kind === "bank") bankItems.push(it0);
-    }
+    // Hand rows (and opponent back row): simple x-order is fine for non-stack items.
+    var groupedH = groupStacksByKey(rowModel.items, cam);
+    var byKeyH = groupedH.byKey;
+    var keysH = groupedH.keys;
 
     // Draw non-bank hand items in x-order first.
     for (i = 0; i < rowModel.items.length; i++) {
       var it = rowModel.items[i];
-      if (!it || it.kind === "bank") continue;
+      if (!it || it.stackKey) continue;
       if (selected && it === selected) continue;
       var x = it.x - cam;
       var y = it.y;
@@ -1978,30 +2002,36 @@ PD.render = PD.render || {};
       }
     }
 
-    // Draw bank stacks bottom->top so overlap shadows remain visible.
-    if (bankItems.length > 0) {
-      var fanDirB = (bankItems[0].fanDir != null) ? bankItems[0].fanDir : 1;
+    // Draw stack(s) bottom->top so overlap shadows remain visible (bank is a stack in hand rows).
+    var ki;
+    for (ki = 0; ki < keysH.length; ki++) {
+      var k0 = keysH[ki];
+      var stack0 = byKeyH[k0];
+      if (!stack0 || stack0.length === 0) continue;
+      var fanDirB = (stack0[0].fanDir != null) ? stack0[0].fanDir : 1;
       var flipBank = (row === R.ROW_OP_HAND);
-      var selBank = (selected && selected.kind === "bank") ? selected : null;
-      drawFannedStack(bankItems, { state: debug.state, fanDir: fanDirB, flip180: !!flipBank, camX: cam, selectedItem: selBank, drawSelected: false });
+      var selInThis = (selected && selected.stackKey === k0) ? selected : null;
+      drawFannedStack(stack0, { state: debug.state, fanDir: fanDirB, flip180: !!flipBank, camX: cam, selectedItem: selInThis, drawSelected: false });
     }
 
     if (selected) {
       var xs = selected.x - cam;
       var ys = selected.y;
       if (row === R.ROW_OP_HAND) {
-        if (selected.kind === "bank") {
+        if (selected.stackKey) {
           var sFanO = (selected.fanDir != null) ? selected.fanDir : -1;
-          drawFannedStack(bankItems, { state: debug.state, fanDir: sFanO, flip180: true, camX: cam, selectedItem: selected, onlySelected: true });
+          var stackO = byKeyH[String(selected.stackKey)] || [selected];
+          drawFannedStack(stackO, { state: debug.state, fanDir: sFanO, flip180: true, camX: cam, selectedItem: selected, onlySelected: true });
         } else {
           drawShadowBar(xs, ys);
           drawCardBack(xs, ys, true);
           drawHighlight(xs, ys);
         }
       } else if (row === R.ROW_P_HAND) {
-        if (selected.kind === "bank") {
+        if (selected.stackKey) {
           var sFanP = (selected.fanDir != null) ? selected.fanDir : 1;
-          drawFannedStack(bankItems, { state: debug.state, fanDir: sFanP, flip180: false, camX: cam, selectedItem: selected, onlySelected: true });
+          var stackP = byKeyH[String(selected.stackKey)] || [selected];
+          drawFannedStack(stackP, { state: debug.state, fanDir: sFanP, flip180: false, camX: cam, selectedItem: selected, onlySelected: true });
         } else {
           drawShadowBar(xs, ys);
           drawMiniCard(debug.state, selected.uid, xs, ys, !!flipCards);
@@ -2038,7 +2068,6 @@ PD.render = PD.render || {};
   }
 
   function handleNav(models) {
-    if (typeof btnp !== "function") return;
     var cfg = R.cfg;
     var row = R.ui.row;
     var m = models[row];
@@ -2106,7 +2135,7 @@ PD.render = PD.render || {};
     var sel = selectedItemFromModels(models);
 
     // Clear background.
-    if (typeof cls === "function") cls(cfg.colBg);
+    cls(cfg.colBg);
 
     // Draw rows: opponent hand, opponent table, center, player table, player hand.
     var row;
@@ -2141,20 +2170,38 @@ PD.render = PD.render || {};
   R.tick = function (debug) {
     if (!debug) return;
     if (!debug.state) {
-      if (typeof PD.debugReset === "function") PD.debugReset();
-      else return;
+      PD.debugReset();
     }
 
     // Keep existing debug controls in render mode.
-    if (typeof btnp === "function") {
-      if (btnp(4) && typeof PD.debugStep === "function") PD.debugStep();
-      if (btnp(5) && typeof PD.debugNextScenario === "function") PD.debugNextScenario();
-      if (btnp(6) && typeof PD.debugReset === "function") PD.debugReset();
-    }
+    if (btnp(4)) PD.debugStep();
+    if (btnp(5)) PD.debugNextScenario();
+    if (btnp(6)) PD.debugReset();
 
     R.drawFrame(debug);
   };
 })();
+
+// ---- src/12_ui.js ----
+PD.ui = PD.ui || {};
+
+PD.ui.newView = function () {
+  return {
+    // View-only state (cursor/camera/menu focus). This is intentionally not part of GameState.
+    // Phase 03 keeps view state under PD.render.ui; Phase 04 will converge on a single model.
+    cursor: { row: 0, i: 0 },
+    camX: [0, 0, 0, 0, 0]
+  };
+};
+
+PD.ui.handleInput = function (_state, _view, _input) {
+  // Phase 04 will translate controller input into either:
+  // - a rules command to apply (`{ kind: ... }`)
+  // - a prompt transition (engine-owned prompt state)
+  //
+  // Returning null means "no action".
+  return null;
+};
 
 // ---- src/99_main.js ----
 function TIC() {
