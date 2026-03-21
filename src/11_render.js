@@ -10,12 +10,41 @@ PD.render = PD.render || {};
   R.ROW_P_HAND = 4;
 
   var renderCfg = PD.config && PD.config.render;
-  if (!renderCfg || !renderCfg.cfg || !renderCfg.spr || !renderCfg.moneyBgByValue) {
-    throw new Error("render_config_missing");
-  }
-  R.cfg = renderCfg.cfg;
+  // Keep internal `cfg` for readability, but source-of-truth config is split
+  // into `render.layout` and `render.style`.
+  var layout = renderCfg.layout;
+  var style = renderCfg.style;
+  R.cfg = {};
+  var k;
+  for (k in layout) R.cfg[k] = layout[k];
+  for (k in style) R.cfg[k] = style[k];
   R.spr = renderCfg.spr;
   R.moneyBgByValue = renderCfg.moneyBgByValue;
+  R.center = null;
+
+  function initCenterFromLayout() {
+    var cfg = R.cfg;
+    var row = R.ROW_CENTER;
+    var y0 = cfg.rowY[row];
+    var top = y0 + cfg.centerTopInsetY;
+    var deckX = cfg.centerDeckX;
+    var gapX = cfg.centerPileGapX;
+    var prevX = cfg.centerPreviewX;
+    var prevGapX = cfg.centerPreviewGapX;
+
+    return {
+      deck: { x: deckX, y: top },
+      discard: { x: deckX + cfg.faceW + gapX, y: top },
+
+      preview: { x: prevX, y: top },
+      title: { x: prevX + cfg.faceW + prevGapX, y: top },
+      desc: { x: prevX + cfg.faceW + prevGapX, y: top + cfg.centerDescDy },
+
+      hdr: { x: deckX, y: y0 + cfg.centerHdrDy }
+    };
+  }
+
+  R.center = initCenterFromLayout();
 
   // Property bar palette (placeholder; tweak later).
   R.propBarColByColor = [];
@@ -61,6 +90,10 @@ PD.render = PD.render || {};
 
   function printSafe(s, x, y, c) {
     print(String(s), x | 0, y | 0, c | 0);
+  }
+
+  function printExSafe(s, x, y, c, fixed, scale, smallfont) {
+    print(String(s), x | 0, y | 0, c | 0, !!fixed, (scale == null ? 1 : scale) | 0, !!smallfont);
   }
 
   function rowY0(row) { return R.cfg.rowY[row]; }
@@ -353,9 +386,23 @@ PD.render = PD.render || {};
   }
 
   function drawCardBack(xFace, yFace, flip180) {
-    // Simple debug back: border + interior + diagonal bars.
+    var cfg = R.cfg;
+    var id = (R.spr && R.spr.cardBackTL != null) ? (R.spr.cardBackTL | 0) : 0;
+
+    if (id) {
+      // Phase 03b back: 2x3 sprite (16x24) drawn inside the 1px border.
+      // Art convention: last col + last row are colorkey (15) so the effective area is 15x23.
+      drawCardFaceBase(xFace, yFace, cfg.colCardInterior);
+      // When rotated 180°, the padded colorkey row/col becomes the top/left edge.
+      // Shift origin so the visible pattern still starts at (1,1) inside the border.
+      var sx = flip180 ? xFace : (xFace + 1);
+      var sy = flip180 ? yFace : (yFace + 1);
+      sprSafe(id, sx, sy, cfg.glyphColorkey, 1, 0, flip180 ? 2 : 0, 2, 3);
+      return;
+    }
+
+    // Fallback back: border + interior + diagonal bars.
     drawCardFaceBase(xFace, yFace, 1);
-    // Two diagonal-ish stripes (approx with rects).
     var p1 = cardLocalRectToScreen(xFace, yFace, 3, 6, 11, 2, flip180);
     rectSafe(p1.x, p1.y, p1.w, p1.h, 12);
     var p2 = cardLocalRectToScreen(xFace, yFace, 3, 16, 11, 2, flip180);
@@ -573,37 +620,11 @@ PD.render = PD.render || {};
     }
 
     if (row === R.ROW_CENTER) {
-      // Center selectable widgets: deck, discard, bank P0, bank P1
-      var y0 = rowY0(row);
-      var y1 = rowY1(row);
-      var boxH = cfg.centerBoxH;
-      var top = y0 + cfg.centerTopInsetY;
-      var wBox = cfg.centerBoxW;
-      var gap = cfg.centerGapX;
+      // Center selectables (Phase 03b): deck + discard only.
+      var C = R.center;
+      out.items.push({ kind: "deck", row: row, x: C.deck.x, y: C.deck.y, w: cfg.faceW, h: cfg.faceH });
+      out.items.push({ kind: "discard", row: row, x: C.discard.x, y: C.discard.y, w: cfg.faceW, h: cfg.faceH });
 
-      var xDeck = cfg.centerDeckX;
-      var xDiscard = xDeck + wBox + gap;
-      var xBank0 = xDiscard + wBox + cfg.centerBankGapX;
-      var xBank1 = xBank0 + wBox + gap;
-
-      var widgets = [
-        { kind: "deck", x: xDeck, y: top, w: wBox, h: boxH },
-        { kind: "discard", x: xDiscard, y: top, w: wBox, h: boxH },
-        { kind: "bank0", x: xBank0, y: top, w: wBox, h: boxH },
-        { kind: "bank1", x: xBank1, y: top, w: wBox, h: boxH }
-      ];
-
-      for (i = 0; i < widgets.length; i++) {
-        var wdg = widgets[i];
-        out.items.push({
-          kind: wdg.kind,
-          row: row,
-          x: wdg.x,
-          y: wdg.y,
-          w: wdg.w,
-          h: wdg.h
-        });
-      }
       out.minX = 0; out.maxX = cfg.screenW - 1;
       out.items.sort(function (a, b) { return a.x - b.x; });
       return out;
@@ -686,25 +707,129 @@ PD.render = PD.render || {};
 
     var s = debug.state;
 
-    // Center widgets (deck/discard/banks).
+    // Center header (kept minimal; debug details live in DebugText mode).
+    printSafe("Phase 03 Render", R.center.hdr.x, R.center.hdr.y, cfg.colText);
+
+    function drawCountDigits(n, xFace, yFace) {
+      n = n | 0;
+      if (n < 0) n = 0;
+      // 35-card deck; keep it simple and deterministic.
+      var sN = String(n);
+      if (sN.length > 2) sN = sN.slice(-2);
+      var len = sN.length;
+      var yTL = cfg.faceH - 1 - cfg.digitGlyphH; // bottom-right inside border
+      var xEnd = cfg.faceW - 1 - cfg.digitGlyphW;
+      var xStart = xEnd - (len - 1) * cfg.propRentDx; // 4px step
+      var i;
+      for (i = 0; i < len; i++) {
+        var ch = sN.charCodeAt(i) - 48;
+        if (ch < 0 || ch > 9) continue;
+        drawDigitGlyph(ch, xFace + xStart + i * cfg.propRentDx, yFace + yTL, false);
+      }
+    }
+
+    function drawUnderLayerOutline(xFace, yFace, dx, dy) {
+      var colMain = cfg.pileOutlineUnder1Col;
+      if (dx === cfg.pileUnderDx2 && dy === cfg.pileUnderDy2) colMain = cfg.pileOutlineUnder2Col;
+
+      // Shadow outline first, shifted up-left.
+      rectbSafe(xFace + dx - 1, yFace + dy - 1, cfg.faceW, cfg.faceH, cfg.pileShadowOutlineCol);
+      // Main outline on top (alternating depth colors).
+      rectbSafe(xFace + dx, yFace + dy, cfg.faceW, cfg.faceH, colMain);
+    }
+
+    function drawDeckAt(xFace, yFace) {
+      var n = s.deck.length | 0;
+      if (n > 2) {
+        drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx2, cfg.pileUnderDy2);
+        drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
+      } else if (n > 1) {
+        drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
+      }
+      drawShadowBar(xFace, yFace);
+      drawCardBack(xFace, yFace, false);
+      drawCountDigits(n, xFace, yFace);
+    }
+
+    function drawDiscardAt(xFace, yFace) {
+      var n = s.discard.length | 0;
+      if (n > 2) {
+        drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx2, cfg.pileUnderDy2);
+        drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
+      } else if (n > 1) {
+        drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
+      }
+
+      if (n <= 0) {
+        rectbSafe(xFace, yFace, cfg.faceW, cfg.faceH, cfg.colText);
+        rectSafe(xFace + cfg.shadowBarDx, yFace, 1, cfg.faceH, cfg.colShadow);
+        drawCountDigits(0, xFace, yFace);
+        return;
+      }
+
+      var topUid = s.discard[n - 1] | 0;
+      drawShadowBar(xFace, yFace);
+      drawMiniCard(s, topUid, xFace, yFace, false);
+      drawCountDigits(n, xFace, yFace);
+    }
+
+    // Center piles (deck/discard).
     var rowM = buildRowItems(debug, row);
     var i;
     for (i = 0; i < rowM.items.length; i++) {
       var it = rowM.items[i];
-      rectbSafe(it.x, it.y, it.w, it.h, cfg.colText);
-      var label = it.kind;
-      if (it.kind === "deck") label = "Deck:" + s.deck.length;
-      if (it.kind === "discard") label = "Disc:" + s.discard.length;
-      if (it.kind === "bank0") label = "B0:" + bankTotal(s, 0);
-      if (it.kind === "bank1") label = "B1:" + bankTotal(s, 1);
-      printSafe(label, it.x + 2, it.y + 4, cfg.colText);
+      if (it.kind === "deck") drawDeckAt(it.x, it.y);
+      else if (it.kind === "discard") drawDiscardAt(it.x, it.y);
+    }
+
+    // Center preview (Phase 03b): mini-card + title + desc (smallfont).
+    var dbgEnabled = !!(PD.config && PD.config.debug && PD.config.debug.enabled);
+    var previewUid = 0;
+    var previewAssignedColor = null;
+
+    if (selectedItem) {
+      if (selectedItem.row === R.ROW_CENTER) {
+        if (selectedItem.kind === "deck") {
+          if (dbgEnabled && s.deck.length > 0) previewUid = s.deck[(s.deck.length | 0) - 1] | 0;
+        } else if (selectedItem.kind === "discard") {
+          if (s.discard.length > 0) previewUid = s.discard[(s.discard.length | 0) - 1] | 0;
+        }
+      } else if (selectedItem.uid) {
+        // Debug-first: reveal opponent hand card in preview when enabled.
+        if (!dbgEnabled && selectedItem.row === R.ROW_OP_HAND) {
+          previewUid = 0;
+        } else {
+          previewUid = selectedItem.uid | 0;
+          if (selectedItem.color != null) previewAssignedColor = selectedItem.color | 0;
+        }
+      }
+    }
+
+    if (previewUid) {
+      var C = R.center;
+      var xPrev = C.preview.x;
+      var yPrev = C.preview.y;
+      var xTitle = C.title.x;
+      var yTitle = C.title.y;
+      var xDesc = C.desc.x;
+      var yDesc = C.desc.y;
+
+      drawMiniCard(s, previewUid, xPrev, yPrev, false, previewAssignedColor);
+
+      var def = PD.defByUid(s, previewUid);
+      var title = (def && def.name) ? def.name : ((def && def.id) ? def.id : "");
+      var desc = (def && def.desc) ? String(def.desc) : "";
+
+      printSafe(title, xTitle, yTitle, cfg.colText);
+      // smallfont=true, allow \\n in desc for multi-line rendering.
+      printExSafe(desc, xDesc, yDesc, cfg.colText, false, 1, true);
     }
   }
 
   function drawControlsLine() {
     var cfg = R.cfg;
     if (cfg.hudLineEnabled === false) return;
-    printSafe("D:Move A:Step B:Next X:Reset Y:Mode", cfg.hudLineX, cfg.hudLineY, cfg.hudLineCol);
+    printSafe("Y:Mode", cfg.hudLineX, cfg.hudLineY, cfg.hudLineCol);
   }
 
   function drawTopLeftStatus(debug, selectedItem) {
@@ -912,6 +1037,32 @@ PD.render = PD.render || {};
     return m.items[si];
   }
 
+  R.debug = R.debug || {};
+
+  // DebugText support: summarize current Render selection without drawing.
+  R.debug.selectedLines = function (debug) {
+    if (!debug || !debug.state) return ["Sel:(none)", ""];
+    var models = rowModelAll(debug);
+    var it = selectedItemFromModels(models);
+    if (!it) return ["Sel:(none)", ""];
+
+    if (it.row === R.ROW_CENTER) {
+      if (it.kind === "deck") return ["Sel:Deck", "Cards:" + (debug.state.deck.length | 0)];
+      if (it.kind === "discard") return ["Sel:Discard", "Cards:" + (debug.state.discard.length | 0)];
+      return ["Sel:" + String(it.kind || "?"), ""];
+    }
+
+    if (it.uid) {
+      var uid = it.uid | 0;
+      var def = PD.defByUid(debug.state, uid);
+      var defId = def ? def.id : "?";
+      var name = (def && def.name) ? def.name : "";
+      return ["Sel:" + defId + " uid:" + uid, name];
+    }
+
+    return ["Sel:" + String(it.kind || "?"), ""];
+  };
+
   function ensureRowHasSelection(models) {
     // If current row has no items, find the next row with items (wrap).
     var tries = 0;
@@ -1023,9 +1174,6 @@ PD.render = PD.render || {};
 
     // Controls HUD (bottom-right, overlay-only).
     drawControlsLine();
-
-    // Top-left status overlay.
-    drawTopLeftStatus(debug, sel);
   };
 
   R.tick = function (debug) {

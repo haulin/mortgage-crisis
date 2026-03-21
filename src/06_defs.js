@@ -43,6 +43,7 @@ PD.CARD_DEFS = [
   {
     id: "money_1",
     name: "$1",
+    desc: "Money.\nBank: $1",
     kind: PD.CardKind.Money,
     count: 3,
     bankValue: 1,
@@ -50,6 +51,7 @@ PD.CARD_DEFS = [
   {
     id: "money_2",
     name: "$2",
+    desc: "Money.\nBank: $2",
     kind: PD.CardKind.Money,
     count: 3,
     bankValue: 2,
@@ -57,6 +59,7 @@ PD.CARD_DEFS = [
   {
     id: "money_3",
     name: "$3",
+    desc: "Money.\nBank: $3",
     kind: PD.CardKind.Money,
     count: 2,
     bankValue: 3,
@@ -64,6 +67,7 @@ PD.CARD_DEFS = [
   {
     id: "money_4",
     name: "$4",
+    desc: "Money.\nBank: $4",
     kind: PD.CardKind.Money,
     count: 1,
     bankValue: 4,
@@ -71,6 +75,7 @@ PD.CARD_DEFS = [
   {
     id: "money_5",
     name: "$5",
+    desc: "Money.\nBank: $5",
     kind: PD.CardKind.Money,
     count: 1,
     bankValue: 5,
@@ -80,6 +85,7 @@ PD.CARD_DEFS = [
   {
     id: "prop_cyan",
     name: "Property (Cyan)",
+    desc: "Property.\nColor: Cyan\nPay: $3",
     kind: PD.CardKind.Property,
     count: 2,
     propertyColor: PD.Color.Cyan,
@@ -88,6 +94,7 @@ PD.CARD_DEFS = [
   {
     id: "prop_magenta",
     name: "Property (Magenta)",
+    desc: "Property.\nColor: Magenta\nPay: $2",
     kind: PD.CardKind.Property,
     count: 3,
     propertyColor: PD.Color.Magenta,
@@ -96,6 +103,7 @@ PD.CARD_DEFS = [
   {
     id: "prop_orange",
     name: "Property (Orange)",
+    desc: "Property.\nColor: Orange\nPay: $2",
     kind: PD.CardKind.Property,
     count: 3,
     propertyColor: PD.Color.Orange,
@@ -104,6 +112,7 @@ PD.CARD_DEFS = [
   {
     id: "prop_black",
     name: "Property (Black)",
+    desc: "Property.\nColor: Black\nPay: $1",
     kind: PD.CardKind.Property,
     count: 4,
     propertyColor: PD.Color.Black,
@@ -112,6 +121,7 @@ PD.CARD_DEFS = [
   {
     id: "wild_mo",
     name: "Wild (Magenta/Orange)",
+    desc: "Wild property.\nColors: Magenta/Orange\nPay: $2",
     kind: PD.CardKind.Property,
     count: 1,
     wildColors: [PD.Color.Magenta, PD.Color.Orange],
@@ -120,6 +130,7 @@ PD.CARD_DEFS = [
   {
     id: "wild_cb",
     name: "Wild (Cyan/Black)",
+    desc: "Wild property.\nColors: Cyan/Black\nPay: $2",
     kind: PD.CardKind.Property,
     count: 1,
     wildColors: [PD.Color.Cyan, PD.Color.Black],
@@ -130,6 +141,7 @@ PD.CARD_DEFS = [
   {
     id: "house",
     name: "House",
+    desc: "Add to a complete set.\nRent bonus: +3\nBank: $3",
     kind: PD.CardKind.House,
     count: 2,
     bankValue: 3,
@@ -139,6 +151,7 @@ PD.CARD_DEFS = [
   {
     id: "rent_mo",
     name: "Rent (Magenta/Orange)",
+    desc: "Charge rent.\nColors: Magenta/Orange\nBank: $1",
     kind: PD.CardKind.Action,
     actionKind: PD.ActionKind.Rent,
     count: 2,
@@ -148,6 +161,7 @@ PD.CARD_DEFS = [
   {
     id: "rent_cb",
     name: "Rent (Cyan/Black)",
+    desc: "Charge rent.\nColors: Cyan/Black\nBank: $1",
     kind: PD.CardKind.Action,
     actionKind: PD.ActionKind.Rent,
     count: 2,
@@ -157,6 +171,7 @@ PD.CARD_DEFS = [
   {
     id: "rent_any",
     name: "Rent (Any)",
+    desc: "Charge rent.\nAny color\nBank: $1",
     kind: PD.CardKind.Action,
     actionKind: PD.ActionKind.Rent,
     count: 1,
@@ -166,6 +181,7 @@ PD.CARD_DEFS = [
   {
     id: "sly_deal",
     name: "Sly Deal",
+    desc: "Steal 1 property\nfrom an incomplete set.\nBank: $3",
     kind: PD.CardKind.Action,
     actionKind: PD.ActionKind.SlyDeal,
     count: 2,
@@ -174,6 +190,7 @@ PD.CARD_DEFS = [
   {
     id: "just_say_no",
     name: "Just Say No",
+    desc: "Cancel an action\nplayed against you.\nBank: $4",
     kind: PD.CardKind.Action,
     actionKind: PD.ActionKind.JustSayNo,
     count: 2,

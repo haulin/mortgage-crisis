@@ -8,7 +8,7 @@ This document captures the **shared MVP1 spec** and a **piece-by-piece implement
 - **Phase 01 ✅**: deterministic RNG (xorshift32) + shuffle + tests + `saveid` metadata injection. See `docs/phase01.md`.
 - **Phase 02 ✅**: rules engine + command API + scenarios + debug screen + tests. See `docs/phase02.md`.
 - **Phase 03 ✅**: rendering baseline (5-row layout), navigation + camera, mini-card templates, rent special rendering, and draw-call render tests. See `docs/phase03.md`.
-- **Phase 03b ⏳**: center-panel “big preview” + prompt scaffolding (missing pieces from the original Phase 03 description). See `docs/phase03b.md`.
+- **Phase 03b ✅**: center-panel “big preview” + deck + discard rendering. See `docs/phase03b.md`.
 
 ## Goals + Constraints
 
@@ -280,20 +280,18 @@ Status:
 
 - Phase 03 baseline renderer is **complete** (see `docs/phase03.md` for exact shipped behavior and constraints).
 
-### Phase 03b — Center preview + prompt scaffolding
+### Phase 03b ✅ — Center preview
 
 Phase 03 grew larger than originally expected, so we split the missing “center panel UX” into a small bridging phase before Phase 04.
 
 - Implement:
   - Center-panel **big card preview** for the currently-selected item (hand/table/bank/deck/discard)
-  - Center-panel **prompt scaffolding** (a deterministic text/layout slot that Phase 04 prompt flows can plug into)
   - One or two additional render tests that lock the preview/prompt output invariants (draw order + anchors)
 
 Definition of done:
 
 - `npm test` passes, including updated render draw-call tests
 - Center preview updates as you navigate selection in Render mode
-- Prompt area exists and is stable even if `state.prompt` is null (Phase 04 will populate it)
 
 ### Phase 04 — UI state machine (controller UX)
 

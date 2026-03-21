@@ -12,6 +12,11 @@ PD.config = {
   seedBase: 1001
 };
 
+// Debug/dev knobs (Phase 03b+). Keep these centralized so we can disable later.
+PD.config.debug = {
+  enabled: true
+};
+
 // TIC-80 default palette is Sweetie-16.
 // These are palette *indices* (0..15), not RGB values.
 PD.Pal = {
@@ -34,7 +39,8 @@ PD.Pal = {
 };
 
 PD.config.render = {
-  cfg: {
+  // Layout knobs: geometry + positions.
+  layout: {
     screenW: PD.config.screenW,
     screenH: PD.config.screenH,
 
@@ -65,22 +71,25 @@ PD.config.render = {
     hudLineEnabled: true,
     hudLineX: 6,
     hudLineY: 74,
-    hudLineCol: PD.Pal.White,
 
-    // Center row widgets (deck/discard/banks)
-    centerBoxH: 15,
+    // Center row (Phase 03b+)
     centerTopInsetY: 4,
-    centerBoxW: 40,
-    centerGapX: 6,
     centerDeckX: 6,
-    centerBankGapX: 18,
+    centerPileGapX: 6,
+    centerPreviewX: 70,
+    centerPreviewGapX: 8,
+    centerDescDy: 8,
+    centerHdrDy: -10,
 
-    // Top-left status overlay (5 lines)
-    topStatusEnabled: true,
-    topStatusX: 0,
-    topStatusY: 0,
-    topStatusLineStep: 7,
+    // Pile depth under-layers (visual only)
+    pileUnderDx1: 2,
+    pileUnderDy1: 2,
+    pileUnderDx2: 4,
+    pileUnderDy2: 4
+  },
 
+  // Style knobs: colors + template anchors + glyph/icon parameters.
+  style: {
     // Digit glyph placement is 3x5; sprite tile may include a 1px border.
     digitGlyphW: 3,
     digitGlyphH: 5,
@@ -116,13 +125,28 @@ PD.config.render = {
     colCenterPanel: PD.Pal.DarkBlue,
     colCenterPanelBorder: PD.Pal.White,
     colValuePatch: PD.Pal.White,
-    colValuePatchBorder: PD.Pal.Black
+    colValuePatchBorder: PD.Pal.Black,
+    hudLineCol: PD.Pal.White,
+
+    // Center pile depth outlines (Phase 03b polish)
+    pileShadowOutlineCol: PD.Pal.Black,
+    // Under-layer outline colors (screen-space depth):
+    // - under1: the closer (smaller offset) layer
+    // - under2: the deeper (larger offset) layer
+    // Deeper is intentionally darker.
+    pileOutlineUnder1Col: PD.Pal.LightGrey,
+    pileOutlineUnder2Col: PD.Pal.Grey
   },
 
   // Sprite IDs (NOT locked yet; keep all in one place for easy remap).
   spr: {
     // Reserve 0 as blank (convention).
     digit0: 1, // digit sprite IDs are digit0 + n
+
+    // Card back (top-left tile id of a 2x3 sprite = 16x24).
+    // Art convention for Phase 03b: last column + last row are color 15 (colorkey),
+    // yielding an effective 15x23 interior when drawn at xFace+1,yFace+1.
+    cardBackTL: 32,
 
     // Optional icons (0 = skip). You’ll remap once the atlas is real.
     iconMoney: 16,
@@ -265,6 +289,7 @@ PD.CARD_DEFS = [
   {
     id: "money_1",
     name: "$1",
+    desc: "Money.\nBank: $1",
     kind: PD.CardKind.Money,
     count: 3,
     bankValue: 1,
@@ -272,6 +297,7 @@ PD.CARD_DEFS = [
   {
     id: "money_2",
     name: "$2",
+    desc: "Money.\nBank: $2",
     kind: PD.CardKind.Money,
     count: 3,
     bankValue: 2,
@@ -279,6 +305,7 @@ PD.CARD_DEFS = [
   {
     id: "money_3",
     name: "$3",
+    desc: "Money.\nBank: $3",
     kind: PD.CardKind.Money,
     count: 2,
     bankValue: 3,
@@ -286,6 +313,7 @@ PD.CARD_DEFS = [
   {
     id: "money_4",
     name: "$4",
+    desc: "Money.\nBank: $4",
     kind: PD.CardKind.Money,
     count: 1,
     bankValue: 4,
@@ -293,6 +321,7 @@ PD.CARD_DEFS = [
   {
     id: "money_5",
     name: "$5",
+    desc: "Money.\nBank: $5",
     kind: PD.CardKind.Money,
     count: 1,
     bankValue: 5,
@@ -302,6 +331,7 @@ PD.CARD_DEFS = [
   {
     id: "prop_cyan",
     name: "Property (Cyan)",
+    desc: "Property.\nColor: Cyan\nPay: $3",
     kind: PD.CardKind.Property,
     count: 2,
     propertyColor: PD.Color.Cyan,
@@ -310,6 +340,7 @@ PD.CARD_DEFS = [
   {
     id: "prop_magenta",
     name: "Property (Magenta)",
+    desc: "Property.\nColor: Magenta\nPay: $2",
     kind: PD.CardKind.Property,
     count: 3,
     propertyColor: PD.Color.Magenta,
@@ -318,6 +349,7 @@ PD.CARD_DEFS = [
   {
     id: "prop_orange",
     name: "Property (Orange)",
+    desc: "Property.\nColor: Orange\nPay: $2",
     kind: PD.CardKind.Property,
     count: 3,
     propertyColor: PD.Color.Orange,
@@ -326,6 +358,7 @@ PD.CARD_DEFS = [
   {
     id: "prop_black",
     name: "Property (Black)",
+    desc: "Property.\nColor: Black\nPay: $1",
     kind: PD.CardKind.Property,
     count: 4,
     propertyColor: PD.Color.Black,
@@ -334,6 +367,7 @@ PD.CARD_DEFS = [
   {
     id: "wild_mo",
     name: "Wild (Magenta/Orange)",
+    desc: "Wild property.\nColors: Magenta/Orange\nPay: $2",
     kind: PD.CardKind.Property,
     count: 1,
     wildColors: [PD.Color.Magenta, PD.Color.Orange],
@@ -342,6 +376,7 @@ PD.CARD_DEFS = [
   {
     id: "wild_cb",
     name: "Wild (Cyan/Black)",
+    desc: "Wild property.\nColors: Cyan/Black\nPay: $2",
     kind: PD.CardKind.Property,
     count: 1,
     wildColors: [PD.Color.Cyan, PD.Color.Black],
@@ -352,6 +387,7 @@ PD.CARD_DEFS = [
   {
     id: "house",
     name: "House",
+    desc: "Add to a complete set.\nRent bonus: +3\nBank: $3",
     kind: PD.CardKind.House,
     count: 2,
     bankValue: 3,
@@ -361,6 +397,7 @@ PD.CARD_DEFS = [
   {
     id: "rent_mo",
     name: "Rent (Magenta/Orange)",
+    desc: "Charge rent.\nColors: Magenta/Orange\nBank: $1",
     kind: PD.CardKind.Action,
     actionKind: PD.ActionKind.Rent,
     count: 2,
@@ -370,6 +407,7 @@ PD.CARD_DEFS = [
   {
     id: "rent_cb",
     name: "Rent (Cyan/Black)",
+    desc: "Charge rent.\nColors: Cyan/Black\nBank: $1",
     kind: PD.CardKind.Action,
     actionKind: PD.ActionKind.Rent,
     count: 2,
@@ -379,6 +417,7 @@ PD.CARD_DEFS = [
   {
     id: "rent_any",
     name: "Rent (Any)",
+    desc: "Charge rent.\nAny color\nBank: $1",
     kind: PD.CardKind.Action,
     actionKind: PD.ActionKind.Rent,
     count: 1,
@@ -388,6 +427,7 @@ PD.CARD_DEFS = [
   {
     id: "sly_deal",
     name: "Sly Deal",
+    desc: "Steal 1 property\nfrom an incomplete set.\nBank: $3",
     kind: PD.CardKind.Action,
     actionKind: PD.ActionKind.SlyDeal,
     count: 2,
@@ -396,6 +436,7 @@ PD.CARD_DEFS = [
   {
     id: "just_say_no",
     name: "Just Say No",
+    desc: "Cancel an action\nplayed against you.\nBank: $4",
     kind: PD.CardKind.Action,
     actionKind: PD.ActionKind.JustSayNo,
     count: 2,
@@ -945,6 +986,11 @@ PD._scenarioApplyById = {
     // P0 has Wild(M/O) and $1.
     state.players[0].hand.push(PD.takeUid(state, "wild_mo"));
     state.players[0].hand.push(PD.takeUid(state, "money_1"));
+
+    // Discard demo (depth=3): top card is last.
+    state.discard.push(PD.takeUid(state, "money_2"));
+    state.discard.push(PD.takeUid(state, "money_1"));
+    state.discard.push(PD.takeUid(state, "rent_cb"));
   },
 
   houseOnComplete: function (state) {
@@ -964,6 +1010,9 @@ PD._scenarioApplyById = {
     PD.setAddPropByDefId(state, setB, "prop_black", PD.NO_COLOR);
     PD.setAddPropByDefId(state, setB, "prop_black", PD.NO_COLOR);
     state.players[0].sets.push(setB);
+
+    // Discard demo (depth=1).
+    state.discard.push(PD.takeUid(state, "money_5"));
   },
 
   winCheck: function (state) {
@@ -991,10 +1040,7 @@ PD._scenarioApplyById = {
 };
 
 // ---- src/10_debug.js ----
-if (!PD.SCENARIO_IDS) throw new Error("scenario_ids_missing");
-
 PD.debug = PD.debug || {
-  seedU32: 1001,
   scenarioI: 0,
   scenarios: null,
   state: null,
@@ -1006,11 +1052,12 @@ PD.debug.scenarios = ["default"].concat(PD.SCENARIO_IDS);
 
 PD.debugReset = function () {
   var d = PD.debug;
+  var seedU32 = PD.computeSeed();
   var scenarioId = d.scenarios[d.scenarioI | 0];
   if (scenarioId === "default") {
-    d.state = PD.newGame({ seedU32: d.seedU32 >>> 0 });
+    d.state = PD.newGame({ seedU32: seedU32 >>> 0 });
   } else {
-    d.state = PD.newGame({ seedU32: d.seedU32 >>> 0, scenarioId: scenarioId });
+    d.state = PD.newGame({ seedU32: seedU32 >>> 0, scenarioId: scenarioId });
   }
   d.lastCmd = "";
   d.lastEvents = [];
@@ -1075,54 +1122,45 @@ PD.debugTick = function () {
   var s = d.state;
 
   cls(0);
-  print("Phase 02 Debug", 6, 6, 12);
-  print("Scenario: " + d.scenarios[d.scenarioI | 0], 6, 16, 12);
-  print("Seed: " + (d.seedU32 >>> 0), 6, 26, 12);
+  var x = 6;
+  var y = 6;
+  var step = 7;
 
-  print("Active: P" + (s.activeP | 0) + "  Plays: " + (s.playsLeft | 0), 6, 38, 12);
+  print("Phase 02 Debug", x, y, 12); y += step;
+  print("Scenario: " + d.scenarios[d.scenarioI | 0], x, y, 12); y += step;
+  print("Seed: " + (PD.computeSeed() >>> 0), x, y, 12); y += step;
+
+  if (PD.render && PD.render.debug && typeof PD.render.debug.selectedLines === "function") {
+    var sel = PD.render.debug.selectedLines(d);
+    if (sel && sel.length) {
+      print(sel[0] || "", x, y, 12); y += step;
+      if (sel[1]) { print(sel[1], x, y, 12); y += step; }
+    }
+  }
+
+  print("Active: P" + (s.activeP | 0) + "  Plays: " + (s.playsLeft | 0), x, y, 12); y += step;
   var w = (s.winnerP | 0);
-  if (w !== PD.NO_WINNER) print("Winner: P" + w, 6, 48, 11);
+  if (w !== PD.NO_WINNER) { print("Winner: P" + w, x, y, 11); y += step; }
 
-  print("Deck: " + (s.deck.length | 0) + "  Discard: " + (s.discard.length | 0), 6, 60, 12);
-  print(
-    "Hand P0/P1: " + (s.players[0].hand.length | 0) + "/" + (s.players[1].hand.length | 0),
-    6,
-    70,
-    12
-  );
-  print(
-    "Bank P0/P1: " + (s.players[0].bank.length | 0) + "/" + (s.players[1].bank.length | 0),
-    6,
-    80,
-    12
-  );
-  print(
-    "Sets P0/P1: " + (s.players[0].sets.length | 0) + "/" + (s.players[1].sets.length | 0),
-    6,
-    90,
-    12
-  );
+  print("Deck: " + (s.deck.length | 0) + "  Discard: " + (s.discard.length | 0), x, y, 12); y += step;
+  print("Hand P0/P1: " + (s.players[0].hand.length | 0) + "/" + (s.players[1].hand.length | 0), x, y, 12); y += step;
+  print("Bank P0/P1: " + (s.players[0].bank.length | 0) + "/" + (s.players[1].bank.length | 0), x, y, 12); y += step;
+  print("Sets P0/P1: " + (s.players[0].sets.length | 0) + "/" + (s.players[1].sets.length | 0), x, y, 12); y += step;
 
   var moves = PD.legalMoves(s);
-  print("Legal moves: " + (moves.length | 0), 6, 102, 12);
-  print("Last cmd: " + (d.lastCmd || "(none)"), 6, 112, 12);
-  print("Events: " + PD.debugEventsToLine(d.lastEvents), 6, 120, 12);
+  print("Legal moves: " + (moves.length | 0), x, y, 12); y += step;
+  print("Last cmd: " + (d.lastCmd || "(none)"), x, y, 12); y += step;
+  print("Events: " + PD.debugEventsToLine(d.lastEvents), x, y, 12);
 
   print("A:Step  B:Next  X:Reset  Y:Mode", 6, 128, 13, true, 1, false);
 };
 
 PD.mainTick = function () {
-  // Modes: 0=Boot, 1=Phase02 DebugText, 2=Phase03 Render
-  if (PD._mainMode == null) PD._mainMode = 1;
-  if (typeof btnp === "function" && btnp(7)) PD._mainMode = (((PD._mainMode | 0) + 1) % 3) | 0;
+  // Modes: 0=DebugText, 1=Render
+  if (PD._mainMode == null) PD._mainMode = 0;
+  if (typeof btnp === "function" && btnp(7)) PD._mainMode = ((PD._mainMode | 0) ^ 1) | 0;
 
   if ((PD._mainMode | 0) === 0) {
-    PD.bootTick();
-    print("Press Y for Debug/Render", 6, 40, 12);
-    return;
-  }
-
-  if ((PD._mainMode | 0) === 1) {
     PD.debugTick();
     return;
   }
@@ -1149,12 +1187,41 @@ PD.render = PD.render || {};
   R.ROW_P_HAND = 4;
 
   var renderCfg = PD.config && PD.config.render;
-  if (!renderCfg || !renderCfg.cfg || !renderCfg.spr || !renderCfg.moneyBgByValue) {
-    throw new Error("render_config_missing");
-  }
-  R.cfg = renderCfg.cfg;
+  // Keep internal `cfg` for readability, but source-of-truth config is split
+  // into `render.layout` and `render.style`.
+  var layout = renderCfg.layout;
+  var style = renderCfg.style;
+  R.cfg = {};
+  var k;
+  for (k in layout) R.cfg[k] = layout[k];
+  for (k in style) R.cfg[k] = style[k];
   R.spr = renderCfg.spr;
   R.moneyBgByValue = renderCfg.moneyBgByValue;
+  R.center = null;
+
+  function initCenterFromLayout() {
+    var cfg = R.cfg;
+    var row = R.ROW_CENTER;
+    var y0 = cfg.rowY[row];
+    var top = y0 + cfg.centerTopInsetY;
+    var deckX = cfg.centerDeckX;
+    var gapX = cfg.centerPileGapX;
+    var prevX = cfg.centerPreviewX;
+    var prevGapX = cfg.centerPreviewGapX;
+
+    return {
+      deck: { x: deckX, y: top },
+      discard: { x: deckX + cfg.faceW + gapX, y: top },
+
+      preview: { x: prevX, y: top },
+      title: { x: prevX + cfg.faceW + prevGapX, y: top },
+      desc: { x: prevX + cfg.faceW + prevGapX, y: top + cfg.centerDescDy },
+
+      hdr: { x: deckX, y: y0 + cfg.centerHdrDy }
+    };
+  }
+
+  R.center = initCenterFromLayout();
 
   // Property bar palette (placeholder; tweak later).
   R.propBarColByColor = [];
@@ -1200,6 +1267,10 @@ PD.render = PD.render || {};
 
   function printSafe(s, x, y, c) {
     print(String(s), x | 0, y | 0, c | 0);
+  }
+
+  function printExSafe(s, x, y, c, fixed, scale, smallfont) {
+    print(String(s), x | 0, y | 0, c | 0, !!fixed, (scale == null ? 1 : scale) | 0, !!smallfont);
   }
 
   function rowY0(row) { return R.cfg.rowY[row]; }
@@ -1492,9 +1563,23 @@ PD.render = PD.render || {};
   }
 
   function drawCardBack(xFace, yFace, flip180) {
-    // Simple debug back: border + interior + diagonal bars.
+    var cfg = R.cfg;
+    var id = (R.spr && R.spr.cardBackTL != null) ? (R.spr.cardBackTL | 0) : 0;
+
+    if (id) {
+      // Phase 03b back: 2x3 sprite (16x24) drawn inside the 1px border.
+      // Art convention: last col + last row are colorkey (15) so the effective area is 15x23.
+      drawCardFaceBase(xFace, yFace, cfg.colCardInterior);
+      // When rotated 180°, the padded colorkey row/col becomes the top/left edge.
+      // Shift origin so the visible pattern still starts at (1,1) inside the border.
+      var sx = flip180 ? xFace : (xFace + 1);
+      var sy = flip180 ? yFace : (yFace + 1);
+      sprSafe(id, sx, sy, cfg.glyphColorkey, 1, 0, flip180 ? 2 : 0, 2, 3);
+      return;
+    }
+
+    // Fallback back: border + interior + diagonal bars.
     drawCardFaceBase(xFace, yFace, 1);
-    // Two diagonal-ish stripes (approx with rects).
     var p1 = cardLocalRectToScreen(xFace, yFace, 3, 6, 11, 2, flip180);
     rectSafe(p1.x, p1.y, p1.w, p1.h, 12);
     var p2 = cardLocalRectToScreen(xFace, yFace, 3, 16, 11, 2, flip180);
@@ -1712,37 +1797,11 @@ PD.render = PD.render || {};
     }
 
     if (row === R.ROW_CENTER) {
-      // Center selectable widgets: deck, discard, bank P0, bank P1
-      var y0 = rowY0(row);
-      var y1 = rowY1(row);
-      var boxH = cfg.centerBoxH;
-      var top = y0 + cfg.centerTopInsetY;
-      var wBox = cfg.centerBoxW;
-      var gap = cfg.centerGapX;
+      // Center selectables (Phase 03b): deck + discard only.
+      var C = R.center;
+      out.items.push({ kind: "deck", row: row, x: C.deck.x, y: C.deck.y, w: cfg.faceW, h: cfg.faceH });
+      out.items.push({ kind: "discard", row: row, x: C.discard.x, y: C.discard.y, w: cfg.faceW, h: cfg.faceH });
 
-      var xDeck = cfg.centerDeckX;
-      var xDiscard = xDeck + wBox + gap;
-      var xBank0 = xDiscard + wBox + cfg.centerBankGapX;
-      var xBank1 = xBank0 + wBox + gap;
-
-      var widgets = [
-        { kind: "deck", x: xDeck, y: top, w: wBox, h: boxH },
-        { kind: "discard", x: xDiscard, y: top, w: wBox, h: boxH },
-        { kind: "bank0", x: xBank0, y: top, w: wBox, h: boxH },
-        { kind: "bank1", x: xBank1, y: top, w: wBox, h: boxH }
-      ];
-
-      for (i = 0; i < widgets.length; i++) {
-        var wdg = widgets[i];
-        out.items.push({
-          kind: wdg.kind,
-          row: row,
-          x: wdg.x,
-          y: wdg.y,
-          w: wdg.w,
-          h: wdg.h
-        });
-      }
       out.minX = 0; out.maxX = cfg.screenW - 1;
       out.items.sort(function (a, b) { return a.x - b.x; });
       return out;
@@ -1825,25 +1884,129 @@ PD.render = PD.render || {};
 
     var s = debug.state;
 
-    // Center widgets (deck/discard/banks).
+    // Center header (kept minimal; debug details live in DebugText mode).
+    printSafe("Phase 03 Render", R.center.hdr.x, R.center.hdr.y, cfg.colText);
+
+    function drawCountDigits(n, xFace, yFace) {
+      n = n | 0;
+      if (n < 0) n = 0;
+      // 35-card deck; keep it simple and deterministic.
+      var sN = String(n);
+      if (sN.length > 2) sN = sN.slice(-2);
+      var len = sN.length;
+      var yTL = cfg.faceH - 1 - cfg.digitGlyphH; // bottom-right inside border
+      var xEnd = cfg.faceW - 1 - cfg.digitGlyphW;
+      var xStart = xEnd - (len - 1) * cfg.propRentDx; // 4px step
+      var i;
+      for (i = 0; i < len; i++) {
+        var ch = sN.charCodeAt(i) - 48;
+        if (ch < 0 || ch > 9) continue;
+        drawDigitGlyph(ch, xFace + xStart + i * cfg.propRentDx, yFace + yTL, false);
+      }
+    }
+
+    function drawUnderLayerOutline(xFace, yFace, dx, dy) {
+      var colMain = cfg.pileOutlineUnder1Col;
+      if (dx === cfg.pileUnderDx2 && dy === cfg.pileUnderDy2) colMain = cfg.pileOutlineUnder2Col;
+
+      // Shadow outline first, shifted up-left.
+      rectbSafe(xFace + dx - 1, yFace + dy - 1, cfg.faceW, cfg.faceH, cfg.pileShadowOutlineCol);
+      // Main outline on top (alternating depth colors).
+      rectbSafe(xFace + dx, yFace + dy, cfg.faceW, cfg.faceH, colMain);
+    }
+
+    function drawDeckAt(xFace, yFace) {
+      var n = s.deck.length | 0;
+      if (n > 2) {
+        drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx2, cfg.pileUnderDy2);
+        drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
+      } else if (n > 1) {
+        drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
+      }
+      drawShadowBar(xFace, yFace);
+      drawCardBack(xFace, yFace, false);
+      drawCountDigits(n, xFace, yFace);
+    }
+
+    function drawDiscardAt(xFace, yFace) {
+      var n = s.discard.length | 0;
+      if (n > 2) {
+        drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx2, cfg.pileUnderDy2);
+        drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
+      } else if (n > 1) {
+        drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
+      }
+
+      if (n <= 0) {
+        rectbSafe(xFace, yFace, cfg.faceW, cfg.faceH, cfg.colText);
+        rectSafe(xFace + cfg.shadowBarDx, yFace, 1, cfg.faceH, cfg.colShadow);
+        drawCountDigits(0, xFace, yFace);
+        return;
+      }
+
+      var topUid = s.discard[n - 1] | 0;
+      drawShadowBar(xFace, yFace);
+      drawMiniCard(s, topUid, xFace, yFace, false);
+      drawCountDigits(n, xFace, yFace);
+    }
+
+    // Center piles (deck/discard).
     var rowM = buildRowItems(debug, row);
     var i;
     for (i = 0; i < rowM.items.length; i++) {
       var it = rowM.items[i];
-      rectbSafe(it.x, it.y, it.w, it.h, cfg.colText);
-      var label = it.kind;
-      if (it.kind === "deck") label = "Deck:" + s.deck.length;
-      if (it.kind === "discard") label = "Disc:" + s.discard.length;
-      if (it.kind === "bank0") label = "B0:" + bankTotal(s, 0);
-      if (it.kind === "bank1") label = "B1:" + bankTotal(s, 1);
-      printSafe(label, it.x + 2, it.y + 4, cfg.colText);
+      if (it.kind === "deck") drawDeckAt(it.x, it.y);
+      else if (it.kind === "discard") drawDiscardAt(it.x, it.y);
+    }
+
+    // Center preview (Phase 03b): mini-card + title + desc (smallfont).
+    var dbgEnabled = !!(PD.config && PD.config.debug && PD.config.debug.enabled);
+    var previewUid = 0;
+    var previewAssignedColor = null;
+
+    if (selectedItem) {
+      if (selectedItem.row === R.ROW_CENTER) {
+        if (selectedItem.kind === "deck") {
+          if (dbgEnabled && s.deck.length > 0) previewUid = s.deck[(s.deck.length | 0) - 1] | 0;
+        } else if (selectedItem.kind === "discard") {
+          if (s.discard.length > 0) previewUid = s.discard[(s.discard.length | 0) - 1] | 0;
+        }
+      } else if (selectedItem.uid) {
+        // Debug-first: reveal opponent hand card in preview when enabled.
+        if (!dbgEnabled && selectedItem.row === R.ROW_OP_HAND) {
+          previewUid = 0;
+        } else {
+          previewUid = selectedItem.uid | 0;
+          if (selectedItem.color != null) previewAssignedColor = selectedItem.color | 0;
+        }
+      }
+    }
+
+    if (previewUid) {
+      var C = R.center;
+      var xPrev = C.preview.x;
+      var yPrev = C.preview.y;
+      var xTitle = C.title.x;
+      var yTitle = C.title.y;
+      var xDesc = C.desc.x;
+      var yDesc = C.desc.y;
+
+      drawMiniCard(s, previewUid, xPrev, yPrev, false, previewAssignedColor);
+
+      var def = PD.defByUid(s, previewUid);
+      var title = (def && def.name) ? def.name : ((def && def.id) ? def.id : "");
+      var desc = (def && def.desc) ? String(def.desc) : "";
+
+      printSafe(title, xTitle, yTitle, cfg.colText);
+      // smallfont=true, allow \\n in desc for multi-line rendering.
+      printExSafe(desc, xDesc, yDesc, cfg.colText, false, 1, true);
     }
   }
 
   function drawControlsLine() {
     var cfg = R.cfg;
     if (cfg.hudLineEnabled === false) return;
-    printSafe("D:Move A:Step B:Next X:Reset Y:Mode", cfg.hudLineX, cfg.hudLineY, cfg.hudLineCol);
+    printSafe("Y:Mode", cfg.hudLineX, cfg.hudLineY, cfg.hudLineCol);
   }
 
   function drawTopLeftStatus(debug, selectedItem) {
@@ -2051,6 +2214,32 @@ PD.render = PD.render || {};
     return m.items[si];
   }
 
+  R.debug = R.debug || {};
+
+  // DebugText support: summarize current Render selection without drawing.
+  R.debug.selectedLines = function (debug) {
+    if (!debug || !debug.state) return ["Sel:(none)", ""];
+    var models = rowModelAll(debug);
+    var it = selectedItemFromModels(models);
+    if (!it) return ["Sel:(none)", ""];
+
+    if (it.row === R.ROW_CENTER) {
+      if (it.kind === "deck") return ["Sel:Deck", "Cards:" + (debug.state.deck.length | 0)];
+      if (it.kind === "discard") return ["Sel:Discard", "Cards:" + (debug.state.discard.length | 0)];
+      return ["Sel:" + String(it.kind || "?"), ""];
+    }
+
+    if (it.uid) {
+      var uid = it.uid | 0;
+      var def = PD.defByUid(debug.state, uid);
+      var defId = def ? def.id : "?";
+      var name = (def && def.name) ? def.name : "";
+      return ["Sel:" + defId + " uid:" + uid, name];
+    }
+
+    return ["Sel:" + String(it.kind || "?"), ""];
+  };
+
   function ensureRowHasSelection(models) {
     // If current row has no items, find the next row with items (wrap).
     var tries = 0;
@@ -2162,9 +2351,6 @@ PD.render = PD.render || {};
 
     // Controls HUD (bottom-right, overlay-only).
     drawControlsLine();
-
-    // Top-left status overlay.
-    drawTopLeftStatus(debug, sel);
   };
 
   R.tick = function (debug) {

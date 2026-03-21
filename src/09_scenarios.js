@@ -78,6 +78,11 @@ PD._scenarioApplyById = {
     // P0 has Wild(M/O) and $1.
     state.players[0].hand.push(PD.takeUid(state, "wild_mo"));
     state.players[0].hand.push(PD.takeUid(state, "money_1"));
+
+    // Discard demo (depth=3): top card is last.
+    state.discard.push(PD.takeUid(state, "money_2"));
+    state.discard.push(PD.takeUid(state, "money_1"));
+    state.discard.push(PD.takeUid(state, "rent_cb"));
   },
 
   houseOnComplete: function (state) {
@@ -97,6 +102,9 @@ PD._scenarioApplyById = {
     PD.setAddPropByDefId(state, setB, "prop_black", PD.NO_COLOR);
     PD.setAddPropByDefId(state, setB, "prop_black", PD.NO_COLOR);
     state.players[0].sets.push(setB);
+
+    // Discard demo (depth=1).
+    state.discard.push(PD.takeUid(state, "money_5"));
   },
 
   winCheck: function (state) {

@@ -1,45 +1,81 @@
-# Phase 03b — Center Preview + Prompt Scaffolding
+# Phase 03b — Center row rework + seed/debug cleanup
 
-Phase 03 delivered the core 5-row renderer, navigation, camera, and mini-card templates, but the original Phase 03 plan also described a richer center panel (“big preview” + prompt text). Phase 03b implements those missing center-panel pieces so Phase 04 can focus on the actual UI state machine and prompt flows.
+Phase 03 shipped the 5-row renderer + navigation, but the center row (Row 3) and debug plumbing were still “prototype-y”:
+
+- Render-mode debug text overlapped the opponent hand (Row 1).
+- Center row used placeholder labeled boxes (deck/discard/banks).
+- It was too easy to think changing `seedBase` affected Debug/Render, when Debug had its own seed value.
+
+Phase 03b fixes those issues while keeping rendering **read-only** (rules/commands still own all state changes).
 
 ## Goals
 
-- Provide a **deterministic center-panel preview** of the currently selected item.
-- Provide a stable **prompt UI slot** (even if it renders “no prompt”) that Phase 04 can reuse for menus/choices/payment selection.
-- Keep rendering **read-only** with respect to `GameState` (state changes remain rules-command-driven).
+- Rework Row 3 into a real **Deck/Discard + selection preview** center HUD.
+- Improve **card backs** (opponent hand + deck) using a fast sprite-based back.
+- Unify **seed usage**: Debug/Render uses the same seed source as the rest of the codebase (`PD.computeSeed()` → `PD.config.seedBase`).
+- Keep Phase 03 invariants: **row bands stay locked**, navigation + camera stay deterministic, tests remain green.
 
-## Scope
+## What Phase 03b implements
 
-### Center preview
+### Render screen cleanup
 
-When an item is selected in Render mode, show a center-panel preview that depends on the item kind:
+- Render mode no longer prints the top-left status overlay (which was overlapping Row 1).
+- Render mode HUD hint is minimal: **`Y:Mode`** only.
+- Debug info (seed/scenario/etc.) remains in the DebugText screen.
 
-- **Hand / bank / set card**: render a larger version (or a 1:1 “big” layout) plus 1–2 lines of text:
-  - card name / defId
-  - money value / property color / wild colors / assigned color (as applicable)
-- **Opponent hand backs**: preview reveals the real underlying card (debug-only behavior).
-- **Deck / discard widgets**: preview shows count + (optional) top card defId (debug-only; deterministic).
+### Updates vs Phase 03 (polish pass)
 
-### Prompt scaffolding
+- Mode switching is now **2-mode** (DebugText ↔ Render). The old Boot/“Build OK” screen is removed from the cycle.
+- Render mode restores a small **`Phase 03 Render`** title in the center row.
+- DebugText mode shows the **currently selected item** (defId + uid, or Deck/Discard) to make debugging faster.
 
-Add a dedicated, consistent area in the center panel for prompt UI:
+### Row 3 (center) selectables
 
-- If `state.prompt` is `null`, render a stable “no prompt” line (or empty area).
-- If `state.prompt` is non-null (future phases), render:
-  - prompt title line
-  - up to N option lines (layout-only; interaction comes in Phase 04)
+- Row 3 selectables are **Deck** and **Discard** only (banks are selected directly via bank cards in hand rows).
+- Both piles render as compact **vertical stacks**:
+  - 0–2 outline-only under-layers for depth (2px offsets)
+  - a top card:
+    - Deck = card back
+    - Discard = top discard card face (or empty outline when empty)
+  - pile counts rendered via digit sprites (bottom-right of the top card)
+  - depth outlines use a black shadow outline plus alternating grey outlines for readability
 
-## Tests (Phase 03b)
+### Center preview (dev-first)
 
-Add/extend draw-call recording tests to lock invariants:
+Whenever something is selected, the center preview shows:
 
-- Preview is drawn **after** the rows (so it is readable and on top of row visuals).
-- Preview output is **deterministic** for a given `debug.state` + selection.
-- Prompt slot exists and does not shift other center-panel widgets.
+- A mini-card render
+- Title (`def.name`)
+- Description (`def.desc`) in small font (supports `\n` line breaks)
+
+Debug-only reveal behavior (gated by config):
+
+- Selecting an opponent hand back reveals the underlying card in the preview.
+- Selecting the deck reveals the top-of-deck card in the preview.
+
+### Data + scenarios to support the UI
+
+- Card defs now include a `desc` string for all cards (used by the preview).
+- Scenarios seed discard to make discard rendering easy to verify:
+  - `placeWild`: discard has **3** cards (depth demo)
+  - `houseOnComplete`: discard has **1** card (no-depth demo)
+
+## Tweak points (single source of truth)
+
+All Phase 03b tweak knobs live in `src/01_config.js`:
+
+- `PD.config.seedBase`: seed used by Debug/Render resets
+- `PD.config.debug.enabled`: gates debug-only reveal behavior in preview
+- `PD.config.render.spr.cardBackTL`: top-left tile of a **2×3** (16×24) card-back sprite
+- `PD.config.render.layout.*`: geometry + positions (including center row placement knobs like `centerDeckX`, `centerPreviewX`, etc.)
+- `PD.config.render.style.*`: colors + anchors (including pile outline colors)
 
 ## Definition of Done
 
-- `npm test` passes (including render tests).
-- In TIC-80 Render mode, preview changes as selection changes across all rows/zones.
-- Prompt scaffolding renders consistently (even when unused).
+- `npm test` passes.
+- In TIC-80 Render mode:
+  - Row 3 shows Deck/Discard stacks with counts
+  - Preview updates as selection changes
+  - No debug text overlaps the opponent hand row
+  - Changing `seedBase` actually changes default deals (in Debug/Render)
 

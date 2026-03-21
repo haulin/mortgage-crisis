@@ -194,7 +194,7 @@ test("render: opponent table stack shadow is mirrored", async () => {
   ctx.PD.render.ui.i = 0;
   ctx.PD.render.drawFrame(ctx.PD.debug);
 
-  const cfg = ctx.PD.config.render.cfg;
+  const cfg = ctx.PD.config.render.layout;
   const cam = ctx.PD.render.ui.camX[ctx.PD.render.ROW_OP_TABLE] ?? 0;
   const rightCursor = cfg.screenW - cfg.rowPadX - cfg.faceW; // 240-4-17 = 219
   const xTopFace = (rightCursor - cfg.stackStrideX) - cam; // depth 1
@@ -237,7 +237,7 @@ test("render: player bank renders as fanned stack in hand row", async () => {
   ctx.PD.render.ui.i = 0;
   ctx.PD.render.drawFrame(ctx.PD.debug);
 
-  const cfg = ctx.PD.config.render.cfg;
+  const cfg = ctx.PD.config.render.layout;
   const yFace = cfg.rowY[ctx.PD.render.ROW_P_HAND] + cfg.faceInsetY; // 109 + 1
   const cam = ctx.PD.render.ui.camX[ctx.PD.render.ROW_P_HAND] ?? 0;
   assert.equal(cam, 0, "expected no scrolling when bank stack fits in player hand row");
@@ -307,7 +307,7 @@ test("render: opponent bank renders as mirrored fanned stack in hand row", async
   ctx.PD.render.ui.i = 0;
   ctx.PD.render.drawFrame(ctx.PD.debug);
 
-  const cfg = ctx.PD.config.render.cfg;
+  const cfg = ctx.PD.config.render.layout;
   const yFace = cfg.rowY[ctx.PD.render.ROW_OP_HAND] + cfg.rowH[ctx.PD.render.ROW_OP_HAND] - cfg.faceH;
   const cam = ctx.PD.render.ui.camX[ctx.PD.render.ROW_OP_HAND] ?? 0;
   assert.equal(cam, 0, "expected no scrolling when bank stack fits in opponent hand row");
@@ -361,16 +361,17 @@ test("render: wild in set uses assigned color for visual top", async () => {
   ctx.PD.render.ui.i = 0;
   ctx.PD.render.drawFrame(ctx.PD.debug);
 
-  const cfg = ctx.PD.config.render.cfg;
+  const L = ctx.PD.config.render.layout;
+  const S = ctx.PD.config.render.style;
   const cam = ctx.PD.render.ui.camX[ctx.PD.render.ROW_P_TABLE] ?? 0;
-  const xFace = cfg.rowPadX - cam; // first set starts at padX
-  const yFace = cfg.rowY[ctx.PD.render.ROW_P_TABLE] + cfg.faceInsetY; // 82 + 1
+  const xFace = L.rowPadX - cam; // first set starts at padX
+  const yFace = L.rowY[ctx.PD.render.ROW_P_TABLE] + L.faceInsetY; // 82 + 1
 
   // Top-half property bar rect at local (5,1) with size 11x5.
-  const xBar = xFace + cfg.propBarX;
-  const yBar = yFace + cfg.propBarY;
+  const xBar = xFace + S.propBarX;
+  const yBar = yFace + S.propBarY;
   const bar = rec.calls.find(
-    (c) => c.kind === "rect" && c.args[0] === xBar && c.args[1] === yBar && c.args[2] === cfg.propBarW && c.args[3] === cfg.propBarH
+    (c) => c.kind === "rect" && c.args[0] === xBar && c.args[1] === yBar && c.args[2] === S.propBarW && c.args[3] === S.propBarH
   );
   assert.ok(bar, "expected to find top-half property color bar rect");
   assert.equal(bar.args[4], ctx.PD.Pal.DarkGrey, "expected assigned black to render as top-half bar color");
@@ -401,5 +402,46 @@ test("render: no scroll when content fits (opponent hand row)", async () => {
 
   const cam = ctx.PD.render.ui.camX[ctx.PD.render.ROW_OP_HAND] ?? 0;
   assert.equal(cam, 0, "expected no scrolling when opponent hand+bank fit");
+});
+
+test("render: opponent hand back sprite origin is aligned for rotate=2", async () => {
+  const rec = makeRecorder();
+  const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
+
+  const s = ctx.PD.newGame({ seedU32: 1 });
+  assert.ok(s.players[1].hand.length > 0, "expected opponent to have at least 1 card");
+  const uid = s.players[1].hand[0];
+
+  // Make a minimal state: one opponent hand card so we know which back to target.
+  s.players[1].hand = [uid];
+  s.players[0].hand = [];
+  s.players[0].bank = [];
+  s.players[1].bank = [];
+  s.players[0].sets = [];
+  s.players[1].sets = [];
+  ctx.PD.debug.state = s;
+  ctx.PD.render.ui.lastStateRef = s;
+
+  ctx.PD.render.ui.row = ctx.PD.render.ROW_OP_HAND;
+  ctx.PD.render.ui.i = 0;
+  ctx.PD.render.drawFrame(ctx.PD.debug);
+
+  const L = ctx.PD.config.render.layout;
+  const cam = ctx.PD.render.ui.camX[ctx.PD.render.ROW_OP_HAND] ?? 0;
+  const xFace = (L.screenW - L.rowPadX - L.faceW) - cam;
+  const yFace = L.rowY[ctx.PD.render.ROW_OP_HAND] + L.rowH[ctx.PD.render.ROW_OP_HAND] - L.faceH;
+  const backId = ctx.PD.config.render.spr.cardBackTL;
+
+  const sprCall = rec.calls.find(
+    (c) =>
+      c.kind === "spr" &&
+      c.args[0] === backId &&
+      c.args[1] === xFace &&
+      c.args[2] === yFace &&
+      c.args[6] === 2 &&
+      c.args[7] === 2 &&
+      c.args[8] === 3
+  );
+  assert.ok(sprCall, `expected rotate=2 card back spr at (${xFace},${yFace})`);
 });
 

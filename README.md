@@ -8,7 +8,7 @@ Target: 1v1 player vs AI, controller-first design for couch gaming on Google TV.
 ## Language
 JavaScript (TIC-80 JS mode via duktape).
 
-- The **runtime cartridge** is `game.js` (paste into TIC-80). It must start with TIC-80 JS headers (`// script: js`, etc.).
+- The **runtime cartridge** is `game.js`. It must start with TIC-80 JS headers (`// script: js`, etc.).
 - The **source of truth** lives in `src/` and is concatenated into `game.js`.
 
 ## Documentation
@@ -48,13 +48,14 @@ npm test
 - **Regression-first**: when fixing a bug (especially a visual/render bug), add at least one **assertion** or a small **new test** so we don’t re-break it later.
 - **Renderer tests**: Phase 03 uses “draw-call recording” tests (stub TIC-80 draw APIs like `rect`, `spr`, etc. and assert call ordering/positions). See `test/11_render.test.mjs`.
 - **Phase 03 render harness controls (debug-first)**:
-  - `Y`: cycle Boot → DebugText → Render
+  - `Y`: toggle DebugText ↔ Render
   - In Render mode: `A` steps a random legal move, `B` switches scenario, `X` resets scenario
   - This is intentionally not the final UX (Phase 04 introduces A/B confirm/back menus and real prompts)
 
 - **Run in TIC-80**:
   - Open a JS cart in TIC-80
-  - Copy/paste the contents of `game.js` into the TIC-80 code editor
+  - Recommended (PRO / external workflow): put `game.js` in the TIC-80 folder and run `import code game.js`
+  - Fallback: copy/paste `game.js` into the TIC-80 code editor (subject to code size limits in non-PRO)
 
 Notes:
 
@@ -74,8 +75,8 @@ We work in small increments:
 ## Key Constraints
 - No DOM, no Node.js, no browser APIs — this is a fantasy console
 - No external libraries — only TIC-80 built-in functions
-- 64KB code limit
-- Single file cartridge — all code in game.js, copy-pasted into TIC-80 editor
+- Code size limits depend on TIC-80 build (non-PRO paste workflow hits ~64KB; PRO supports much larger code buffers)
+- Single file cartridge output: all code in `game.js`
 
 ## Input
 Controller-first. Use btn() for held buttons, btnp() for single presses.

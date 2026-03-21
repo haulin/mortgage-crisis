@@ -4,6 +4,11 @@ PD.config = {
   seedBase: 1001
 };
 
+// Debug/dev knobs (Phase 03b+). Keep these centralized so we can disable later.
+PD.config.debug = {
+  enabled: true
+};
+
 // TIC-80 default palette is Sweetie-16.
 // These are palette *indices* (0..15), not RGB values.
 PD.Pal = {
@@ -26,7 +31,8 @@ PD.Pal = {
 };
 
 PD.config.render = {
-  cfg: {
+  // Layout knobs: geometry + positions.
+  layout: {
     screenW: PD.config.screenW,
     screenH: PD.config.screenH,
 
@@ -57,22 +63,25 @@ PD.config.render = {
     hudLineEnabled: true,
     hudLineX: 6,
     hudLineY: 74,
-    hudLineCol: PD.Pal.White,
 
-    // Center row widgets (deck/discard/banks)
-    centerBoxH: 15,
+    // Center row (Phase 03b+)
     centerTopInsetY: 4,
-    centerBoxW: 40,
-    centerGapX: 6,
     centerDeckX: 6,
-    centerBankGapX: 18,
+    centerPileGapX: 6,
+    centerPreviewX: 70,
+    centerPreviewGapX: 8,
+    centerDescDy: 8,
+    centerHdrDy: -10,
 
-    // Top-left status overlay (5 lines)
-    topStatusEnabled: true,
-    topStatusX: 0,
-    topStatusY: 0,
-    topStatusLineStep: 7,
+    // Pile depth under-layers (visual only)
+    pileUnderDx1: 2,
+    pileUnderDy1: 2,
+    pileUnderDx2: 4,
+    pileUnderDy2: 4
+  },
 
+  // Style knobs: colors + template anchors + glyph/icon parameters.
+  style: {
     // Digit glyph placement is 3x5; sprite tile may include a 1px border.
     digitGlyphW: 3,
     digitGlyphH: 5,
@@ -108,13 +117,28 @@ PD.config.render = {
     colCenterPanel: PD.Pal.DarkBlue,
     colCenterPanelBorder: PD.Pal.White,
     colValuePatch: PD.Pal.White,
-    colValuePatchBorder: PD.Pal.Black
+    colValuePatchBorder: PD.Pal.Black,
+    hudLineCol: PD.Pal.White,
+
+    // Center pile depth outlines (Phase 03b polish)
+    pileShadowOutlineCol: PD.Pal.Black,
+    // Under-layer outline colors (screen-space depth):
+    // - under1: the closer (smaller offset) layer
+    // - under2: the deeper (larger offset) layer
+    // Deeper is intentionally darker.
+    pileOutlineUnder1Col: PD.Pal.LightGrey,
+    pileOutlineUnder2Col: PD.Pal.Grey
   },
 
   // Sprite IDs (NOT locked yet; keep all in one place for easy remap).
   spr: {
     // Reserve 0 as blank (convention).
     digit0: 1, // digit sprite IDs are digit0 + n
+
+    // Card back (top-left tile id of a 2x3 sprite = 16x24).
+    // Art convention for Phase 03b: last column + last row are color 15 (colorkey),
+    // yielding an effective 15x23 interior when drawn at xFace+1,yFace+1.
+    cardBackTL: 32,
 
     // Optional icons (0 = skip). You’ll remap once the atlas is real.
     iconMoney: 16,
