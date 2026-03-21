@@ -76,7 +76,6 @@ test("config sanity: render.layout/style/spr/moneyBgByValue shape", async () => 
     "centerPreviewX",
     "centerPreviewGapX",
     "centerDescDy",
-    "centerHdrDy",
     "pileUnderDx1",
     "pileUnderDy1",
     "pileUnderDx2",
@@ -121,6 +120,31 @@ test("config sanity: render.layout/style/spr/moneyBgByValue shape", async () => 
 
   requireNum(r.spr, "digit0");
   requireNum(r.spr, "cardBackTL");
+});
+
+test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async () => {
+  // Load only prelude+config so we validate what ships in the cartridge.
+  const ctx = await loadSrcFilesIntoVm(["00_prelude.js", "01_config.js"]);
+  const { PD } = ctx;
+
+  assert.equal(typeof PD.config.controls, "object", "expected PD.config.controls");
+  assert.equal(typeof PD.config.ui, "object", "expected PD.config.ui");
+
+  const requirePosNum = (obj, key) => {
+    assert.equal(typeof obj[key], "number", `expected ${key} to be a number`);
+    assert.ok(Number.isFinite(obj[key]), `expected ${key} to be finite`);
+    assert.ok(obj[key] > 0, `expected ${key} > 0`);
+  };
+
+  // Controls (frames).
+  requirePosNum(PD.config.controls, "dpadRepeatDelayFrames");
+  requirePosNum(PD.config.controls, "dpadRepeatPeriodFrames");
+  requirePosNum(PD.config.controls, "aHoldFallbackFrames");
+  requirePosNum(PD.config.controls, "xInspectDelayFrames");
+
+  // Directional navigation cone penalties.
+  requirePosNum(PD.config.ui, "navConeKLeftRight");
+  requirePosNum(PD.config.ui, "navConeKUpDown");
 });
 
 test("sanity: scenarios are registered after full load", async () => {

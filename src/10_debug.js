@@ -2,6 +2,8 @@ PD.debug = PD.debug || {
   scenarioI: 0,
   scenarios: null,
   state: null,
+  view: null,
+  ctrl: null,
   lastCmd: "",
   lastEvents: []
 };
@@ -17,6 +19,8 @@ PD.debugReset = function () {
   } else {
     d.state = PD.newGame({ seedU32: seedU32 >>> 0, scenarioId: scenarioId });
   }
+  d.view = (PD.ui && typeof PD.ui.newView === "function") ? PD.ui.newView() : null;
+  d.ctrl = (PD.controls && typeof PD.controls.newState === "function") ? PD.controls.newState() : null;
   d.lastCmd = "";
   d.lastEvents = [];
 };
@@ -151,8 +155,48 @@ PD.mainTick = function () {
 
   // Render mode
   if (!PD.debug || !PD.debug.state) PD.debugReset();
-  if (PD.render && typeof PD.render.tick === "function") PD.render.tick(PD.debug);
-  else {
+  var d = PD.debug;
+  if (!d.view && PD.ui && typeof PD.ui.newView === "function") d.view = PD.ui.newView();
+  if (!d.ctrl && PD.controls && typeof PD.controls.newState === "function") d.ctrl = PD.controls.newState();
+
+  if (PD.controls && PD.ui && PD.render && typeof PD.render.drawFrame === "function") {
+    var raw = PD.controls.pollGlobals();
+    var actions = PD.controls.actions(d.ctrl, raw, PD.config.controls);
+    var intent = PD.ui.step(d.state, d.view, actions);
+
+    if (intent && intent.kind === "applyCmd" && intent.cmd) {
+      try {
+        var res = PD.applyCommand(d.state, intent.cmd);
+        d.lastCmd = intent.cmd.kind;
+        d.lastEvents = (res && res.events) ? res.events : [];
+      } catch (err) {
+        d.lastCmd = intent.cmd.kind + "(!)";
+        d.lastEvents = [];
+        var code = (err && err.message) ? String(err.message) : "error";
+        // Friendly message is derived from code for now.
+        var msg = code;
+        if (code === "no_plays_left") msg = "No plays left";
+        else if (code === "hand_over_limit") msg = "Hand over limit";
+        else if (code === "not_bankable") msg = "Not bankable";
+        else if (code === "set_not_complete") msg = "Set not complete";
+        else if (code === "set_color_mismatch") msg = "Wrong set color";
+        else if (code === "wild_color_illegal") msg = "Wild color illegal";
+        else if (code === "no_targets") msg = "No valid destination";
+        if (PD.ui && typeof PD.ui.feedbackError === "function") PD.ui.feedbackError(d.view, code, msg);
+      }
+    } else if (intent && intent.kind === "debug") {
+      if (intent.action === "step") PD.debugStep();
+      else if (intent.action === "reset") PD.debugReset();
+      else if (intent.action === "nextScenario") PD.debugNextScenario();
+    }
+
+    var computed = PD.ui.computeRowModels(d.state, d.view);
+    PD.ui.updateCameras(d.state, d.view, computed);
+    // Recompute after camera updates (selection/cam are orthogonal, but keep it stable).
+    computed = PD.ui.computeRowModels(d.state, d.view);
+
+    PD.render.drawFrame({ state: d.state, view: d.view, computed: computed });
+  } else {
     cls(0);
     print("Render not loaded", 6, 6, 12);
   }

@@ -17,6 +17,35 @@ PD.config.debug = {
   enabled: true
 };
 
+// Controller UX knobs (Phase 04+). All values are in frames (TIC runs at 60fps).
+PD.config.controls = {
+  // D-pad repeat: start repeating after delay, then pulse every period.
+  dpadRepeatDelayFrames: 12,
+  dpadRepeatPeriodFrames: 4,
+
+  // Hold-A grab: if you hold A without moving, enter grab after this fallback threshold.
+  // (Hold+move enters immediately.)
+  aHoldFallbackFrames: 18,
+
+  // Inspect overlay becomes active after holding X this long.
+  xInspectDelayFrames: 6
+};
+
+// UI/navigation tuning (Phase 04+).
+PD.config.ui = {
+  // Directional navigation cone penalty multiplier (per-axis):
+  // used by PD.ui.navPickInDirection scoring:
+  // score = along^2 + (perp^2)*k
+  //
+  // Bigger k => narrower cone (harder to jump across rows/columns).
+  // k must be > 0. Typical values are ~4..30.
+  //
+  // - Left/Right usually wants a *narrower* cone to avoid jumping to other rows.
+  // - Up/Down can stay more permissive.
+  navConeKLeftRight: 18,
+  navConeKUpDown: 6
+};
+
 // TIC-80 default palette is Sweetie-16.
 // These are palette *indices* (0..15), not RGB values.
 PD.Pal = {
@@ -79,7 +108,6 @@ PD.config.render = {
     centerPreviewX: 70,
     centerPreviewGapX: 8,
     centerDescDy: 8,
-    centerHdrDy: -10,
 
     // Pile depth under-layers (visual only)
     pileUnderDx1: 2,
@@ -219,6 +247,175 @@ PD.rngNextInt = function (state, n) {
   n = n | 0;
   if (n <= 0) return 0;
   return (PD.rngNextU32(state) % n) | 0;
+};
+
+// ---- src/04_controls.js ----
+PD.controls = PD.controls || {};
+
+PD.controls.newState = function () {
+  return {
+    frame: 0,
+
+    // Previous raw button-down state (0..7).
+    prevDown: [false, false, false, false, false, false, false, false],
+
+    // Per-button consecutive held frames.
+    held: [0, 0, 0, 0, 0, 0, 0, 0],
+
+    // A-hold grab tracking.
+    aGrabActive: false,
+    aGrabEnteredThisPress: false,
+
+    // X inspect delay tracking.
+    xInspectActive: false,
+
+    // D-pad repeat counters (per direction button id 0..3).
+    dpadRepeat: [0, 0, 0, 0],
+  };
+};
+
+PD.controls.pollGlobals = function () {
+  var down = [false, false, false, false, false, false, false, false];
+  var pressed = [false, false, false, false, false, false, false, false];
+
+  var hasBtn = (typeof btn === "function");
+  var hasBtnp = (typeof btnp === "function");
+  var i;
+  for (i = 0; i < 8; i++) {
+    down[i] = hasBtn ? !!btn(i) : false;
+    pressed[i] = hasBtnp ? !!btnp(i) : false;
+  }
+
+  return { down: down, pressed: pressed };
+};
+
+PD.controls.actions = function (st, raw, cfg) {
+  if (!st) st = PD.controls.newState();
+  raw = raw || { down: [], pressed: [] };
+  cfg = cfg || {};
+
+  var down = raw.down || [];
+  var pressed = raw.pressed || [];
+
+  var repeatDelay = (cfg.dpadRepeatDelayFrames != null) ? (cfg.dpadRepeatDelayFrames | 0) : 12;
+  var repeatPeriod = (cfg.dpadRepeatPeriodFrames != null) ? (cfg.dpadRepeatPeriodFrames | 0) : 4;
+  if (repeatDelay < 0) repeatDelay = 0;
+  if (repeatPeriod < 1) repeatPeriod = 1;
+
+  var grabFallback = (cfg.aHoldFallbackFrames != null) ? (cfg.aHoldFallbackFrames | 0) : 18;
+  if (grabFallback < 0) grabFallback = 0;
+
+  var inspectDelay = (cfg.xInspectDelayFrames != null) ? (cfg.xInspectDelayFrames | 0) : 6;
+  if (inspectDelay < 0) inspectDelay = 0;
+
+  st.frame = (st.frame | 0) + 1;
+
+  var i;
+  for (i = 0; i < 8; i++) {
+    var isDown = !!down[i];
+    st.held[i] = isDown ? ((st.held[i] | 0) + 1) : 0;
+  }
+
+  // Edge detection from down states (used in case caller doesn't provide pressed[]).
+  function fell(iBtn) { return !!st.prevDown[iBtn] && !down[iBtn]; }
+  function rose(iBtn) { return !st.prevDown[iBtn] && !!down[iBtn]; }
+
+  // D-pad repeat: synthesize nav pulses.
+  function navPulse(btnId) {
+    btnId = btnId | 0;
+    if (!down[btnId]) { st.dpadRepeat[btnId] = 0; return false; }
+
+    // Prefer provided pressed[] as the initial pulse.
+    if (pressed[btnId] || rose(btnId)) { st.dpadRepeat[btnId] = 0; return true; }
+
+    st.dpadRepeat[btnId] = (st.dpadRepeat[btnId] | 0) + 1;
+    if ((st.dpadRepeat[btnId] | 0) < (repeatDelay | 0)) return false;
+
+    var t = (st.dpadRepeat[btnId] | 0) - (repeatDelay | 0);
+    return ((t % repeatPeriod) | 0) === 0;
+  }
+
+  var up = navPulse(0);
+  var downNav = navPulse(1);
+  var left = navPulse(2);
+  var right = navPulse(3);
+
+  var aDown = !!down[4];
+  var aPressed = !!pressed[4] || rose(4);
+  var aReleased = fell(4);
+
+  var bPressed = !!pressed[5] || rose(5);
+
+  var xDown = !!down[6];
+  var xPressed = !!pressed[6] || rose(6);
+  var xReleased = fell(6);
+
+  // A grab mode: enter on hold+move (any nav pulse while A held),
+  // or on fallback hold threshold.
+  if (aPressed) {
+    st.aGrabActive = false;
+    st.aGrabEnteredThisPress = false;
+  }
+
+  var navAny = !!(up || downNav || left || right);
+  var aHeldFrames = st.held[4] | 0;
+  var aGrabStartNow = false;
+
+  if (aDown && !st.aGrabActive) {
+    var shouldEnter = false;
+    if (navAny && aHeldFrames > 0) shouldEnter = true;
+    else if (aHeldFrames >= (grabFallback | 0) && (grabFallback | 0) > 0) shouldEnter = true;
+    if (shouldEnter) {
+      st.aGrabActive = true;
+      st.aGrabEnteredThisPress = true;
+      aGrabStartNow = true;
+    }
+  }
+
+  if (aReleased) {
+    st.aGrabActive = false;
+  }
+
+  // Tap A is only when it was a press->release without entering grab.
+  var aTap = false;
+  if (aReleased) {
+    aTap = !st.aGrabEnteredThisPress;
+    st.aGrabEnteredThisPress = false;
+  }
+
+  // Inspect: active only after delay while X held.
+  if (xPressed) st.xInspectActive = false;
+  if (!xDown) st.xInspectActive = false;
+  if (xDown && !st.xInspectActive) {
+    if ((st.held[6] | 0) >= (inspectDelay | 0) && (inspectDelay | 0) > 0) st.xInspectActive = true;
+    if ((inspectDelay | 0) === 0) st.xInspectActive = true;
+  }
+  if (xReleased) st.xInspectActive = false;
+
+  // Persist prevDown.
+  for (i = 0; i < 8; i++) st.prevDown[i] = !!down[i];
+
+  return {
+    nav: { up: up, down: downNav, left: left, right: right },
+
+    a: {
+      down: aDown,
+      pressed: aPressed,
+      released: aReleased,
+      tap: aTap,
+      grabActive: !!st.aGrabActive,
+      grabStart: !!aGrabStartNow,
+    },
+
+    b: { pressed: !!bPressed },
+
+    x: {
+      down: xDown,
+      pressed: xPressed,
+      released: xReleased,
+      inspectActive: !!st.xInspectActive,
+    }
+  };
 };
 
 // ---- src/04_seed.js ----
@@ -1051,6 +1248,8 @@ PD.debug = PD.debug || {
   scenarioI: 0,
   scenarios: null,
   state: null,
+  view: null,
+  ctrl: null,
   lastCmd: "",
   lastEvents: []
 };
@@ -1066,6 +1265,8 @@ PD.debugReset = function () {
   } else {
     d.state = PD.newGame({ seedU32: seedU32 >>> 0, scenarioId: scenarioId });
   }
+  d.view = (PD.ui && typeof PD.ui.newView === "function") ? PD.ui.newView() : null;
+  d.ctrl = (PD.controls && typeof PD.controls.newState === "function") ? PD.controls.newState() : null;
   d.lastCmd = "";
   d.lastEvents = [];
 };
@@ -1200,8 +1401,48 @@ PD.mainTick = function () {
 
   // Render mode
   if (!PD.debug || !PD.debug.state) PD.debugReset();
-  if (PD.render && typeof PD.render.tick === "function") PD.render.tick(PD.debug);
-  else {
+  var d = PD.debug;
+  if (!d.view && PD.ui && typeof PD.ui.newView === "function") d.view = PD.ui.newView();
+  if (!d.ctrl && PD.controls && typeof PD.controls.newState === "function") d.ctrl = PD.controls.newState();
+
+  if (PD.controls && PD.ui && PD.render && typeof PD.render.drawFrame === "function") {
+    var raw = PD.controls.pollGlobals();
+    var actions = PD.controls.actions(d.ctrl, raw, PD.config.controls);
+    var intent = PD.ui.step(d.state, d.view, actions);
+
+    if (intent && intent.kind === "applyCmd" && intent.cmd) {
+      try {
+        var res = PD.applyCommand(d.state, intent.cmd);
+        d.lastCmd = intent.cmd.kind;
+        d.lastEvents = (res && res.events) ? res.events : [];
+      } catch (err) {
+        d.lastCmd = intent.cmd.kind + "(!)";
+        d.lastEvents = [];
+        var code = (err && err.message) ? String(err.message) : "error";
+        // Friendly message is derived from code for now.
+        var msg = code;
+        if (code === "no_plays_left") msg = "No plays left";
+        else if (code === "hand_over_limit") msg = "Hand over limit";
+        else if (code === "not_bankable") msg = "Not bankable";
+        else if (code === "set_not_complete") msg = "Set not complete";
+        else if (code === "set_color_mismatch") msg = "Wrong set color";
+        else if (code === "wild_color_illegal") msg = "Wild color illegal";
+        else if (code === "no_targets") msg = "No valid destination";
+        if (PD.ui && typeof PD.ui.feedbackError === "function") PD.ui.feedbackError(d.view, code, msg);
+      }
+    } else if (intent && intent.kind === "debug") {
+      if (intent.action === "step") PD.debugStep();
+      else if (intent.action === "reset") PD.debugReset();
+      else if (intent.action === "nextScenario") PD.debugNextScenario();
+    }
+
+    var computed = PD.ui.computeRowModels(d.state, d.view);
+    PD.ui.updateCameras(d.state, d.view, computed);
+    // Recompute after camera updates (selection/cam are orthogonal, but keep it stable).
+    computed = PD.ui.computeRowModels(d.state, d.view);
+
+    PD.render.drawFrame({ state: d.state, view: d.view, computed: computed });
+  } else {
     cls(0);
     print("Render not loaded", 6, 6, 12);
   }
@@ -1248,9 +1489,7 @@ PD.render = PD.render || {};
 
       preview: { x: prevX, y: top },
       title: { x: prevX + cfg.faceW + prevGapX, y: top },
-      desc: { x: prevX + cfg.faceW + prevGapX, y: top + cfg.centerDescDy },
-
-      hdr: { x: deckX, y: y0 + cfg.centerHdrDy }
+      desc: { x: prevX + cfg.faceW + prevGapX, y: top + cfg.centerDescDy }
     };
   }
 
@@ -1263,28 +1502,6 @@ PD.render = PD.render || {};
   R.propBarColByColor[PD.Color.Magenta] = Pal.Purple;
   R.propBarColByColor[PD.Color.Orange] = Pal.Orange;
   R.propBarColByColor[PD.Color.Black] = Pal.DarkGrey;
-
-  R.ui = R.ui || {
-    row: R.ROW_P_HAND,
-    i: 0,
-    camX: [0, 0, 0, 0, 0],
-    lastStateRef: null
-  };
-
-  function clampI(i, n) {
-    if (n <= 0) return 0;
-    if (i < 0) return 0;
-    if (i >= n) return n - 1;
-    return i;
-  }
-
-  function wrapI(i, n) {
-    if (n <= 0) return 0;
-    // JS % keeps sign; normalize.
-    i = i % n;
-    if (i < 0) i = i + n;
-    return i;
-  }
 
   function rectSafe(x, y, w, h, c) {
     rect(x | 0, y | 0, w | 0, h | 0, c | 0);
@@ -1364,6 +1581,7 @@ PD.render = PD.render || {};
     var selectedItem = opts ? opts.selectedItem : null;
     var drawSelected = !(opts && opts.drawSelected === false);
     var onlySelected = !!(opts && opts.onlySelected);
+    var highlightCol = (opts && opts.highlightCol != null) ? opts.highlightCol : null;
 
     // Draw bottom->top by depth.
     var items = stackItems.slice();
@@ -1387,7 +1605,7 @@ PD.render = PD.render || {};
       drawFannedShadowBar(xs, ys, fanDir);
       drawMiniCard(state, selectedItem.uid, xs, ys, flip180, selectedItem.color);
 
-      drawHighlight(xs, ys);
+      drawHighlight(xs, ys, highlightCol);
     }
   }
 
@@ -1398,13 +1616,14 @@ PD.render = PD.render || {};
     rectSafe(xFace + 1, yFace + 1, R.cfg.faceW - 2, R.cfg.faceH - 2, bgCol);
   }
 
-  function drawHighlight(xFace, yFace) {
+  function drawHighlight(xFace, yFace, col) {
+    if (col == null) col = R.cfg.colHighlight;
     rectbSafe(
       xFace - R.cfg.highlightPad,
       yFace - R.cfg.highlightPad,
       R.cfg.faceW + 2 * R.cfg.highlightPad,
       R.cfg.faceH + 2 * R.cfg.highlightPad,
-      R.cfg.colHighlight
+      col
     );
   }
 
@@ -1551,9 +1770,9 @@ PD.render = PD.render || {};
       var payV = def.propertyPayValue != null ? def.propertyPayValue : 0;
       if (PD.isWildDef(def)) {
         // Two halves: top (halfFlip=false), bottom (halfFlip=true). Effective flip is XOR.
-        var c0 = def.wildColors[0] | 0;
-        var c1 = def.wildColors[1] | 0;
-        var a = (assignedColor == null) ? PD.NO_COLOR : (assignedColor | 0);
+        var c0 = def.wildColors[0];
+        var c1 = def.wildColors[1];
+        var a = (assignedColor == null) ? PD.NO_COLOR : assignedColor;
         var colHalfFalse = c0;
         var colHalfTrue = c1;
         if (a === c0 || a === c1) {
@@ -1593,7 +1812,7 @@ PD.render = PD.render || {};
 
   function drawCardBack(xFace, yFace, flip180) {
     var cfg = R.cfg;
-    var id = (R.spr && R.spr.cardBackTL != null) ? (R.spr.cardBackTL | 0) : 0;
+    var id = (R.spr && R.spr.cardBackTL != null) ? R.spr.cardBackTL : 0;
 
     if (id) {
       // Phase 03b back: 2x3 sprite (16x24) drawn inside the 1px border.
@@ -1628,282 +1847,16 @@ PD.render = PD.render || {};
     return sum;
   }
 
-  function buildRowItems(debug, row) {
-    var cfg = R.cfg;
-    var state = debug ? debug.state : null;
-    var out = { items: [], minX: 0, maxX: 0 };
-    if (!state) return out;
+  // Phase 04: renderer no longer computes row models/navigation/cameras.
+  // UI owns selection + cameras via PD.ui, and passes computed models in.
 
-    var yFace = faceYForRow(row);
-    var p = playerForRow(row);
-    var isOp = isOpponentRow(row);
-    var padX = cfg.rowPadX;
-    var i;
+  function drawCenter(opts) {
+    if (!opts || !opts.state || !opts.view || !opts.computed) return;
+    var s = opts.state;
+    var view = opts.view;
+    var computed = opts.computed;
+    var selectedItem = opts.selected;
 
-    if (row === R.ROW_P_HAND || row === R.ROW_OP_HAND) {
-      var hand = state.players[p].hand;
-      var bank = state.players[p].bank;
-      var nHand = hand.length;
-      var nBank = bank.length;
-
-      var minX = 999999, maxX = -999999;
-
-      function pushHandRowItem(kind, uid, xFace, depth, fanDir) {
-        out.items.push({
-          kind: kind,
-          row: row,
-          p: p,
-          stackKey: (kind === "bank") ? ("bank:p" + p + ":row" + row) : null,
-          uid: uid,
-          depth: depth,
-          fanDir: fanDir,
-          x: xFace,
-          y: yFace,
-          w: cfg.faceW,
-          h: cfg.faceH
-        });
-        var xLo = xFace;
-        var xHi = xFace + cfg.faceW - 1;
-        // Include 1px shadow pixels that can be drawn outside the face.
-        if (kind === "hand") {
-          // Hand/back separator shadow is on the left (xFace-1).
-          xLo = xFace + cfg.shadowBarDx;
-        } else if (kind === "bank") {
-          // Bank shadow side is a pure function of fan direction.
-          if (fanDir < 0) xHi = xFace + cfg.faceW; // xFace+faceW
-          else xLo = xFace + cfg.shadowBarDx; // xFace-1
-        }
-        if (xLo < minX) minX = xLo;
-        if (xHi > maxX) maxX = xHi;
-      }
-
-      // Hand zone (spaced).
-      var xHandStart = isOp ? (cfg.screenW - padX - cfg.faceW) : padX;
-      var handStep = isOp ? (-cfg.handStrideX) : cfg.handStrideX;
-      for (i = 0; i < nHand; i++) {
-        pushHandRowItem("hand", hand[i], xHandStart + i * handStep, i, 0);
-      }
-
-      // Bank zone (overlapped stack), placed on the opposite side.
-      var stride = cfg.stackStrideX;
-      var gap = cfg.stackGapX;
-
-      if (!isOp) {
-        // Player bank: fan right (fanDir=+1), but anchored on the right.
-        var bankRightX = cfg.screenW - padX - cfg.faceW;
-        var bankLeftX = bankRightX - (nBank > 0 ? (nBank - 1) * stride : 0);
-        var handMaxX = (nHand > 0) ? (padX + (nHand - 1) * cfg.handStrideX + cfg.faceW - 1) : (padX - 1);
-        if (nBank > 0 && bankLeftX <= (handMaxX + gap)) {
-          bankLeftX = handMaxX + gap + 1;
-        }
-        for (i = 0; i < nBank; i++) {
-          pushHandRowItem("bank", bank[i], bankLeftX + i * stride, i, 1);
-        }
-      } else {
-        // Opponent bank: fan left (fanDir=-1), anchored on the left.
-        var bankLeftX2 = padX;
-        var bankRightX2 = bankLeftX2 + (nBank > 0 ? (nBank - 1) * stride : 0);
-        var handMinX = (nHand > 0) ? (xHandStart + (nHand - 1) * handStep) : (xHandStart + 1);
-        var bankMaxX = bankRightX2 + cfg.faceW - 1;
-        if (nBank > 0 && (bankMaxX + gap) >= handMinX) {
-          var desiredBankMax = handMinX - gap - 1;
-          bankRightX2 = desiredBankMax - (cfg.faceW - 1);
-        }
-        for (i = 0; i < nBank; i++) {
-          pushHandRowItem("bank", bank[i], bankRightX2 - i * stride, i, -1);
-        }
-      }
-
-      out.minX = (minX === 999999) ? 0 : minX;
-      out.maxX = (maxX === -999999) ? 0 : maxX;
-      // Ensure left-to-right ordering for cursor behavior.
-      out.items.sort(function (a, b) { return a.x - b.x; });
-      return out;
-    }
-
-    if (row === R.ROW_P_TABLE || row === R.ROW_OP_TABLE) {
-      var sets = state.players[p].sets;
-      var setCount = sets.length;
-      var stride = cfg.stackStrideX;
-      var minX2 = 999999, maxX2 = -999999;
-      var fanDir = isOp ? -1 : 1;
-
-      if (!isOp) {
-        var cursorX = padX;
-        for (i = 0; i < setCount; i++) {
-          var set = sets[i];
-          if (!set) continue;
-          var cards = [];
-          var k;
-          for (k = 0; k < set.props.length; k++) cards.push({ kind: "setProp", setI: i, depth: k, uid: set.props[k][0], color: set.props[k][1] });
-          if (set.houseUid) cards.push({ kind: "setHouse", setI: i, depth: cards.length, uid: set.houseUid });
-
-          var nCards = cards.length;
-          if (nCards <= 0) continue;
-
-          var depth;
-          for (depth = 0; depth < nCards; depth++) {
-            var xFaceP = cursorX + depth * stride;
-            var it = {
-              kind: cards[depth].kind,
-              row: row,
-              p: p,
-              stackKey: "set:p" + p + ":set" + i,
-              setI: cards[depth].setI,
-              depth: cards[depth].depth,
-              fanDir: fanDir,
-              uid: cards[depth].uid,
-              color: cards[depth].color,
-              x: xFaceP,
-              y: yFace,
-              w: cfg.faceW,
-              h: cfg.faceH
-            };
-            out.items.push(it);
-            var xLoP = xFaceP;
-            var xHiP = xFaceP + cfg.faceW - 1;
-            if (fanDir > 0) xLoP = xFaceP + cfg.shadowBarDx;
-            else xHiP = xFaceP + cfg.faceW;
-            if (xLoP < minX2) minX2 = xLoP;
-            if (xHiP > maxX2) maxX2 = xHiP;
-          }
-
-          var stackW = cfg.faceW + (nCards - 1) * stride;
-          cursorX = cursorX + stackW + cfg.stackGapX;
-        }
-      } else {
-        // Opponent: sets placed right-to-left, and fan direction mirrored (depth shifts left).
-        var rightCursor = cfg.screenW - padX - cfg.faceW;
-        for (i = 0; i < setCount; i++) {
-          var setO = sets[i];
-          if (!setO) continue;
-          var cardsO = [];
-          var kk;
-          for (kk = 0; kk < setO.props.length; kk++) cardsO.push({ kind: "setProp", setI: i, depth: kk, uid: setO.props[kk][0], color: setO.props[kk][1] });
-          if (setO.houseUid) cardsO.push({ kind: "setHouse", setI: i, depth: cardsO.length, uid: setO.houseUid });
-
-          var nCardsO = cardsO.length;
-          if (nCardsO <= 0) continue;
-
-          var d2;
-          for (d2 = 0; d2 < nCardsO; d2++) {
-            var xFaceO = rightCursor - d2 * stride;
-            var itO = {
-              kind: cardsO[d2].kind,
-              row: row,
-              p: p,
-              stackKey: "set:p" + p + ":set" + i,
-              setI: cardsO[d2].setI,
-              depth: cardsO[d2].depth,
-              fanDir: fanDir,
-              uid: cardsO[d2].uid,
-              color: cardsO[d2].color,
-              x: xFaceO,
-              y: yFace,
-              w: cfg.faceW,
-              h: cfg.faceH
-            };
-            out.items.push(itO);
-            var xLoO = xFaceO;
-            var xHiO = xFaceO + cfg.faceW - 1;
-            if (fanDir > 0) xLoO = xFaceO + cfg.shadowBarDx;
-            else xHiO = xFaceO + cfg.faceW;
-            if (xLoO < minX2) minX2 = xLoO;
-            if (xHiO > maxX2) maxX2 = xHiO;
-          }
-
-          // Place next stack to the left.
-          var leftEdge = rightCursor - (nCardsO - 1) * stride;
-          rightCursor = leftEdge - cfg.stackGapX - cfg.faceW;
-          // stackWO not used directly; formula above is more stable for right-to-left placement.
-        }
-      }
-
-      out.minX = (minX2 === 999999) ? 0 : minX2;
-      out.maxX = (maxX2 === -999999) ? 0 : maxX2;
-      out.items.sort(function (a, b) { return a.x - b.x; });
-      return out;
-    }
-
-    if (row === R.ROW_CENTER) {
-      // Center selectables (Phase 03b): deck + discard only.
-      var C = R.center;
-      out.items.push({ kind: "deck", row: row, x: C.deck.x, y: C.deck.y, w: cfg.faceW, h: cfg.faceH });
-      out.items.push({ kind: "discard", row: row, x: C.discard.x, y: C.discard.y, w: cfg.faceW, h: cfg.faceH });
-
-      out.minX = 0; out.maxX = cfg.screenW - 1;
-      out.items.sort(function (a, b) { return a.x - b.x; });
-      return out;
-    }
-
-    return out;
-  }
-
-  function nearestByX(items, xCenter) {
-    if (!items || items.length === 0) return 0;
-    var bestI = 0;
-    var bestD = 999999;
-    var i;
-    for (i = 0; i < items.length; i++) {
-      var it = items[i];
-      var cx = it.x + (it.w >> 1);
-      var d = cx - xCenter;
-      if (d < 0) d = -d;
-      if (d < bestD) {
-        bestD = d;
-        bestI = i;
-      }
-    }
-    return bestI;
-  }
-
-  function ensureCamForSelection(rowModel, row, selI) {
-    var cfg = R.cfg;
-    var cam = R.ui.camX[row];
-    var margin = cfg.camMarginX;
-
-    if (!rowModel || !rowModel.items || rowModel.items.length === 0) {
-      R.ui.camX[row] = 0;
-      return;
-    }
-
-    var contentW = (rowModel.maxX - rowModel.minX + 1);
-    if (contentW <= cfg.screenW) {
-      R.ui.camX[row] = 0;
-      return;
-    }
-
-    selI = clampI(selI, rowModel.items.length);
-    var it = rowModel.items[selI];
-    var x0 = it.x;
-    var x1 = it.x + it.w - 1;
-
-    // Keep in view with margins.
-    if ((x0 - cam) < margin) cam = x0 - margin;
-    if ((x1 - cam) > (cfg.screenW - 1 - margin)) cam = x1 - (cfg.screenW - 1 - margin);
-
-    // Clamp camera to content extents (works even if minX is negative).
-    var camA = rowModel.minX - margin;
-    var camB = rowModel.maxX - (cfg.screenW - 1 - margin);
-    var camLo = camA < camB ? camA : camB;
-    var camHi = camA < camB ? camB : camA;
-    if (cam < camLo) cam = camLo;
-    if (cam > camHi) cam = camHi;
-
-    R.ui.camX[row] = cam;
-  }
-
-  function rowModelAll(debug) {
-    return [
-      buildRowItems(debug, R.ROW_OP_HAND),
-      buildRowItems(debug, R.ROW_OP_TABLE),
-      buildRowItems(debug, R.ROW_CENTER),
-      buildRowItems(debug, R.ROW_P_TABLE),
-      buildRowItems(debug, R.ROW_P_HAND)
-    ];
-  }
-
-  function drawCenter(debug, selectedItem, isSelected) {
     var cfg = R.cfg;
     var row = R.ROW_CENTER;
     var y0 = rowY0(row);
@@ -1911,21 +1864,20 @@ PD.render = PD.render || {};
     rectSafe(0, y0, cfg.screenW, y1 - y0 + 1, cfg.colCenterPanel);
     rectbSafe(0, y0, cfg.screenW, y1 - y0 + 1, cfg.colCenterPanelBorder);
 
-    var s = debug.state;
+    var dbgEnabled = !!(PD.config && PD.config.debug && PD.config.debug.enabled);
+    var hlCol = (opts.highlightCol != null) ? opts.highlightCol : cfg.colHighlight;
 
-    // Center header (kept minimal; debug details live in DebugText mode).
-    printSafe("Phase 03 Render", R.center.hdr.x, R.center.hdr.y, cfg.colText);
+    // Header: removed (Phase 04). Plays indicator is drawn in screen-space.
 
     function drawCountDigits(n, xFace, yFace) {
-      n = n | 0;
-      if (n < 0) n = 0;
-      // 35-card deck; keep it simple and deterministic.
+      n = Math.floor(Number(n || 0));
+      if (!isFinite(n) || n < 0) n = 0;
       var sN = String(n);
       if (sN.length > 2) sN = sN.slice(-2);
       var len = sN.length;
-      var yTL = cfg.faceH - 1 - cfg.digitGlyphH; // bottom-right inside border
+      var yTL = cfg.faceH - 1 - cfg.digitGlyphH;
       var xEnd = cfg.faceW - 1 - cfg.digitGlyphW;
-      var xStart = xEnd - (len - 1) * cfg.propRentDx; // 4px step
+      var xStart = xEnd - (len - 1) * cfg.propRentDx;
       var i;
       for (i = 0; i < len; i++) {
         var ch = sN.charCodeAt(i) - 48;
@@ -1937,15 +1889,12 @@ PD.render = PD.render || {};
     function drawUnderLayerOutline(xFace, yFace, dx, dy) {
       var colMain = cfg.pileOutlineUnder1Col;
       if (dx === cfg.pileUnderDx2 && dy === cfg.pileUnderDy2) colMain = cfg.pileOutlineUnder2Col;
-
-      // Shadow outline first, shifted up-left.
       rectbSafe(xFace + dx - 1, yFace + dy - 1, cfg.faceW, cfg.faceH, cfg.pileShadowOutlineCol);
-      // Main outline on top (alternating depth colors).
       rectbSafe(xFace + dx, yFace + dy, cfg.faceW, cfg.faceH, colMain);
     }
 
     function drawDeckAt(xFace, yFace) {
-      var n = s.deck.length | 0;
+      var n = s.deck.length;
       if (n > 2) {
         drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx2, cfg.pileUnderDy2);
         drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
@@ -1958,7 +1907,7 @@ PD.render = PD.render || {};
     }
 
     function drawDiscardAt(xFace, yFace) {
-      var n = s.discard.length | 0;
+      var n = s.discard.length;
       if (n > 2) {
         drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx2, cfg.pileUnderDy2);
         drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
@@ -1973,69 +1922,315 @@ PD.render = PD.render || {};
         return;
       }
 
-      var topUid = s.discard[n - 1] | 0;
+      var topUid = s.discard[n - 1];
       drawShadowBar(xFace, yFace);
       drawMiniCard(s, topUid, xFace, yFace, false);
       drawCountDigits(n, xFace, yFace);
     }
 
-    // Center piles (deck/discard).
-    var rowM = buildRowItems(debug, row);
+    // Center row items (deck/discard/buttons).
+    var rowM = computed.models ? computed.models[row] : null;
     var i;
-    for (i = 0; i < rowM.items.length; i++) {
-      var it = rowM.items[i];
-      if (it.kind === "deck") drawDeckAt(it.x, it.y);
-      else if (it.kind === "discard") drawDiscardAt(it.x, it.y);
-    }
+    if (rowM && rowM.items) {
+      for (i = 0; i < rowM.items.length; i++) {
+        var it = rowM.items[i];
+        if (!it) continue;
+        if (it.kind === "deck") drawDeckAt(it.x, it.y);
+        else if (it.kind === "discard") drawDiscardAt(it.x, it.y);
+        else if (it.kind === "btn") {
+          // Flat UI button: dark fill + white text; selected uses highlight fill + black text.
+          // Note: debug gating and overlay hiding is handled in PD.ui.computeRowModels.
 
-    // Center preview (Phase 03b): mini-card + title + desc (smallfont).
-    var dbgEnabled = !!(PD.config && PD.config.debug && PD.config.debug.enabled);
-    var previewUid = 0;
-    var previewAssignedColor = null;
+          var enabled = true;
+          if (it.id === "endTurn") {
+            enabled = (s.activeP === 0) && (s.players[0].hand.length <= PD.HAND_MAX);
+          }
 
-    if (selectedItem) {
-      if (selectedItem.row === R.ROW_CENTER) {
-        if (selectedItem.kind === "deck") {
-          if (dbgEnabled && s.deck.length > 0) previewUid = s.deck[(s.deck.length | 0) - 1] | 0;
-        } else if (selectedItem.kind === "discard") {
-          if (s.discard.length > 0) previewUid = s.discard[(s.discard.length | 0) - 1] | 0;
-        }
-      } else if (selectedItem.uid) {
-        // Debug-first: reveal opponent hand card in preview when enabled.
-        if (!dbgEnabled && selectedItem.row === R.ROW_OP_HAND) {
-          previewUid = 0;
-        } else {
-          previewUid = selectedItem.uid | 0;
-          if (selectedItem.color != null) previewAssignedColor = selectedItem.color | 0;
+          var isSel = !!(selectedItem && selectedItem === it);
+          var recommend = false;
+          if (it.id === "endTurn" && enabled && (s.activeP === 0) && (s.playsLeft != null) && (s.playsLeft <= 0)) recommend = true;
+
+          var bg = isSel ? hlCol : cfg.colCenterPanel;
+          var border = isSel ? PD.Pal.Black : (recommend ? PD.Pal.Green : cfg.colCenterPanelBorder);
+          var colText = enabled ? (isSel ? PD.Pal.Black : cfg.colText) : PD.Pal.Grey;
+          if (!isSel && recommend && enabled) colText = PD.Pal.Green;
+
+          rectSafe(it.x, it.y, it.w, it.h, bg);
+          rectbSafe(it.x, it.y, it.w, it.h, border);
+
+          // Vertically center 6px font in 10px button: y+2.
+          printSafe(String(it.label || it.id || ""), it.x + 2, it.y + 2, colText);
         }
       }
     }
 
-    if (previewUid) {
-      var C = R.center;
-      var xPrev = C.preview.x;
-      var yPrev = C.preview.y;
-      var xTitle = C.title.x;
-      var yTitle = C.title.y;
-      var xDesc = C.desc.x;
-      var yDesc = C.desc.y;
+    // Overlay content area (right side).
+    var C = R.center;
+    var xPrev = C.preview.x;
+    var yPrev = C.preview.y;
+    var xTitle = C.title.x;
+    var yTitle = C.title.y;
+    var xDesc = C.desc.x;
+    var yDesc = C.desc.y;
 
-      drawMiniCard(s, previewUid, xPrev, yPrev, false, previewAssignedColor);
+    function colorName(c) {
+      c = Math.floor(Number(c));
+      if (!isFinite(c)) c = 0;
+      if (c === PD.Color.Cyan) return "Cyan";
+      if (c === PD.Color.Magenta) return "Magenta";
+      if (c === PD.Color.Orange) return "Orange";
+      if (c === PD.Color.Black) return "Black";
+      return "c" + c;
+    }
 
-      var def = PD.defByUid(s, previewUid);
-      var title = (def && def.name) ? def.name : ((def && def.id) ? def.id : "");
-      var desc = (def && def.desc) ? String(def.desc) : "";
+    function drawInspectForSelection(sel) {
+      if (!sel) return;
 
+      // Non-card center widgets.
+      if (sel.row === R.ROW_CENTER && !sel.uid) {
+        if (sel.kind === "deck") {
+          printSafe("Deck", xTitle, yTitle, cfg.colText);
+          printExSafe("Cards: " + s.deck.length, xDesc, yDesc, cfg.colText, false, 1, false);
+          if (dbgEnabled && s.deck.length > 0) {
+            var topUid = s.deck[s.deck.length - 1];
+            drawMiniCard(s, topUid, xPrev, yPrev, false);
+            var defT = PD.defByUid(s, topUid);
+            if (defT && defT.name) printSafe(defT.name, xTitle, yTitle + 10, cfg.colText);
+          }
+          return;
+        }
+        if (sel.kind === "discard") {
+          printSafe("Discard", xTitle, yTitle, cfg.colText);
+          printExSafe("Cards: " + s.discard.length, xDesc, yDesc, cfg.colText, false, 1, false);
+          if (s.discard.length > 0) {
+            var topUid2 = s.discard[s.discard.length - 1];
+            drawMiniCard(s, topUid2, xPrev, yPrev, false);
+            var defD = PD.defByUid(s, topUid2);
+            if (defD && defD.name) printSafe(defD.name, xTitle, yTitle + 10, cfg.colText);
+          }
+          return;
+        }
+        if (sel.kind === "btn") {
+          var title = String(sel.label || sel.id || "");
+          printSafe(title, xTitle, yTitle, cfg.colText);
+          var help = "";
+          if (sel.id === "endTurn") help = "End your turn\n(if legal).";
+          else if (sel.id === "step") help = "Step 1 random\nlegal move.";
+          else if (sel.id === "reset") help = "Reset scenario.";
+          else if (sel.id === "nextScenario") help = "Next scenario.";
+          printExSafe(help, xDesc, yDesc, cfg.colText, false, 1, false);
+          return;
+        }
+      }
+
+      // Card selection.
+      if (!sel.uid) return;
+      var uid = sel.uid;
+      var def = PD.defByUid(s, uid);
+      if (!def) return;
+
+      // Opponent hand is hidden unless debug enabled.
+      if (!dbgEnabled && sel.row === R.ROW_OP_HAND) {
+        printSafe("Opponent card", xTitle, yTitle, cfg.colText);
+        printExSafe("(hidden)", xDesc, yDesc, cfg.colText, false, 1, false);
+        return;
+      }
+
+      drawMiniCard(s, uid, xPrev, yPrev, false, sel.color);
+      var title2 = def.name ? def.name : (def.id ? def.id : "");
+      printSafe(title2, xTitle, yTitle, cfg.colText);
+      var desc = def.desc ? String(def.desc) : "";
+      // normal font (smallfont=false) for inspect readability
+      printExSafe(desc, xDesc, yDesc, cfg.colText, false, 1, false);
+    }
+
+    function drawMenuOverlay() {
+      var src = view.menu && view.menu.src ? view.menu.src : null;
+      if (src && src.uid) drawMiniCard(s, src.uid, xPrev, yPrev, false);
+      printSafe("Menu", xTitle, yTitle, cfg.colText);
+      var items = (view.menu && view.menu.items) ? view.menu.items : [];
+      var selI = (view.menu && view.menu.i != null) ? Math.floor(Number(view.menu.i)) : 0;
+      if (!isFinite(selI)) selI = 0;
+      var j;
+      var y = yDesc;
+      // Backing box so the menu is unmistakable.
+      var boxX = xDesc - 2;
+      var boxY = y - 2;
+      var boxW = cfg.screenW - boxX - cfg.rowPadX;
+      var boxH = (items.length * 7 + 12);
+      if (boxH < 16) boxH = 16;
+      rectSafe(boxX, boxY, boxW, boxH, PD.Pal.Black);
+      rectbSafe(boxX, boxY, boxW, boxH, cfg.colCenterPanelBorder);
+
+      for (j = 0; j < items.length; j++) {
+        var yy = y + j * 7;
+        var label = String(items[j].label || items[j].id || "");
+        if (j === selI) {
+          rectSafe(boxX + 1, yy - 1, boxW - 2, 7, hlCol);
+          printSafe(label, xDesc, yy, PD.Pal.Black);
+        } else {
+          printSafe(label, xDesc, yy, cfg.colText);
+        }
+      }
+      printSafe("A:Select  B:Back", xDesc, y1 - 8, cfg.colText);
+    }
+
+    function drawTargetingOverlay() {
+      var t = view.targeting;
+      if (!t || !t.active) return;
+      if (t.card && t.card.uid) drawMiniCard(s, t.card.uid, xPrev, yPrev, false, (t.wildColor !== PD.NO_COLOR) ? t.wildColor : null);
+
+      var title = (t.kind === "build") ? "Build" : ((t.kind === "place") ? "Place" : "Bank");
       printSafe(title, xTitle, yTitle, cfg.colText);
-      // smallfont=true, allow \\n in desc for multi-line rendering.
-      printExSafe(desc, xDesc, yDesc, cfg.colText, false, 1, true);
+
+      var cmdI = Math.floor(Number(t.cmdI || 0));
+      if (!isFinite(cmdI)) cmdI = 0;
+      var cmd = (t.cmds && t.cmds.length) ? t.cmds[cmdI % t.cmds.length] : null;
+      var destLine = "";
+      if (cmd && cmd.kind === "playProp") {
+        if (cmd.dest && cmd.dest.newSet) destLine = "Dest: New set";
+        else if (cmd.dest && cmd.dest.setI != null) {
+          var setI = Math.floor(Number(cmd.dest.setI));
+          var set = isFinite(setI) ? s.players[0].sets[setI] : null;
+          var col = set ? PD.getSetColor(set.props) : PD.NO_COLOR;
+          destLine = "Dest: " + colorName(col) + " set";
+        }
+        if (t.card && t.card.def && PD.isWildDef(t.card.def)) destLine += "\nAs: " + colorName(t.wildColor);
+      } else if (cmd && cmd.kind === "playHouse") {
+        var setI2 = Math.floor(Number(cmd.dest.setI));
+        var set2 = isFinite(setI2) ? s.players[0].sets[setI2] : null;
+        var col2 = set2 ? PD.getSetColor(set2.props) : PD.NO_COLOR;
+        destLine = "Dest: " + colorName(col2) + " set";
+      } else if (cmd && cmd.kind === "bank") {
+        destLine = "Dest: Bank";
+      } else {
+        destLine = "(no destination)";
+      }
+      // Backing box so targeting is unmistakable.
+      var boxX = xDesc - 2;
+      var boxY = yDesc - 2;
+      var boxW = cfg.screenW - boxX - cfg.rowPadX;
+      var boxH = 30;
+      rectSafe(boxX, boxY, boxW, boxH, PD.Pal.Black);
+      rectbSafe(boxX, boxY, boxW, boxH, cfg.colCenterPanelBorder);
+
+      printExSafe(destLine, xDesc, yDesc, cfg.colText, false, 1, false);
+
+      var help = "L/R: Dest";
+      if (t.card && t.card.def && PD.isWildDef(t.card.def)) help += "  U/D: Color";
+      help += t.hold ? "\nRelease A: Drop  B:Cancel" : "\nA:Confirm  B:Cancel";
+      printExSafe(help, xDesc, y1 - 18, cfg.colText, false, 1, true);
+    }
+
+    if (view.mode === "menu") drawMenuOverlay();
+    else if (view.mode === "targeting") drawTargetingOverlay();
+    else if (view.inspectActive) {
+      // Backing box for inspect readability.
+      var boxX2 = xDesc - 2;
+      var boxY2 = yDesc - 2;
+      var boxW2 = cfg.screenW - boxX2 - cfg.rowPadX;
+      var boxH2 = 32;
+      rectSafe(boxX2, boxY2, boxW2, boxH2, PD.Pal.Black);
+      rectbSafe(boxX2, boxY2, boxW2, boxH2, cfg.colCenterPanelBorder);
+
+      drawInspectForSelection(selectedItem);
+    }
+
+    // Feedback message is drawn as a screen-top toast (see drawToast()).
+  }
+
+  function drawPlaysPips(state) {
+    var cfg = R.cfg;
+    if (!state) return;
+    if (cfg.hudLineEnabled === false) return;
+    var maxPlays = 3;
+    var playsLeft = state.playsLeft;
+    if (playsLeft == null) playsLeft = 0;
+    playsLeft = Math.floor(Number(playsLeft));
+    if (!isFinite(playsLeft)) playsLeft = 0;
+    if (playsLeft < 0) playsLeft = 0;
+    if (playsLeft > maxPlays) playsLeft = maxPlays;
+    var used = maxPlays - playsLeft;
+    if (used < 0) used = 0;
+    if (used > maxPlays) used = maxPlays;
+
+    var x0 = cfg.hudLineX;
+    var y0 = cfg.hudLineY;
+    var dx = 6; // 6px font cell width
+    var i;
+    for (i = 0; i < maxPlays; i++) {
+      var col = (i < used) ? PD.Pal.Red : PD.Pal.Green;
+      printSafe("o", x0 + i * dx, y0, col);
     }
   }
 
-  function drawControlsLine() {
+  function drawModeHintNearButtons(view, computed) {
     var cfg = R.cfg;
     if (cfg.hudLineEnabled === false) return;
-    printSafe("Y:Mode", cfg.hudLineX, cfg.hudLineY, cfg.hudLineCol);
+    var dbgEnabled = !!(PD.config && PD.config.debug && PD.config.debug.enabled);
+    if (!dbgEnabled) return;
+    if (!view || view.mode !== "browse" || view.inspectActive) return;
+    if (!computed || !computed.models) return;
+    var rowM = computed.models[R.ROW_CENTER];
+    if (!rowM || !rowM.items) return;
+
+    // Only show this hint when debug buttons exist (Step/Reset/Next visible).
+    var hasDebugBtn = false;
+    var minBtnX = null;
+    var maxBtnY = null;
+    var i;
+    for (i = 0; i < rowM.items.length; i++) {
+      var it = rowM.items[i];
+      if (!it || it.kind !== "btn") continue;
+      if (it.id === "step" || it.id === "reset" || it.id === "nextScenario") hasDebugBtn = true;
+      if (minBtnX == null || it.x < minBtnX) minBtnX = it.x;
+      var yy = it.y + it.h;
+      if (maxBtnY == null || yy > maxBtnY) maxBtnY = yy;
+    }
+    if (!hasDebugBtn || minBtnX == null || maxBtnY == null) return;
+
+    // Place left of the strip, aligned to its bottom.
+    var x = minBtnX - 52;
+    if (x < cfg.rowPadX) x = cfg.rowPadX;
+    var y = maxBtnY - 7; // 6px font + 1
+    var yPhase = y - 7;
+    if (yPhase < 0) yPhase = 0;
+    printSafe("Phase 04", x, yPhase, cfg.hudLineCol);
+    printSafe("Y:Mode", x, y, cfg.hudLineCol);
+  }
+
+  function drawToast(view) {
+    var cfg = R.cfg;
+    if (!view || !view.feedback || !view.feedback.msg || view.feedback.msgFrames <= 0) return;
+    var msg = String(view.feedback.msg);
+    if (!msg) return;
+
+    // Support 1–2 lines.
+    var parts = msg.split("\n");
+    if (parts.length > 2) parts = [parts[0], parts[1]];
+    var maxLen = 0;
+    var i;
+    for (i = 0; i < parts.length; i++) if (parts[i].length > maxLen) maxLen = parts[i].length;
+
+    var charW = 6;
+    var lineH = 7;
+    var padX = 6;
+    var padY = 4;
+    var iconW = 10; // space for red X
+    var boxW = (padX * 2) + iconW + maxLen * charW;
+    if (boxW > cfg.screenW - 8) boxW = cfg.screenW - 8;
+    var boxH = (padY * 2) + parts.length * lineH;
+
+    var x0 = Math.floor((cfg.screenW - boxW) / 2);
+    var y0 = 2;
+
+    rectSafe(x0, y0, boxW, boxH, PD.Pal.Black);
+    rectbSafe(x0, y0, boxW, boxH, cfg.colCenterPanelBorder);
+
+    printSafe("X", x0 + 4, y0 + padY, PD.Pal.Red);
+    for (i = 0; i < parts.length; i++) {
+      printSafe(parts[i], x0 + padX + iconW, y0 + padY + i * lineH, cfg.colText);
+    }
   }
 
   function drawTopLeftStatus(debug, selectedItem) {
@@ -2081,8 +2276,8 @@ PD.render = PD.render || {};
       if (def && def.kind === PD.CardKind.Property) {
         if (PD.isWildDef(def)) {
           detail = "Wild:" + def.wildColors[0] + "/" + def.wildColors[1];
-          if (selectedItem && selectedItem.color != null && (selectedItem.color | 0) !== PD.NO_COLOR) {
-            detail += " As:c" + (selectedItem.color | 0);
+          if (selectedItem && selectedItem.color != null && selectedItem.color !== PD.NO_COLOR) {
+            detail += " As:c" + selectedItem.color;
           }
         }
         else detail = "Prop:c" + def.propertyColor;
@@ -2141,9 +2336,10 @@ PD.render = PD.render || {};
     return { byKey: byKey, keys: keys };
   }
 
-  function drawRowCards(debug, rowModel, row, selected) {
+  function drawRowCards(state, rowModel, row, selected, cam, highlightCol) {
     var cfg = R.cfg;
-    var cam = R.ui.camX[row];
+    if (cam == null) cam = 0;
+    if (highlightCol == null) highlightCol = cfg.colHighlight;
     var flipCards = isOpponentRow(row);
     var i;
 
@@ -2160,7 +2356,7 @@ PD.render = PD.render || {};
         var key = keys[si];
         var cards = byKey[key];
         var fanDir = (cards.length > 0 && cards[0].fanDir != null) ? cards[0].fanDir : (flipCards ? -1 : 1);
-        drawFannedStack(cards, { state: debug.state, fanDir: fanDir, flip180: !!flipCards, camX: cam, selectedItem: selected, drawSelected: false });
+        drawFannedStack(cards, { state: state, fanDir: fanDir, flip180: !!flipCards, camX: cam, selectedItem: selected, drawSelected: false, highlightCol: highlightCol });
       }
 
       // Selected last + highlight.
@@ -2168,7 +2364,7 @@ PD.render = PD.render || {};
         var sFan = (selected.fanDir != null) ? selected.fanDir : (flipCards ? -1 : 1);
         var sk = String(selected.stackKey);
         var stack = byKey[sk] || [selected];
-        drawFannedStack(stack, { state: debug.state, fanDir: sFan, flip180: !!flipCards, camX: cam, selectedItem: selected, onlySelected: true });
+        drawFannedStack(stack, { state: state, fanDir: sFan, flip180: !!flipCards, camX: cam, selectedItem: selected, onlySelected: true, highlightCol: highlightCol });
       }
       return;
     }
@@ -2190,7 +2386,7 @@ PD.render = PD.render || {};
         drawCardBack(x, y, true);
       } else if (row === R.ROW_P_HAND) {
         drawShadowBar(x, y);
-        drawMiniCard(debug.state, it.uid, x, y, !!flipCards);
+        drawMiniCard(state, it.uid, x, y, !!flipCards);
       }
     }
 
@@ -2203,7 +2399,7 @@ PD.render = PD.render || {};
       var fanDirB = (stack0[0].fanDir != null) ? stack0[0].fanDir : 1;
       var flipBank = (row === R.ROW_OP_HAND);
       var selInThis = (selected && selected.stackKey === k0) ? selected : null;
-      drawFannedStack(stack0, { state: debug.state, fanDir: fanDirB, flip180: !!flipBank, camX: cam, selectedItem: selInThis, drawSelected: false });
+      drawFannedStack(stack0, { state: state, fanDir: fanDirB, flip180: !!flipBank, camX: cam, selectedItem: selInThis, drawSelected: false, highlightCol: highlightCol });
     }
 
     if (selected) {
@@ -2213,34 +2409,24 @@ PD.render = PD.render || {};
         if (selected.stackKey) {
           var sFanO = (selected.fanDir != null) ? selected.fanDir : -1;
           var stackO = byKeyH[String(selected.stackKey)] || [selected];
-          drawFannedStack(stackO, { state: debug.state, fanDir: sFanO, flip180: true, camX: cam, selectedItem: selected, onlySelected: true });
+          drawFannedStack(stackO, { state: state, fanDir: sFanO, flip180: true, camX: cam, selectedItem: selected, onlySelected: true, highlightCol: highlightCol });
         } else {
           drawShadowBar(xs, ys);
           drawCardBack(xs, ys, true);
-          drawHighlight(xs, ys);
+          drawHighlight(xs, ys, highlightCol);
         }
       } else if (row === R.ROW_P_HAND) {
         if (selected.stackKey) {
           var sFanP = (selected.fanDir != null) ? selected.fanDir : 1;
           var stackP = byKeyH[String(selected.stackKey)] || [selected];
-          drawFannedStack(stackP, { state: debug.state, fanDir: sFanP, flip180: false, camX: cam, selectedItem: selected, onlySelected: true });
+          drawFannedStack(stackP, { state: state, fanDir: sFanP, flip180: false, camX: cam, selectedItem: selected, onlySelected: true, highlightCol: highlightCol });
         } else {
           drawShadowBar(xs, ys);
-          drawMiniCard(debug.state, selected.uid, xs, ys, !!flipCards);
-          drawHighlight(xs, ys);
+          drawMiniCard(state, selected.uid, xs, ys, !!flipCards);
+          drawHighlight(xs, ys, highlightCol);
         }
       }
     }
-  }
-
-  function selectedItemFromModels(models) {
-    var row = R.ui.row;
-    row = clampI(row, 5);
-    var m = models[row];
-    if (!m || !m.items || m.items.length === 0) return null;
-    var si = clampI(R.ui.i, m.items.length);
-    R.ui.i = si;
-    return m.items[si];
   }
 
   R.debug = R.debug || {};
@@ -2248,12 +2434,16 @@ PD.render = PD.render || {};
   // DebugText support: summarize current Render selection without drawing.
   R.debug.selectedLines = function (debug) {
     if (!debug || !debug.state) return ["Sel:(none)", ""];
-    var models = rowModelAll(debug);
-    var it = selectedItemFromModels(models);
+    var it = null;
+    if (debug.view && PD.ui && typeof PD.ui.computeRowModels === "function") {
+      var computed = PD.ui.computeRowModels(debug.state, debug.view);
+      it = computed ? computed.selected : null;
+    }
     if (!it) return ["Sel:(none)", ""];
 
     function colorName(c) {
-      c = c | 0;
+      c = Math.floor(Number(c));
+      if (!isFinite(c)) c = 0;
       if (c === PD.Color.Cyan) return "Cyan";
       if (c === PD.Color.Magenta) return "Magenta";
       if (c === PD.Color.Orange) return "Orange";
@@ -2262,23 +2452,23 @@ PD.render = PD.render || {};
     }
 
     if (it.row === R.ROW_CENTER) {
-      if (it.kind === "deck") return ["Sel:Deck", "Cards:" + (debug.state.deck.length | 0)];
-      if (it.kind === "discard") return ["Sel:Discard", "Cards:" + (debug.state.discard.length | 0)];
+      if (it.kind === "deck") return ["Sel:Deck", "Cards:" + debug.state.deck.length];
+      if (it.kind === "discard") return ["Sel:Discard", "Cards:" + debug.state.discard.length];
       return ["Sel:" + String(it.kind || "?"), ""];
     }
 
     if (it.uid) {
-      var uid = it.uid | 0;
+      var uid = it.uid;
       var def = PD.defByUid(debug.state, uid);
       var defId = def ? def.id : "?";
       var line2 = (def && def.name) ? def.name : "";
 
       if (def && def.kind === PD.CardKind.Property) {
         if (PD.isWildDef(def)) {
-          var c0 = def.wildColors[0] | 0;
-          var c1 = def.wildColors[1] | 0;
+          var c0 = def.wildColors[0];
+          var c1 = def.wildColors[1];
           line2 = "Wild:" + colorName(c0) + "/" + colorName(c1);
-          if (it.color != null && (it.color | 0) !== PD.NO_COLOR) {
+          if (it.color != null && it.color !== PD.NO_COLOR) {
             line2 += " As:" + colorName(it.color);
           }
         } else {
@@ -2292,131 +2482,154 @@ PD.render = PD.render || {};
     return ["Sel:" + String(it.kind || "?"), ""];
   };
 
-  function ensureRowHasSelection(models) {
-    // If current row has no items, find the next row with items (wrap).
-    var tries = 0;
-    while (tries < 5) {
-      var row = R.ui.row;
-      var m = models[row];
-      if (m && m.items && m.items.length > 0) {
-        R.ui.i = clampI(R.ui.i, m.items.length);
-        return;
-      }
-      R.ui.row = (R.ui.row + 1) % 5;
-      R.ui.i = 0;
-      tries = tries + 1;
+  function highlightColFromView(view) {
+    var cfg = R.cfg;
+    if (!view || !view.feedback) return cfg.colHighlight;
+    var fb = view.feedback;
+    if (fb.blinkFrames <= 0) return cfg.colHighlight;
+    // Blink red on alternating phases.
+    if ((fb.blinkPhase % 2) === 0) return PD.Pal.Red;
+    return cfg.colHighlight;
+  }
+
+  function drawGhostOutlines(ghosts, camX) {
+    if (!ghosts || ghosts.length === 0) return;
+    var L = R.cfg;
+    var col = PD.Pal.Green;
+    var shadowCol = PD.Pal.Black;
+    var i;
+    for (i = 0; i < ghosts.length; i++) {
+      var g = ghosts[i];
+      if (!g) continue;
+      var x = g.x - camX;
+      var y = g.y;
+      // Shadow outline up-left.
+      rectbSafe(x - 1, y - 1, L.faceW, L.faceH, shadowCol);
+      rectbSafe(x, y, L.faceW, L.faceH, col);
     }
   }
 
-  function handleNav(models) {
-    var cfg = R.cfg;
-    var row = R.ui.row;
-    var m = models[row];
-    var n = (m && m.items) ? m.items.length : 0;
+  function drawPreviewOverlay(state, preview, camX, highlightCol) {
+    if (!preview || !preview.uid) return;
+    var x = preview.x - camX;
+    var y = preview.y;
+    drawFannedShadowBar(x, y, 1);
+    drawMiniCard(state, preview.uid, x, y, false, preview.color);
+    drawHighlight(x, y, highlightCol);
+  }
 
-    var up = !!btnp(0);
-    var down = !!btnp(1);
-    var left = !!btnp(2);
-    var right = !!btnp(3);
+  function selectedFromModels(view, models) {
+    if (!view || !view.cursor || !models) return null;
+    var row = Math.floor(Number(view.cursor.row || 0));
+    if (!isFinite(row)) row = 0;
+    if (row < 0) row = 0;
+    if (row > 4) row = 4;
+    var rm = models[row];
+    if (!rm || !rm.items || rm.items.length === 0) return null;
+    var i = Math.floor(Number(view.cursor.i || 0));
+    if (!isFinite(i)) i = 0;
+    if (i < 0) i = 0;
+    if (i >= rm.items.length) i = rm.items.length - 1;
+    return rm.items[i];
+  }
 
-    // Left/Right within row.
-    if (left && n > 0) R.ui.i = wrapI(R.ui.i - 1, n);
-    if (right && n > 0) R.ui.i = wrapI(R.ui.i + 1, n);
+  R.drawFrame = function (args) {
+    if (!args) return;
+    var state = args.state || (args.debug && args.debug.state) || args.state;
+    var view = args.view || (args.debug && args.debug.view) || args.view;
+    if (!state || !view) return;
 
-    // Up/Down between rows using nearest-by-x.
-    if (up || down) {
-      var dir = up ? -1 : 1;
-      var curSel = selectedItemFromModels(models);
-      var curX = curSel ? (curSel.x + (curSel.w >> 1)) : 0;
-
-      var nextRow = wrapI(row + dir, 5);
-      var tries = 0;
-      while (tries < 5) {
-        var nm = models[nextRow];
-        if (nm && nm.items && nm.items.length > 0) {
-          R.ui.row = nextRow;
-          R.ui.i = nearestByX(nm.items, curX);
-          break;
-        }
-        nextRow = wrapI(nextRow + dir, 5);
-        tries = tries + 1;
-      }
+    var computed = args.computed;
+    if (!computed && PD.ui && typeof PD.ui.computeRowModels === "function") {
+      computed = PD.ui.computeRowModels(state, view);
     }
-  }
+    if (!computed || !computed.models) return;
 
-  function resetUiForState(stateRef) {
-    R.ui.lastStateRef = stateRef;
-    R.ui.row = R.ROW_P_HAND;
-    R.ui.i = 0;
-    R.ui.camX[0] = 0;
-    R.ui.camX[1] = 0;
-    R.ui.camX[2] = 0;
-    R.ui.camX[3] = 0;
-    R.ui.camX[4] = 0;
-  }
+    var models = computed.models;
+    var sel = selectedFromModels(view, models);
 
-  R.drawFrame = function (debug) {
-    if (!debug || !debug.state) return;
     var cfg = R.cfg;
-    var s = debug.state;
-
-    if (R.ui.lastStateRef !== s) resetUiForState(s);
-
-    var models = rowModelAll(debug);
-    ensureRowHasSelection(models);
-    handleNav(models);
-
-    // Update cameras for rows that scroll.
-    ensureCamForSelection(models[R.ROW_OP_HAND], R.ROW_OP_HAND, (R.ui.row === R.ROW_OP_HAND) ? R.ui.i : 0);
-    ensureCamForSelection(models[R.ROW_OP_TABLE], R.ROW_OP_TABLE, (R.ui.row === R.ROW_OP_TABLE) ? R.ui.i : 0);
-    ensureCamForSelection(models[R.ROW_P_TABLE], R.ROW_P_TABLE, (R.ui.row === R.ROW_P_TABLE) ? R.ui.i : 0);
-    ensureCamForSelection(models[R.ROW_P_HAND], R.ROW_P_HAND, (R.ui.row === R.ROW_P_HAND) ? R.ui.i : 0);
-
-    // Clamp selection after any camera adjustments.
-    var sel = selectedItemFromModels(models);
+    var hlCol = highlightColFromView(view);
 
     // Clear background.
     cls(cfg.colBg);
 
-    // Draw rows: opponent hand, opponent table, center, player table, player hand.
+    // Draw non-center rows.
     var row;
     for (row = 0; row < 5; row++) {
       if (row === R.ROW_CENTER) continue;
       var rm = models[row];
-      var selected = (R.ui.row === row) ? sel : null;
       if (!rm || !rm.items) continue;
-      drawRowCards(debug, rm, row, selected);
+      var cam = (view.camX && view.camX[row] != null) ? view.camX[row] : 0;
+      var selected = (view.cursor.row === row) ? sel : null;
+      drawRowCards(state, rm, row, selected, cam, hlCol);
     }
 
-    // Center panel last (so text overlays are readable).
-    drawCenter(debug, sel, true);
+    // Targeting overlays (ghosts + preview).
+    if (view.mode === "targeting") {
+      var ghosts = args.ghosts || computed.ghosts || [];
+      // Skip the selected destination ghost: preview replaces it.
+      if (view.targeting && view.targeting.active) {
+        var filtered = [];
+        var gi;
+        for (gi = 0; gi < ghosts.length; gi++) {
+          var g = ghosts[gi];
+          if (!g) continue;
+          if (g.cmdI === view.targeting.cmdI) continue;
+          filtered.push(g);
+        }
+        ghosts = filtered;
+      }
 
-    // Highlight center widgets if selected.
-    if (R.ui.row === R.ROW_CENTER) {
-      var cM = models[R.ROW_CENTER];
-      if (cM && cM.items && cM.items.length > 0) {
-        var si = clampI(R.ui.i, cM.items.length);
-        var wdg = cM.items[si];
-        rectbSafe(wdg.x - 1, wdg.y - 1, wdg.w + 2, wdg.h + 2, cfg.colHighlight);
+      // Draw ghosts using their row camera (future-proofing).
+      var gByRow = [[], [], [], [], []];
+      var gi2;
+      for (gi2 = 0; gi2 < ghosts.length; gi2++) {
+        var gg = ghosts[gi2];
+        if (!gg) continue;
+        var rr = (gg.row != null) ? gg.row : R.ROW_P_TABLE;
+        if (rr < 0 || rr > 4) rr = R.ROW_P_TABLE;
+        gByRow[rr].push(gg);
+      }
+      var rr2;
+      for (rr2 = 0; rr2 < 5; rr2++) {
+        if (!gByRow[rr2] || gByRow[rr2].length === 0) continue;
+        var camG = (view.camX && view.camX[rr2] != null) ? view.camX[rr2] : 0;
+        drawGhostOutlines(gByRow[rr2], camG);
+      }
+
+      var preview = args.preview || computed.preview;
+      if (preview) {
+        var prow = (preview.row != null) ? preview.row : R.ROW_P_TABLE;
+        if (prow < 0 || prow > 4) prow = R.ROW_P_TABLE;
+        var camP = (view.camX && view.camX[prow] != null) ? view.camX[prow] : 0;
+        drawPreviewOverlay(state, preview, camP, hlCol);
       }
     }
 
-    // Controls HUD (bottom-right, overlay-only).
-    drawControlsLine();
-  };
+    // Center panel last (so text overlays are readable).
+    drawCenter({ state: state, view: view, computed: computed, selected: sel, highlightCol: hlCol });
 
-  R.tick = function (debug) {
-    if (!debug) return;
-    if (!debug.state) {
-      PD.debugReset();
+    // Highlight center widgets if selected.
+    if (view.cursor.row === R.ROW_CENTER && sel) {
+      rectbSafe(sel.x - 1, sel.y - 1, sel.w + 2, sel.h + 2, hlCol);
     }
 
-    // Keep existing debug controls in render mode.
-    if (btnp(4)) PD.debugStep();
-    if (btnp(5)) PD.debugNextScenario();
-    if (btnp(6)) PD.debugReset();
+    // HUD / UX chrome (draw last).
+    drawPlaysPips(state);
+    drawModeHintNearButtons(view, computed);
+    drawToast(view);
+  };
 
-    R.drawFrame(debug);
+  // Legacy hook (Phase 03): draw-only; input/nav moved to PD.ui.
+  R.tick = function (debug) {
+    if (!debug || !debug.state) return;
+    if (debug.view && PD.ui && typeof PD.ui.computeRowModels === "function") {
+      var c = PD.ui.computeRowModels(debug.state, debug.view);
+      R.drawFrame({ state: debug.state, view: debug.view, computed: c });
+      return;
+    }
+    // Fallback: do nothing (Phase 04 wiring owns the loop).
   };
 })();
 
@@ -2426,18 +2639,1212 @@ PD.ui = PD.ui || {};
 PD.ui.newView = function () {
   return {
     // View-only state (cursor/camera/menu focus). This is intentionally not part of GameState.
-    // Phase 03 keeps view state under PD.render.ui; Phase 04 will converge on a single model.
-    cursor: { row: 0, i: 0 },
-    camX: [0, 0, 0, 0, 0]
+    cursor: { row: 4, i: 0 }, // default to player hand
+    camX: [0, 0, 0, 0, 0],
+
+    // browse | menu | targeting
+    mode: "browse",
+
+    // Menu (center panel)
+    menu: {
+      items: [],
+      i: 0,
+      // Source selection snapshot when menu opened.
+      src: null
+    },
+
+    // Targeting (Place/Build via hold or via menu)
+    targeting: {
+      active: false,
+      // kind: "place" | "build" | "bank"
+      kind: "",
+      // true if entered from A-hold (confirm on A release)
+      hold: false,
+      // source: { uid, loc }
+      card: null,
+      // for wilds
+      wildColor: PD.NO_COLOR,
+      // list of concrete engine commands (subset of PD.legalMoves)
+      cmds: [],
+      cmdI: 0
+    },
+
+    // Inspect (hold X with delay)
+    inspectActive: false,
+
+    // Feedback: blink + message, plus attempt counts.
+    feedback: {
+      blinkFrames: 0,
+      blinkPhase: 0,
+      msg: "",
+      msgFrames: 0,
+      attemptsByCode: {}
+    },
+
+    // Small UX memory (used for one-shot nudges like snapping to End when out of plays).
+    ux: {
+      lastActiveP: null,
+      lastPlaysLeft: null
+    }
   };
 };
 
-PD.ui.handleInput = function (_state, _view, _input) {
-  // Phase 04 will translate controller input into either:
-  // - a rules command to apply (`{ kind: ... }`)
-  // - a prompt transition (engine-owned prompt state)
-  //
-  // Returning null means "no action".
+PD.ui.feedbackError = function (view, code, msg) {
+  if (!view || !view.feedback) return;
+  code = String(code || "error");
+  msg = String(msg || "");
+
+  var fb = view.feedback;
+  var attempts = fb.attemptsByCode[code] || 0;
+  attempts += 1;
+  fb.attemptsByCode[code] = attempts;
+
+  // Always blink; only show message on repeated attempts.
+  fb.blinkFrames = 18;
+  fb.blinkPhase = 0;
+
+  if (attempts >= 2 && msg) {
+    fb.msg = msg;
+    fb.msgFrames = 90;
+  }
+};
+
+PD.ui.feedbackTick = function (view) {
+  if (!view || !view.feedback) return;
+  var fb = view.feedback;
+
+  var blinkFrames = Number(fb.blinkFrames || 0);
+  if (!isFinite(blinkFrames)) blinkFrames = 0;
+  if (blinkFrames > 0) {
+    blinkFrames = blinkFrames - 1;
+    fb.blinkFrames = blinkFrames;
+    // 2 blinks: toggle every 3 frames.
+    fb.blinkPhase = Math.floor(blinkFrames / 3);
+  } else {
+    fb.blinkFrames = 0;
+    fb.blinkPhase = 0;
+  }
+
+  var msgFrames = Number(fb.msgFrames || 0);
+  if (!isFinite(msgFrames)) msgFrames = 0;
+  if (msgFrames > 0) fb.msgFrames = msgFrames - 1;
+  else { fb.msgFrames = 0; fb.msg = ""; }
+};
+
+PD.ui.clampI = function (i, n) {
+  if (n <= 0) return 0;
+  if (i < 0) return 0;
+  if (i >= n) return n - 1;
+  return i;
+};
+
+PD.ui.wrapI = function (i, n) {
+  if (n <= 0) return 0;
+  i = i % n;
+  if (i < 0) i = i + n;
+  return i;
+};
+
+PD.ui.nearestByX = function (items, xCenter) {
+  if (!items || items.length === 0) return 0;
+  var bestI = 0;
+  var bestD = 999999;
+  xCenter = Number(xCenter || 0);
+  if (!isFinite(xCenter)) xCenter = 0;
+  var i;
+  for (i = 0; i < items.length; i++) {
+    var it = items[i];
+    var x = (it && it.x != null) ? Number(it.x) : 0;
+    var w = (it && it.w != null) ? Number(it.w) : 0;
+    if (!isFinite(x)) x = 0;
+    if (!isFinite(w)) w = 0;
+    var cx = x + (w / 2);
+    var d = cx - xCenter;
+    if (d < 0) d = -d;
+    if (d < bestD) { bestD = d; bestI = i; }
+  }
+  return bestI;
+};
+
+// Directional navigation (Phase 04 polish): pick closest selectable in a direction,
+// based on screen-space geometry (includes row camera offsets).
+
+PD.ui.itemScreenCenter = function (view, item) {
+  if (!item) return { cx: 0, cy: 0 };
+  var row = item.row;
+  var cam = (view && view.camX && view.camX[row] != null) ? view.camX[row] : 0;
+  var x = (item.x || 0) - (cam || 0);
+  var y = item.y || 0;
+  var w = item.w || 0;
+  var h = item.h || 0;
+  return { cx: x + (w / 2), cy: y + (h / 2) };
+};
+
+PD.ui.navPickInDirection = function (view, computed, dir) {
+  if (!view || !computed || !computed.models) return null;
+  if (!computed.selected) return null;
+
+  dir = String(dir || "");
+  var cur = computed.selected;
+  var curC = PD.ui.itemScreenCenter(view, cur);
+  var curCx = curC.cx;
+  var curCy = curC.cy;
+
+  var models = computed.models;
+  var cand = [];
+  var row;
+  for (row = 0; row < 5; row++) {
+    var rm = models[row];
+    if (!rm || !rm.items) continue;
+    var i;
+    for (i = 0; i < rm.items.length; i++) {
+      var it = rm.items[i];
+      if (!it) continue;
+      if (it === cur) continue;
+      var c = PD.ui.itemScreenCenter(view, it);
+      cand.push({ row: row, i: i, it: it, cx: c.cx, cy: c.cy });
+    }
+  }
+  if (cand.length === 0) return null;
+
+  function inDir(c) {
+    if (dir === "left") return c.cx < curCx;
+    if (dir === "right") return c.cx > curCx;
+    if (dir === "up") return c.cy < curCy;
+    if (dir === "down") return c.cy > curCy;
+    return false;
+  }
+
+  function scoreCone(c) {
+    var dx = c.cx - curCx;
+    var dy = c.cy - curCy;
+    var along = (dir === "left" || dir === "right") ? Math.abs(dx) : Math.abs(dy);
+    var perp = (dir === "left" || dir === "right") ? Math.abs(dy) : Math.abs(dx);
+    // Config is validated in tests (avoid runtime fallbacks in the cartridge).
+    var uiCfg = PD.config.ui;
+    var k = (dir === "left" || dir === "right") ? uiCfg.navConeKLeftRight : uiCfg.navConeKUpDown;
+    return (along * along) + (perp * perp) * k;
+  }
+
+  // Primary: closest candidate in the pressed direction.
+  // For Left/Right, if the current row has any candidates in that direction,
+  // prefer staying in-row (prevents surprising jumps to other rows when the
+  // center row contains valid left/right targets like deck/discard).
+  var preferSameRow = ((dir === "left" || dir === "right") && (cur && cur.row != null));
+  var hasSameRowCandidate = false;
+  if (preferSameRow) {
+    for (j = 0; j < cand.length; j++) {
+      var cs = cand[j];
+      if (!inDir(cs)) continue;
+      if (cs.it && cs.it.row === cur.row) { hasSameRowCandidate = true; break; }
+    }
+  }
+
+  var best = null;
+  var bestScore = 999999999;
+  var j;
+  for (j = 0; j < cand.length; j++) {
+    var c = cand[j];
+    if (!inDir(c)) continue;
+    if (hasSameRowCandidate && (!c.it || c.it.row !== cur.row)) continue;
+    var s = scoreCone(c);
+    if (s < bestScore) { bestScore = s; best = c; }
+  }
+  if (best) return { row: best.row, i: best.i };
+
+  // Fallback: global axis-wrap (pick farthest extreme on the opposite side).
+  var extreme = null;
+  if (dir === "up") extreme = -Infinity;
+  else if (dir === "down") extreme = Infinity;
+  else if (dir === "left") extreme = -Infinity;
+  else if (dir === "right") extreme = Infinity;
+
+  // Determine extreme along the axis.
+  for (j = 0; j < cand.length; j++) {
+    var cc = cand[j];
+    if (dir === "up") { if (cc.cy > extreme) extreme = cc.cy; }
+    else if (dir === "down") { if (cc.cy < extreme) extreme = cc.cy; }
+    else if (dir === "left") { if (cc.cx > extreme) extreme = cc.cx; }
+    else if (dir === "right") { if (cc.cx < extreme) extreme = cc.cx; }
+  }
+
+  best = null;
+  bestScore = 999999999;
+  for (j = 0; j < cand.length; j++) {
+    var cw = cand[j];
+    var atExtreme = false;
+    if (dir === "up" || dir === "down") atExtreme = (cw.cy === extreme);
+    else atExtreme = (cw.cx === extreme);
+    if (!atExtreme) continue;
+    // Use the same cone scoring to pick the most aligned extreme target.
+    var sw = scoreCone(cw);
+    if (sw < bestScore) { bestScore = sw; best = cw; }
+  }
+  if (best) return { row: best.row, i: best.i };
+
+  return null;
+};
+
+PD.ui.rowY0 = function (row) {
+  var i = Math.floor(Number(row || 0));
+  if (!isFinite(i)) i = 0;
+  return PD.config.render.layout.rowY[i];
+};
+PD.ui.rowH = function (row) {
+  var i = Math.floor(Number(row || 0));
+  if (!isFinite(i)) i = 0;
+  return PD.config.render.layout.rowH[i];
+};
+
+PD.ui.faceYForRow = function (row) {
+  var L = PD.config.render.layout;
+  row = Math.floor(Number(row || 0));
+  if (!isFinite(row)) row = 0;
+  if (row === 0) {
+    // Opponent hand: bottom slice visible; cards extend upward off-screen.
+    return L.rowY[0] + L.rowH[0] - L.faceH;
+  }
+  if (row === 1 || row === 3 || row === 4) {
+    return L.rowY[row] + L.faceInsetY;
+  }
+  return L.rowY[row];
+};
+
+PD.ui.isOpponentRow = function (row) {
+  row = Math.floor(Number(row || 0));
+  if (!isFinite(row)) row = 0;
+  return row === 0 || row === 1;
+};
+
+PD.ui.playerForRow = function (row) {
+  row = Math.floor(Number(row || 0));
+  if (!isFinite(row)) row = 0;
+  if (row === 0 || row === 1) return 1;
+  if (row === 3 || row === 4) return 0;
+  return -1;
+};
+
+PD.ui.buildRowItems = function (state, view, row) {
+  var L = PD.config.render.layout;
+  row = Math.floor(Number(row || 0));
+  if (!isFinite(row)) row = 0;
+
+  var out = { items: [], minX: 0, maxX: 0 };
+  var isOp = PD.ui.isOpponentRow(row);
+  var p = PD.ui.playerForRow(row);
+  var yFace = PD.ui.faceYForRow(row);
+  var padX = L.rowPadX;
+
+  var i;
+
+  if (row === 4 || row === 0) {
+    // Hand row: hand cards + bank stack on opposite side.
+    var hand = state.players[p].hand;
+    var bank = state.players[p].bank;
+    var nHand = hand.length;
+    var nBank = bank.length;
+    var minX = 999999, maxX = -999999;
+
+    function pushHandRowItem(kind, uid, xFace, depth, fanDir) {
+      out.items.push({
+        kind: kind,
+        row: row,
+        p: p,
+        uid: uid,
+        depth: depth,
+        fanDir: fanDir,
+        x: xFace,
+        y: yFace,
+        w: L.faceW,
+        h: L.faceH,
+        loc: (kind === "hand") ? { p: p, zone: "hand", i: depth } : null,
+        stackKey: (kind === "bank") ? ("bank:p" + p + ":row" + row) : null
+      });
+      var xLo = xFace;
+      var xHi = xFace + L.faceW - 1;
+      // Include 1px shadow pixels that can be drawn outside the face.
+      if (kind === "hand") {
+        xLo = xFace + L.shadowBarDx;
+      } else if (kind === "bank") {
+        if (fanDir < 0) xHi = xFace + L.faceW;
+        else xLo = xFace + L.shadowBarDx;
+      }
+      if (xLo < minX) minX = xLo;
+      if (xHi > maxX) maxX = xHi;
+    }
+
+    // Hand zone (spaced).
+    var xHandStart = isOp ? (L.screenW - padX - L.faceW) : padX;
+    var handStep = isOp ? (-L.handStrideX) : L.handStrideX;
+    for (i = 0; i < nHand; i++) {
+      pushHandRowItem("hand", hand[i], xHandStart + i * handStep, i, 0);
+    }
+
+    // Bank zone (overlapped stack), opposite side.
+    var stride = L.stackStrideX;
+    var gap = L.stackGapX;
+
+    if (!isOp) {
+      // Player bank: fan right, anchored on the right.
+      var bankRightX = L.screenW - padX - L.faceW;
+      var bankLeftX = bankRightX - (nBank > 0 ? ((nBank - 1) * stride) : 0);
+      var handMaxX = (nHand > 0) ? (padX + (nHand - 1) * L.handStrideX + L.faceW - 1) : (padX - 1);
+      if (nBank > 0 && bankLeftX <= (handMaxX + gap)) bankLeftX = handMaxX + gap + 1;
+      for (i = 0; i < nBank; i++) {
+        pushHandRowItem("bank", bank[i], bankLeftX + i * stride, i, 1);
+      }
+    } else {
+      // Opponent bank: fan left, anchored on the left.
+      var bankLeftX2 = padX;
+      var bankRightX2 = bankLeftX2 + (nBank > 0 ? ((nBank - 1) * stride) : 0);
+      var handMinX = (nHand > 0) ? (xHandStart + (nHand - 1) * handStep) : (xHandStart + 1);
+      var bankMaxX = bankRightX2 + L.faceW - 1;
+      if (nBank > 0 && (bankMaxX + gap) >= handMinX) {
+        var desiredBankMax = handMinX - gap - 1;
+        bankRightX2 = desiredBankMax - (L.faceW - 1);
+      }
+      for (i = 0; i < nBank; i++) {
+        pushHandRowItem("bank", bank[i], bankRightX2 - i * stride, i, -1);
+      }
+    }
+
+    out.minX = (minX === 999999) ? 0 : minX;
+    out.maxX = (maxX === -999999) ? 0 : maxX;
+    out.items.sort(function (a, b) {
+      var ax = (a && a.x != null) ? a.x : 0;
+      var bx = (b && b.x != null) ? b.x : 0;
+      var dx = ax - bx;
+      if (dx) return dx;
+      var ay = (a && a.y != null) ? a.y : 0;
+      var by = (b && b.y != null) ? b.y : 0;
+      return ay - by;
+    });
+    return out;
+  }
+
+  if (row === 3 || row === 1) {
+    // Table row: property sets (with house as last card in stack).
+    var sets = state.players[p].sets;
+    var setCount = sets.length;
+    var stride2 = L.stackStrideX;
+    var minX2 = 999999, maxX2 = -999999;
+    var fanDir = isOp ? -1 : 1;
+
+    if (!isOp) {
+      var cursorX = padX;
+      for (i = 0; i < setCount; i++) {
+        var set = sets[i];
+        if (!set) continue;
+        var cards = [];
+        var k;
+        for (k = 0; k < set.props.length; k++) cards.push({ kind: "setProp", setI: i, depth: k, uid: set.props[k][0], color: set.props[k][1] });
+        if (set.houseUid) cards.push({ kind: "setHouse", setI: i, depth: cards.length, uid: set.houseUid });
+
+        var nCards = cards.length;
+        if (nCards <= 0) continue;
+
+        var depth;
+        for (depth = 0; depth < nCards; depth++) {
+          var xFaceP = cursorX + depth * stride2;
+          out.items.push({
+            kind: cards[depth].kind,
+            row: row,
+            p: p,
+            uid: cards[depth].uid,
+            color: cards[depth].color,
+            setI: cards[depth].setI,
+            depth: cards[depth].depth,
+            fanDir: fanDir,
+            stackKey: "set:p" + p + ":set" + i,
+            x: xFaceP,
+            y: yFace,
+            w: L.faceW,
+            h: L.faceH
+          });
+          var xLoP = xFaceP;
+          var xHiP = xFaceP + L.faceW - 1;
+          if (fanDir > 0) xLoP = xFaceP + L.shadowBarDx;
+          else xHiP = xFaceP + L.faceW;
+          if (xLoP < minX2) minX2 = xLoP;
+          if (xHiP > maxX2) maxX2 = xHiP;
+        }
+
+        var stackW = L.faceW + (nCards - 1) * stride2;
+        cursorX = cursorX + stackW + L.stackGapX;
+      }
+    } else {
+      var rightCursor = L.screenW - padX - L.faceW;
+      for (i = 0; i < setCount; i++) {
+        var setO = sets[i];
+        if (!setO) continue;
+        var cardsO = [];
+        var kk;
+        for (kk = 0; kk < setO.props.length; kk++) cardsO.push({ kind: "setProp", setI: i, depth: kk, uid: setO.props[kk][0], color: setO.props[kk][1] });
+        if (setO.houseUid) cardsO.push({ kind: "setHouse", setI: i, depth: cardsO.length, uid: setO.houseUid });
+
+        var nCardsO = cardsO.length;
+        if (nCardsO <= 0) continue;
+
+        var d2;
+        for (d2 = 0; d2 < nCardsO; d2++) {
+          var xFaceO = rightCursor - d2 * stride2;
+          out.items.push({
+            kind: cardsO[d2].kind,
+            row: row,
+            p: p,
+            uid: cardsO[d2].uid,
+            color: cardsO[d2].color,
+            setI: cardsO[d2].setI,
+            depth: cardsO[d2].depth,
+            fanDir: fanDir,
+            stackKey: "set:p" + p + ":set" + i,
+            x: xFaceO,
+            y: yFace,
+            w: L.faceW,
+            h: L.faceH
+          });
+          var xLoO = xFaceO;
+          var xHiO = xFaceO + L.faceW - 1;
+          if (fanDir > 0) xLoO = xFaceO + L.shadowBarDx;
+          else xHiO = xFaceO + L.faceW;
+          if (xLoO < minX2) minX2 = xLoO;
+          if (xHiO > maxX2) maxX2 = xHiO;
+        }
+
+        var leftEdge = rightCursor - (nCardsO - 1) * stride2;
+        rightCursor = leftEdge - L.stackGapX - L.faceW;
+      }
+    }
+
+    out.minX = (minX2 === 999999) ? 0 : minX2;
+    out.maxX = (maxX2 === -999999) ? 0 : maxX2;
+    out.items.sort(function (a, b) {
+      var ax = (a && a.x != null) ? a.x : 0;
+      var bx = (b && b.x != null) ? b.x : 0;
+      var dx = ax - bx;
+      if (dx) return dx;
+      var ay = (a && a.y != null) ? a.y : 0;
+      var by = (b && b.y != null) ? b.y : 0;
+      return ay - by;
+    });
+    return out;
+  }
+
+  if (row === 2) {
+    // Center row: deck, discard, and UI buttons.
+    var C = PD.config.render.layout;
+    var top = C.rowY[2] + C.centerTopInsetY;
+    var deckX = C.centerDeckX;
+    var gapX = C.centerPileGapX;
+    var x0 = deckX;
+    out.items.push({ kind: "deck", row: 2, x: x0, y: top, w: C.faceW, h: C.faceH });
+    out.items.push({ kind: "discard", row: 2, x: x0 + C.faceW + gapX, y: top, w: C.faceW, h: C.faceH });
+
+    var dbgEnabled = !!(PD.config && PD.config.debug && PD.config.debug.enabled);
+
+    // Hide buttons while an overlay is active (menu/targeting/inspect).
+    var overlayActive = !!(view && (view.mode === "menu" || view.mode === "targeting" || view.inspectActive));
+    if (!overlayActive) {
+      // Right-side vertical strip: 4*10px = 40px tall, fits inside center row.
+      var stripW = 54;
+      var stripH = 10;
+      var stripX = C.screenW - C.rowPadX - stripW;
+      // Bottom-align within the center row band.
+      var stripY0 = (C.rowY[2] + C.rowH[2] - 1 - 40);
+
+      function pushBtn(id, label, y, disabled) {
+        out.items.push({ kind: "btn", id: id, label: label, disabled: !!disabled, row: 2, x: stripX, y: y, w: stripW, h: stripH });
+      }
+
+      var endDisabled = (state.activeP !== 0) || (state.players[0].hand.length > PD.HAND_MAX);
+      pushBtn("endTurn", "End", stripY0, endDisabled);
+      if (dbgEnabled) {
+        pushBtn("step", "Step", stripY0 + 10, false);
+        pushBtn("reset", "Reset", stripY0 + 20, false);
+        pushBtn("nextScenario", "Next", stripY0 + 30, false);
+      }
+    }
+
+    out.minX = 0;
+    out.maxX = C.screenW - 1;
+    out.items.sort(function (a, b) {
+      var ax = (a && a.x != null) ? a.x : 0;
+      var bx = (b && b.x != null) ? b.x : 0;
+      var dx = ax - bx;
+      if (dx) return dx;
+      var ay = (a && a.y != null) ? a.y : 0;
+      var by = (b && b.y != null) ? b.y : 0;
+      return ay - by;
+    });
+    return out;
+  }
+
+  return out;
+};
+
+PD.ui.computeRowModels = function (state, view) {
+  var models = [
+    PD.ui.buildRowItems(state, view, 0),
+    PD.ui.buildRowItems(state, view, 1),
+    PD.ui.buildRowItems(state, view, 2),
+    PD.ui.buildRowItems(state, view, 3),
+    PD.ui.buildRowItems(state, view, 4)
+  ];
+
+  // Clamp cursor to existing rows/items.
+  if (!view || !view.cursor) return { models: models, selected: null, ghosts: [], preview: null };
+  var row = Math.floor(Number(view.cursor.row || 0));
+  if (!isFinite(row)) row = 0;
+  if (row < 0) row = 0;
+  if (row > 4) row = 4;
+  view.cursor.row = row;
+
+  var rm = models[row];
+  var n = (rm && rm.items) ? rm.items.length : 0;
+  var curI = Math.floor(Number(view.cursor.i || 0));
+  if (!isFinite(curI)) curI = 0;
+  view.cursor.i = PD.ui.clampI(curI, n);
+
+  var sel = (rm && rm.items && rm.items.length) ? rm.items[view.cursor.i] : null;
+
+  // Targeting overlays: ghosts + preview-in-stack for the selected destination.
+  var ghosts = [];
+  var preview = null;
+
+  if (view.mode === "targeting" && view.targeting && view.targeting.active) {
+    var t = view.targeting;
+    var cmds = t.cmds || [];
+    var cmdI = PD.ui.clampI(Math.floor(Number(t.cmdI || 0)), cmds.length);
+    t.cmdI = cmdI;
+
+    // Build per-set origin positions for P0 table (row 3), and a new-set slot.
+    var L = PD.config.render.layout;
+    var yFace = PD.ui.faceYForRow(3);
+    var stride = L.stackStrideX;
+    var cursorX = L.rowPadX;
+    var sets = state.players[0].sets;
+    var setXs = [];
+    var setCardsN = [];
+    var si;
+    for (si = 0; si < sets.length; si++) {
+      var set = sets[si];
+      if (!set) { setXs[si] = cursorX; setCardsN[si] = 0; continue; }
+      var nCards = (set.props ? set.props.length : 0) + (set.houseUid ? 1 : 0);
+      setXs[si] = cursorX;
+      setCardsN[si] = nCards;
+      if (nCards > 0) cursorX = cursorX + L.faceW + (nCards - 1) * stride + L.stackGapX;
+      else cursorX = cursorX + L.faceW + L.stackGapX;
+    }
+    var newSetX = cursorX;
+
+    // Ghosts for all legal destinations in this targeting mode.
+    var j;
+    for (j = 0; j < cmds.length; j++) {
+      var c = cmds[j];
+      if (!c || !c.kind) continue;
+      var x = 0;
+      if (c.kind === "playProp") {
+        if (c.dest && c.dest.newSet) x = newSetX;
+        else if (c.dest && c.dest.setI != null) {
+          var sI = Math.floor(Number(c.dest.setI));
+          if (!isFinite(sI)) continue;
+          var baseX = (setXs[sI] != null) ? setXs[sI] : 0;
+          var nBase = (setCardsN[sI] != null) ? setCardsN[sI] : 0;
+          x = baseX + nBase * stride;
+        }
+      } else if (c.kind === "playHouse") {
+        if (c.dest && c.dest.setI != null) {
+          var hsI = Math.floor(Number(c.dest.setI));
+          if (!isFinite(hsI)) continue;
+          var hBaseX = (setXs[hsI] != null) ? setXs[hsI] : 0;
+          var hnBase = (setCardsN[hsI] != null) ? setCardsN[hsI] : 0;
+          x = hBaseX + hnBase * stride;
+        }
+      } else if (c.kind === "bank") {
+        // No ghost for banking.
+        continue;
+      } else {
+        continue;
+      }
+
+      ghosts.push({ row: 3, x: x, y: yFace, w: L.faceW, h: L.faceH, kind: "ghostDest", cmdI: j });
+    }
+
+    // Preview-in-stack for selected destination.
+    var cmdSel = cmds[cmdI];
+    if (cmdSel && (cmdSel.kind === "playProp" || cmdSel.kind === "playHouse")) {
+      var xP = 0;
+      if (cmdSel.kind === "playProp") {
+        if (cmdSel.dest && cmdSel.dest.newSet) xP = newSetX;
+        else if (cmdSel.dest && cmdSel.dest.setI != null) {
+          var psI = Math.floor(Number(cmdSel.dest.setI));
+          if (isFinite(psI)) {
+            xP = ((setXs[psI] != null) ? setXs[psI] : 0) + (((setCardsN[psI] != null) ? setCardsN[psI] : 0) * stride);
+          }
+        }
+      } else if (cmdSel.kind === "playHouse") {
+        var bsI = Math.floor(Number(cmdSel.dest.setI));
+        if (isFinite(bsI)) {
+          xP = ((setXs[bsI] != null) ? setXs[bsI] : 0) + (((setCardsN[bsI] != null) ? setCardsN[bsI] : 0) * stride);
+        }
+      }
+      preview = {
+        row: 3,
+        kind: "preview",
+        uid: (t.card && t.card.uid) ? t.card.uid : 0,
+        color: (cmdSel.kind === "playProp" && t.card && t.card.def && PD.isWildDef(t.card.def)) ? t.wildColor : null,
+        x: xP,
+        y: yFace,
+        w: L.faceW,
+        h: L.faceH
+      };
+    } else if (cmdSel && cmdSel.kind === "bank") {
+      // Preview into the bank stack destination (player hand row, bank zone).
+      // Compute bank drop position using the same layout rules as buildRowItems(row=4),
+      // approximating the post-drop layout (hand -1, bank +1).
+      var Lh = PD.config.render.layout;
+      var yB = PD.ui.faceYForRow(4);
+      var padX = Lh.rowPadX;
+      var bankRightX = Lh.screenW - padX - Lh.faceW;
+      var strideB = Lh.stackStrideX;
+      var gapB = Lh.stackGapX;
+
+      var hand0 = state.players[0].hand || [];
+      var bank0 = state.players[0].bank || [];
+      var nHandAfter = hand0.length - 1;
+      if (nHandAfter < 0) nHandAfter = 0;
+      var nBankAfter = bank0.length + 1;
+
+      var handMaxX = (nHandAfter > 0) ? (padX + (nHandAfter - 1) * Lh.handStrideX + Lh.faceW - 1) : (padX - 1);
+      var bankLeftX = bankRightX - ((nBankAfter > 0) ? ((nBankAfter - 1) * strideB) : 0);
+      if (nBankAfter > 0 && bankLeftX <= (handMaxX + gapB)) bankLeftX = handMaxX + gapB + 1;
+
+      var xB = bankLeftX + (nBankAfter - 1) * strideB;
+      preview = { row: 4, kind: "preview", uid: (t.card && t.card.uid) ? t.card.uid : 0, color: null, x: xB, y: yB, w: Lh.faceW, h: Lh.faceH };
+    }
+  }
+
+  return { models: models, selected: sel, ghosts: ghosts, preview: preview };
+};
+
+PD.ui.ensureCamForSelection = function (rowModel, row, selItem, camArr) {
+  var L = PD.config.render.layout;
+  row = Math.floor(Number(row || 0));
+  if (!isFinite(row)) row = 0;
+  if (!camArr) return;
+
+  var cam = (camArr[row] != null) ? Number(camArr[row]) : 0;
+  if (!isFinite(cam)) cam = 0;
+  var margin = L.camMarginX;
+
+  if (!rowModel || !rowModel.items || rowModel.items.length === 0 || !selItem) {
+    camArr[row] = 0;
+    return;
+  }
+
+  var contentW = (rowModel.maxX - rowModel.minX + 1);
+  if (contentW <= L.screenW) { camArr[row] = 0; return; }
+
+  var x0 = selItem.x;
+  var x1 = selItem.x + selItem.w - 1;
+  var maxVisibleX = (L.screenW - 1 - margin);
+
+  if ((x0 - cam) < margin) cam = (x0 - margin);
+  if ((x1 - cam) > maxVisibleX) cam = (x1 - maxVisibleX);
+
+  var camA = (rowModel.minX - margin);
+  var camB = (rowModel.maxX - maxVisibleX);
+  var camLo = camA < camB ? camA : camB;
+  var camHi = camA < camB ? camB : camA;
+  if (cam < camLo) cam = camLo;
+  if (cam > camHi) cam = camHi;
+
+  camArr[row] = Math.floor(cam);
+};
+
+PD.ui.updateCameras = function (state, view, computed) {
+  if (!view || !view.camX) return;
+  if (!computed || !computed.models) return;
+
+  var models = computed.models;
+  var row;
+  for (row = 0; row < 5; row++) {
+    if (!(row === 0 || row === 1 || row === 3 || row === 4)) continue;
+
+    // Default selection is the cursor selection when in that row.
+    var selItem = null;
+    if (view.cursor.row === row) {
+      var rm = models[row];
+      if (rm && rm.items && rm.items.length) {
+        var i = PD.ui.clampI(view.cursor.i, rm.items.length);
+        selItem = rm.items[i];
+      }
+    } else {
+      // For non-active rows, use first item to keep cam stable.
+      var rm2 = models[row];
+      if (rm2 && rm2.items && rm2.items.length) selItem = rm2.items[0];
+    }
+
+    // In targeting mode, have the preview destination row camera follow the preview.
+    if (view.mode === "targeting" && computed.preview && row === computed.preview.row) selItem = computed.preview;
+
+    PD.ui.ensureCamForSelection(models[row], row, selItem, view.camX);
+  }
+};
+
+PD.ui.menuOpenForSelection = function (state, view, sel) {
+  if (!view || !view.menu) return;
+  view.menu.items = [];
+  view.menu.i = 0;
+  view.menu.src = sel ? { row: sel.row, i: view.cursor.i, uid: sel.uid, loc: sel.loc || null } : null;
+
+  if (!sel || !sel.loc || sel.loc.zone !== "hand") return;
+  if (sel.loc.p !== 0) return;
+
+  var uid = sel.uid;
+  var def = PD.defByUid(state, uid);
+  if (!def) return;
+
+  // Build/Place actions are only meaningful for the currently implemented rules.
+  if (def.kind === PD.CardKind.Property) {
+    view.menu.items.push({ id: "place", label: "Place" });
+  }
+  if (def.kind === PD.CardKind.House) {
+    // Only offer Build if legal.
+    var moves = PD.legalMoves(state);
+    var hasBuild = false;
+    var m;
+    for (m = 0; m < moves.length; m++) {
+      var mv = moves[m];
+      if (mv && mv.kind === "playHouse" && mv.card && mv.card.uid === uid) { hasBuild = true; break; }
+    }
+    if (hasBuild) view.menu.items.push({ id: "build", label: "Build" });
+  }
+  if (PD.isBankableDef(def)) {
+    view.menu.items.push({ id: "bank", label: "Bank" });
+  }
+
+  // Always allow cancel/back with B; no explicit menu item needed.
+};
+
+PD.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
+  if (!view || !view.targeting) return;
+  var t = view.targeting;
+  t.active = true;
+  t.kind = String(kind || "");
+  t.hold = !!hold;
+  t.cmds = [];
+  t.cmdI = 0;
+
+  var def = PD.defByUid(state, uid);
+  t.card = { uid: uid, loc: loc || null, def: def || null };
+
+  var moves = PD.legalMoves(state);
+  var cmds = [];
+  var i;
+
+  if (t.kind === "bank") {
+    for (i = 0; i < moves.length; i++) {
+      var mb = moves[i];
+      if (!mb || mb.kind !== "bank") continue;
+      if (!mb.card || mb.card.uid !== uid) continue;
+      cmds.push(mb);
+    }
+    t.cmds = cmds;
+    t.cmdI = 0;
+    view.mode = "targeting";
+    return;
+  }
+
+  if (t.kind === "build") {
+    for (i = 0; i < moves.length; i++) {
+      var mh = moves[i];
+      if (!mh || mh.kind !== "playHouse") continue;
+      if (!mh.card || mh.card.uid !== uid) continue;
+      cmds.push(mh);
+    }
+    t.cmds = cmds;
+    t.cmdI = 0;
+    view.mode = "targeting";
+    return;
+  }
+
+  if (t.kind === "place") {
+    if (def && PD.isWildDef(def)) {
+      // Default wild color: prefer a color that has an existing-set destination.
+      var c0 = def.wildColors[0];
+      var c1 = def.wildColors[1];
+      var has0 = false, has1 = false;
+      for (i = 0; i < moves.length; i++) {
+        var mp = moves[i];
+        if (!mp || mp.kind !== "playProp") continue;
+        if (!mp.card || mp.card.uid !== uid) continue;
+        if (mp.color === c0 && mp.dest && mp.dest.setI != null) has0 = true;
+        if (mp.color === c1 && mp.dest && mp.dest.setI != null) has1 = true;
+      }
+      t.wildColor = has0 ? c0 : (has1 ? c1 : c0);
+      for (i = 0; i < moves.length; i++) {
+        var mw = moves[i];
+        if (!mw || mw.kind !== "playProp") continue;
+        if (!mw.card || mw.card.uid !== uid) continue;
+        if (mw.color !== t.wildColor) continue;
+        cmds.push(mw);
+      }
+    } else {
+      t.wildColor = PD.NO_COLOR;
+      for (i = 0; i < moves.length; i++) {
+        var mf = moves[i];
+        if (!mf || mf.kind !== "playProp") continue;
+        if (!mf.card || mf.card.uid !== uid) continue;
+        cmds.push(mf);
+      }
+    }
+
+    // Ordering: existing sets first (by setI), then newSet.
+    var existing = [];
+    var newSet = [];
+    for (i = 0; i < cmds.length; i++) {
+      var c = cmds[i];
+      if (c && c.dest && c.dest.newSet) newSet.push(c);
+      else existing.push(c);
+    }
+    existing.sort(function (a, b) {
+      var ai = (a.dest && a.dest.setI != null) ? a.dest.setI : 9999;
+      var bi = (b.dest && b.dest.setI != null) ? b.dest.setI : 9999;
+      return ai - bi;
+    });
+    cmds = existing.concat(newSet);
+    t.cmds = cmds;
+    t.cmdI = 0; // default always-existing if any
+
+    view.mode = "targeting";
+    return;
+  }
+
+  // Unknown targeting kind.
+  t.active = false;
+  view.mode = "browse";
+};
+
+PD.ui.targetingRetargetWild = function (state, view, dir) {
+  if (!view || !view.targeting || !view.targeting.active) return;
+  var t = view.targeting;
+  if (t.kind !== "place") return;
+  if (!t.card || !t.card.def || !PD.isWildDef(t.card.def)) return;
+
+  var def = t.card.def;
+  var c0 = def.wildColors[0];
+  var c1 = def.wildColors[1];
+  var prevColor = t.wildColor;
+  var nextColor = (prevColor === c0) ? c1 : c0;
+  if (dir < 0) nextColor = (prevColor === c1) ? c0 : c1;
+
+  var prevCmd = (t.cmds && t.cmds.length) ? t.cmds[PD.ui.clampI(t.cmdI, t.cmds.length)] : null;
+  var keepNewSet = !!(prevCmd && prevCmd.dest && prevCmd.dest.newSet);
+  var keepSetI = (prevCmd && prevCmd.dest && prevCmd.dest.setI != null) ? prevCmd.dest.setI : null;
+
+  var moves = PD.legalMoves(state);
+  var uid = t.card.uid;
+  var cmds = [];
+  var i;
+  for (i = 0; i < moves.length; i++) {
+    var mw = moves[i];
+    if (!mw || mw.kind !== "playProp") continue;
+    if (!mw.card || mw.card.uid !== uid) continue;
+    if (mw.color !== nextColor) continue;
+    cmds.push(mw);
+  }
+
+  // Ordering: existing then new.
+  var existing = [];
+  var newSet = [];
+  for (i = 0; i < cmds.length; i++) {
+    var c = cmds[i];
+    if (c && c.dest && c.dest.newSet) newSet.push(c);
+    else existing.push(c);
+  }
+  existing.sort(function (a, b) {
+    var ai = (a.dest && a.dest.setI != null) ? a.dest.setI : 9999;
+    var bi = (b.dest && b.dest.setI != null) ? b.dest.setI : 9999;
+    return ai - bi;
+  });
+  cmds = existing.concat(newSet);
+
+  t.wildColor = nextColor;
+  t.cmds = cmds;
+
+  // Preserve selection if possible.
+  var selI = 0;
+  if (keepNewSet) {
+    for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].dest && cmds[i].dest.newSet) { selI = i; break; }
+  } else if (keepSetI != null) {
+    for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].dest && cmds[i].dest.setI === keepSetI) { selI = i; break; }
+  }
+  t.cmdI = selI;
+};
+
+PD.ui.step = function (state, view, actions) {
+  if (!state || !view) return null;
+  actions = actions || {};
+
+  // Tick feedback timers.
+  PD.ui.feedbackTick(view);
+
+  // Inspect is only meaningful in browse mode.
+  view.inspectActive = !!(view.mode === "browse" && actions.x && actions.x.inspectActive);
+
+  // Compute models for navigation helpers.
+  var computed = PD.ui.computeRowModels(state, view);
+  PD.ui.updateCameras(state, view, computed);
+
+  // One-shot nudge: when P0 runs out of plays, snap selection to End (browse-only).
+  // This makes "A to end turn" frictionless while still allowing players to wander away.
+  if (view.mode === "browse" && !view.inspectActive && state.activeP === 0) {
+    if (!view.ux) view.ux = { lastActiveP: null, lastPlaysLeft: null };
+    var prevP = view.ux.lastActiveP;
+    var prevPlays = view.ux.lastPlaysLeft;
+    var curPlays = state.playsLeft;
+    if (curPlays == null) curPlays = 0;
+    curPlays = Math.floor(Number(curPlays));
+    if (!isFinite(curPlays)) curPlays = 0;
+
+    if (prevP === 0 && prevPlays != null && prevPlays > 0 && curPlays <= 0) {
+      var center = computed.models ? computed.models[2] : null;
+      if (center && center.items) {
+        var bi;
+        for (bi = 0; bi < center.items.length; bi++) {
+          var it = center.items[bi];
+          if (it && it.kind === "btn" && it.id === "endTurn" && !it.disabled) {
+            view.cursor.row = 2;
+            view.cursor.i = bi;
+            computed = PD.ui.computeRowModels(state, view);
+            PD.ui.updateCameras(state, view, computed);
+            break;
+          }
+        }
+      }
+    }
+
+    view.ux.lastActiveP = 0;
+    view.ux.lastPlaysLeft = curPlays;
+  } else if (view.ux) {
+    view.ux.lastActiveP = state.activeP;
+    view.ux.lastPlaysLeft = state.playsLeft;
+  }
+
+  function currentSelection() {
+    var row = view.cursor.row;
+    var rm = computed.models[row];
+    if (!rm || !rm.items || rm.items.length === 0) return null;
+    var i = PD.ui.clampI(view.cursor.i, rm.items.length);
+    return rm.items[i];
+  }
+
+  // Menu mode
+  if (view.mode === "menu") {
+    if (actions.b && actions.b.pressed) {
+      view.mode = "browse";
+      view.menu.items = [];
+      return null;
+    }
+
+    var nItems = view.menu.items ? view.menu.items.length : 0;
+    if (nItems > 0) {
+      if (actions.nav && actions.nav.up) view.menu.i = PD.ui.wrapI(view.menu.i - 1, nItems);
+      if (actions.nav && actions.nav.down) view.menu.i = PD.ui.wrapI(view.menu.i + 1, nItems);
+    }
+
+    if (actions.a && actions.a.tap) {
+      if (!view.menu.items || view.menu.items.length === 0) {
+        view.mode = "browse";
+        return null;
+      }
+      var mi = PD.ui.clampI(view.menu.i, view.menu.items.length);
+      var it = view.menu.items[mi];
+      var src = view.menu.src;
+      view.mode = "browse";
+      view.menu.items = [];
+
+      if (!it || !src) return null;
+      if (!src.loc || src.loc.zone !== "hand" || src.loc.p !== 0) return null;
+      var uid = src.uid;
+
+      if (it.id === "bank") {
+        var cmd = { kind: "bank", card: { uid: uid, loc: src.loc } };
+        return { kind: "applyCmd", cmd: cmd };
+      }
+
+      if (it.id === "place") {
+        PD.ui.targetingEnter(state, view, "place", false, uid, src.loc);
+        return null;
+      }
+
+      if (it.id === "build") {
+        PD.ui.targetingEnter(state, view, "build", false, uid, src.loc);
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  // Targeting mode
+  if (view.mode === "targeting" && view.targeting && view.targeting.active) {
+    var t = view.targeting;
+
+    // Cancel
+    if (actions.b && actions.b.pressed) {
+      t.active = false;
+      view.mode = "browse";
+      return null;
+    }
+
+    // Cycle destinations
+    var nCmds = t.cmds ? t.cmds.length : 0;
+    if (nCmds > 0) {
+      if (actions.nav && actions.nav.left) t.cmdI = PD.ui.wrapI(t.cmdI - 1, nCmds);
+      if (actions.nav && actions.nav.right) t.cmdI = PD.ui.wrapI(t.cmdI + 1, nCmds);
+    }
+
+    // Wild color toggle (Up/Down)
+    if (actions.nav && (actions.nav.up || actions.nav.down)) {
+      var dir = actions.nav.down ? 1 : -1;
+      PD.ui.targetingRetargetWild(state, view, dir);
+    }
+
+    // Confirm: tap-A (menu targeting) OR release-A (hold targeting).
+    var shouldConfirm = false;
+    if (!t.hold && actions.a && actions.a.tap) shouldConfirm = true;
+    if (t.hold && actions.a && actions.a.released) shouldConfirm = true;
+    if (!shouldConfirm) {
+      // Update cameras to follow destination preview.
+      computed = PD.ui.computeRowModels(state, view);
+      PD.ui.updateCameras(state, view, computed);
+      return null;
+    }
+
+    if (!t.cmds || t.cmds.length === 0) {
+      PD.ui.feedbackError(view, "no_targets", "No valid destination");
+      t.active = false;
+      view.mode = "browse";
+      return null;
+    }
+
+    var cmdI = PD.ui.clampI(t.cmdI, t.cmds.length);
+    var cmdSel = t.cmds[cmdI];
+    t.active = false;
+    view.mode = "browse";
+
+    if (!cmdSel) return null;
+    return { kind: "applyCmd", cmd: cmdSel };
+  }
+
+  // Browse mode
+  view.mode = "browse";
+
+  // Navigation (directional, screen-space).
+  if (actions.nav) {
+    var dir = null;
+    if (actions.nav.up) dir = "up";
+    else if (actions.nav.down) dir = "down";
+    else if (actions.nav.left) dir = "left";
+    else if (actions.nav.right) dir = "right";
+
+    if (dir) {
+      var pick = PD.ui.navPickInDirection(view, computed, dir);
+      if (pick) {
+        view.cursor.row = pick.row;
+        view.cursor.i = pick.i;
+      }
+    }
+  }
+
+  // Recompute after nav, then update cameras.
+  computed = PD.ui.computeRowModels(state, view);
+  PD.ui.updateCameras(state, view, computed);
+
+  // Context actions on tap A.
+  if (actions.a && actions.a.tap) {
+    var sel = currentSelection();
+    if (!sel) return null;
+
+    // Center buttons.
+    if (sel.row === 2 && sel.kind === "btn") {
+      if (sel.disabled) {
+        var msg = "Not available";
+        if (sel.id === "endTurn" && state.activeP !== 0) msg = "Opponent turn";
+        else if (sel.id === "endTurn" && state.players[0].hand.length > PD.HAND_MAX) msg = "Hand > 7";
+        PD.ui.feedbackError(view, "disabled_btn", msg);
+
+        // Move selection to next available center button (prefer Step).
+        var center = computed.models ? computed.models[2] : null;
+        var nextI = null;
+        if (center && center.items) {
+          var ii;
+          for (ii = 0; ii < center.items.length; ii++) {
+            var it = center.items[ii];
+            if (it && it.kind === "btn" && it.id === "step" && !it.disabled) { nextI = ii; break; }
+          }
+          if (nextI == null) {
+            for (ii = 0; ii < center.items.length; ii++) {
+              var it2 = center.items[ii];
+              if (it2 && it2.kind === "btn" && !it2.disabled && it2.id !== "endTurn") { nextI = ii; break; }
+            }
+          }
+          if (nextI == null) {
+            for (ii = 0; ii < center.items.length; ii++) {
+              var it3 = center.items[ii];
+              if (it3 && (it3.kind === "discard" || it3.kind === "deck")) { nextI = ii; break; }
+            }
+          }
+        }
+        if (nextI != null) {
+          view.cursor.row = 2;
+          view.cursor.i = nextI;
+          computed = PD.ui.computeRowModels(state, view);
+          PD.ui.updateCameras(state, view, computed);
+        }
+
+        return null;
+      }
+
+      if (sel.id === "endTurn") return { kind: "applyCmd", cmd: { kind: "endTurn" } };
+      if (sel.id === "step") return { kind: "debug", action: "step" };
+      if (sel.id === "reset") return { kind: "debug", action: "reset" };
+      if (sel.id === "nextScenario") return { kind: "debug", action: "nextScenario" };
+      return null;
+    }
+
+    // Hand card menu (P0 only).
+    if (sel.loc && sel.loc.zone === "hand" && sel.loc.p === 0) {
+      PD.ui.menuOpenForSelection(state, view, sel);
+      if (view.menu.items && view.menu.items.length > 0) {
+        view.mode = "menu";
+      } else {
+        PD.ui.feedbackError(view, "no_actions", "No actions");
+      }
+    }
+  }
+
+  // Hold-A grab: enter targeting (Place for properties; otherwise bank-only).
+  if (actions.a && actions.a.grabStart) {
+    var sel2 = currentSelection();
+    if (sel2 && sel2.loc && sel2.loc.zone === "hand" && sel2.loc.p === 0) {
+      var uid2 = sel2.uid;
+      var def2 = PD.defByUid(state, uid2);
+      if (def2 && def2.kind === PD.CardKind.Property) {
+        PD.ui.targetingEnter(state, view, "place", true, uid2, sel2.loc);
+      } else if (def2 && PD.isBankableDef(def2)) {
+        // Prefer bank on holds (esp. House).
+        PD.ui.targetingEnter(state, view, "bank", true, uid2, sel2.loc);
+      } else {
+        PD.ui.feedbackError(view, "hold_noop", "Can't do that");
+      }
+    }
+  }
+
+  // If hold targeting is active and A is no longer held, auto-confirm is handled in targeting mode.
+
   return null;
 };
 

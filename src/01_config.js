@@ -9,6 +9,35 @@ PD.config.debug = {
   enabled: true
 };
 
+// Controller UX knobs (Phase 04+). All values are in frames (TIC runs at 60fps).
+PD.config.controls = {
+  // D-pad repeat: start repeating after delay, then pulse every period.
+  dpadRepeatDelayFrames: 12,
+  dpadRepeatPeriodFrames: 4,
+
+  // Hold-A grab: if you hold A without moving, enter grab after this fallback threshold.
+  // (Hold+move enters immediately.)
+  aHoldFallbackFrames: 18,
+
+  // Inspect overlay becomes active after holding X this long.
+  xInspectDelayFrames: 6
+};
+
+// UI/navigation tuning (Phase 04+).
+PD.config.ui = {
+  // Directional navigation cone penalty multiplier (per-axis):
+  // used by PD.ui.navPickInDirection scoring:
+  // score = along^2 + (perp^2)*k
+  //
+  // Bigger k => narrower cone (harder to jump across rows/columns).
+  // k must be > 0. Typical values are ~4..30.
+  //
+  // - Left/Right usually wants a *narrower* cone to avoid jumping to other rows.
+  // - Up/Down can stay more permissive.
+  navConeKLeftRight: 18,
+  navConeKUpDown: 6
+};
+
 // TIC-80 default palette is Sweetie-16.
 // These are palette *indices* (0..15), not RGB values.
 PD.Pal = {
@@ -71,7 +100,6 @@ PD.config.render = {
     centerPreviewX: 70,
     centerPreviewGapX: 8,
     centerDescDy: 8,
-    centerHdrDy: -10,
 
     // Pile depth under-layers (visual only)
     pileUnderDx1: 2,

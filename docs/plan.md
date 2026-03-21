@@ -3,6 +3,7 @@
 This document captures the **shared MVP1 spec** and a **piece-by-piece implementation plan** for building Property Deal (Monopoly Deal–inspired) on **TIC-80 JS**.
 
 Documentation convention (for future phases):
+
 - `docs/phaseXX.md` should record **everything implemented** in that phase (detailed).
 - `docs/plan.md` should include **minimal Phase summary bullets** (scan-friendly; link to the phase doc).
 - Avoid retroactively rewriting older phase docs; capture deltas in the current/new phase doc instead.
@@ -15,6 +16,7 @@ Documentation convention (for future phases):
 - **Phase 03 ✅**: rendering baseline (5-row layout), navigation + camera, mini-card templates, rent special rendering, and draw-call render tests. See `docs/phase03.md`.
 - **Phase 03b ✅**: center-panel “big preview” + card backs + deck + discard rendering. See `docs/phase03b.md`.
 - **Phase 03c ✅**: bridge rules polish (empty-hand draw-5, end-turn hand cap) + debug stepping realism. See `docs/phase03c.md`.
+- **Phase 04 ✅**: UI-owned controller UX (menus/targeting/inspect) + injected controls; renderer is display-only (bounded to existing commands). See `docs/phase04.md`.
 
 ## Goals + Constraints
 
@@ -30,17 +32,6 @@ Documentation convention (for future phases):
 - **Namespaces / enums**: PascalCase objects (e.g. `PD.ActionKind`, `PD.CardKind`)
 - **Scalar constants**: ALL_CAPS (e.g. `PD.HOUSE_RENT_BONUS`)
 - **Functions**: camelCase (e.g. `PD.applyCommand`, `PD.legalMoves`)
-
-### Numeric coercion policy (`|0`) (important)
-
-TIC-80 draw APIs and our rules engine work best with integers, but we avoid turning the whole codebase into bitwise-noise.
-
-- **Use `|0` (or `>>>0`) where it matters**:
-  - **RNG / rules math** (determinism + 32-bit behavior)
-  - **TIC-80 API boundary** (coerce just before calling `rect`, `spr`, `print`, etc.)
-- **Avoid `|0` everywhere else**:
-  - palette indices, loop counters, array lengths, and config values should stay as normal numbers
-  - keep coercion localized (e.g. wrapper helpers like `rectSafe(...)` / `sprSafe(...)`), so renderer logic remains readable
 
 ## Locked MVP1 Rules (Source of Truth)
 
@@ -180,7 +171,7 @@ Rows (top to bottom):
 
 - Row 1: opponent hand backs, showing ~**11px** height
 - Row 2: opponent table stacks (**~25px**)
-- Row 3 (center): big card preview + description + draw/discard + both banks + prompts
+- Row 3 (center): deck/discard + action buttons + overlays (menu/targeting/inspect); **no always-on big preview**
 - Row 4: player table stacks (**~25px**, selectable/highlight)
 - Row 5: player hand full cards (**~25px**, selectable/highlight)
 
@@ -190,9 +181,9 @@ Overflow:
 
 ### Navigation model
 
-- **Zone-based cursor + UI state machine**
-  - Left/Right: move within the active row/zone
-  - Up/Down: switch rows/zones
+- **Directional (screen-space) cursor + UI state machine**
+  - D-pad picks the nearest selectable in that direction (cone-scored), with **axis-wrap** fallback when nothing is in-direction
+  - Left/Right prefers staying in-row when possible (reduces surprising cross-row jumps)
   - `A`: confirm/select (opens context menu, chooses targets, confirms prompts)
   - `B`: back/cancel
   - A dedicated **Inspect/Zoom** button (e.g., `Y` or `X`) shows the highlighted card enlarged with text in the center panel
@@ -207,7 +198,8 @@ Overflow:
 
 ### Center row selectables
 
-- Center includes selectable: **draw pile**, **discard pile**, **both banks**, **info/preview**
+- Center includes selectable: **draw pile**, **discard pile**, and **action buttons** (e.g. End + debug buttons when enabled)
+- Banks are selectable in the hand rows (bank is rendered as a fanned stack opposite the hand)
 
 ## AI (MVP1)
 
@@ -244,7 +236,7 @@ AI is required in MVP1, but intentionally simple.
 - Define `GameState` structure:
   - deck, discard
   - per-player: hand, bank, propertySets (stacks), etc.
-  - current turn, phase, playsRemaining
+  - current turn, phase, `playsLeft`
   - active prompts / UI mode state
 
 ### Phase 02 ✅ — Rules engine + commands API (single source of truth)
@@ -311,28 +303,45 @@ This is a small “in-between” phase to keep the debug/render harness faithful
 
 ### Phase 04 — UI state machine (controller UX)
 
-- Implement selection model by zone:
-  - opponent hand (inspect only)
-  - opponent table (inspect/targetable for Sly Deal)
-  - center piles/banks (selectable)
-  - player table (selectable)
-  - player hand (selectable)
-- Implement context menu on `A` for hand cards
-- Implement prompt flows in center panel:
-  - choose rent color / choose set
-  - choose Sly Deal target
-  - payment selection UI
-  - received property placement UI
-  - wild replace-window prompt
-  - end turn early
+- Implement a **UI-owned view state machine** (`PD.ui`) + injected controls (`PD.controls`), with renderer as **display-only**.
+- **Selection model by zone** (5-row layout retained):
+  - opponent hand (inspect only; hidden unless debug)
+  - opponent table (inspect only in Phase 04)
+  - center row widgets (deck/discard + action buttons)
+  - player table (inspect + targeting destinations)
+  - player hand (primary selection)
+- **Controller UX (Phase 04)**:
+  - D-pad navigation with **repeat** (hold to scroll)
+  - `A` **tap**: open a context menu (Place/Build/Bank depending on card)
+  - `A` **hold+move** (or fallback hold): enter **targeting**; release `A` to drop
+  - `B`: back/cancel (menu/targeting)
+  - `X` **hold** (after short delay): **Inspect** overlay; D-pad still navigates while held
+  - `Y`: DebugText ↔ Render toggle (dev harness)
+- **Targeting UI**:
+  - show **ghost outlines** for legal destinations (green)
+  - selected destination shows **preview-in-stack** + highlight
+  - Wilds: `Up/Down` toggles color while targeting
+  - default destination prefers **existing set** (then New Set); wrap-around cycling
+  - banking shows a preview at the bank-stack drop position
+- **Center row buttons**:
+  - `End` (always; legality enforced by rules)
+  - Debug-only: `Step`, `Reset`, `Next` (gated by `PD.config.debug.enabled`)
+- **Bounded scope**: Phase 04 UI only drives currently-implemented commands:
+  - `endTurn`, `bank`, `playProp` (Place), `playHouse` (Build)
+  - Rent/SlyDeal/JSN/debt/payment/received-property placement/wild replace-window are deferred to later phases (Phase 05+).
 
 ### Phase 05 — Turn loop + discard down to 7
 
 - Implement full turn loop framing around the existing start-of-turn draw rule (draw 2, or draw 5 if hand is empty)
-- Track playsRemaining (3)
+- Formalize “3 plays per turn” UX around `state.playsLeft` (already exists in state/rules; Phase 05 ensures the *full loop* uses it consistently)
 - Implement discard-down-to-7 at end of turn (selection UI)
   - If the player attempts to end turn while hand > 7, Phase 05 UI should enter a forced discard-down-to-7 mode before passing the turn.
 - Reshuffle discard into deck when needed
+
+Quality-of-life (still UX-level; no new rules commands):
+
+- Targeting/menu shortcut: if a menu action (e.g. Place/Build) yields **exactly 1** legal destination, consider skipping the extra confirm step (or at minimum show a more specific label like “Place → New set”)
+- Replace dev-only `Y:Mode` hint/toggle with a proper dev entrypoint (e.g. hidden debug menu) or remove for non-dev builds
 
 ### Phase 06 — Debt/payment + “faux-turn placement”
 
@@ -370,10 +379,11 @@ This is a small “in-between” phase to keep the debug/render harness faithful
   - `01_config.js` (palette + render config)
   - `03_rng.js`, `05_shuffle.js`, `06_defs.js`, `07_state.js`, `08_rules.js`, `09_scenarios.js`
   - `10_debug.js` (debug harness)
-  - `11_render.js` (renderer; namespaced under `PD.render.*`)
+  - `11_render.js` (renderer; namespaced under `PD.render.`*)
   - `99_main.js` (single `TIC()` entry point)
 
 Module organization is enforced via namespaces (e.g. `PD.render`, future `PD.ui`) rather than subfolders, because the build/test tooling currently only includes top-level `src/*.js`.
+
 - `scripts/build.mjs` (Node; generates `game.js`)
 - `game.js` (generated, paste into TIC-80)
 

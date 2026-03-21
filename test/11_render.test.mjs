@@ -20,6 +20,18 @@ function makeRecorder() {
   };
 }
 
+function newView(ctx) {
+  return ctx.PD.ui.newView();
+}
+
+function drawFrame(ctx, state, view) {
+  const c0 = ctx.PD.ui.computeRowModels(state, view);
+  ctx.PD.ui.updateCameras(state, view, c0);
+  const computed = ctx.PD.ui.computeRowModels(state, view);
+  ctx.PD.render.drawFrame({ state, view, computed });
+  return computed;
+}
+
 test("render: highlight is drawn last for selected card", async () => {
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
@@ -27,12 +39,10 @@ test("render: highlight is drawn last for selected card", async () => {
   const debug = ctx.PD.debug;
   ctx.PD.debugReset();
   debug.state.activeP = 0;
+  debug.view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  debug.view.cursor.i = 0;
 
-  // Force selection to player hand (row 5) index 0.
-  ctx.PD.render.ui.row = ctx.PD.render.ROW_P_HAND;
-  ctx.PD.render.ui.i = 0;
-
-  ctx.PD.render.drawFrame(debug);
+  drawFrame(ctx, debug.state, debug.view);
 
   assert.ok(rec.calls.length > 0, "expected draw calls");
 
@@ -58,16 +68,13 @@ test("render: stack uses stride=8 and shadow at xFace-1", async () => {
 
   // Create a deterministic table state with at least one stack of 2 cards.
   ctx.PD.debugReset();
-  const s = ctx.PD.debug.state;
   // Ensure P0 has a set with 2 props via scenario.
   const s2 = ctx.PD.newGame({ scenarioId: "houseOnComplete", seedU32: 1 });
-  ctx.PD.debug.state = s2;
+  const view = newView(ctx);
+  view.cursor.row = ctx.PD.render.ROW_P_TABLE;
+  view.cursor.i = 0;
 
-  // Select player table row.
-  ctx.PD.render.ui.row = ctx.PD.render.ROW_P_TABLE;
-  ctx.PD.render.ui.i = 0;
-
-  ctx.PD.render.drawFrame(ctx.PD.debug);
+  drawFrame(ctx, s2, view);
 
   // Find two face border rect calls for the table row.
   // Card face base draws a border rect with width=17 and height=25.
@@ -109,18 +116,17 @@ test("render: rotated digit uses (-4,-2) anchor offsets with rotate=2", async ()
   s.players[1].sets = [set];
   s.players[1].hand = [];
   s.players[0].hand = [];
-  ctx.PD.debug.state = s;
-
-  ctx.PD.render.ui.row = ctx.PD.render.ROW_OP_TABLE;
-  ctx.PD.render.ui.i = 0;
-  ctx.PD.render.drawFrame(ctx.PD.debug);
+  const view = newView(ctx);
+  view.cursor.row = ctx.PD.render.ROW_OP_TABLE;
+  view.cursor.i = 0;
+  drawFrame(ctx, s, view);
 
   // Opponent table first card xFace is at 240-4-17 = 219, yFace is row2 start (12) + inset (1) = 13.
   // Note: row-local camera may shift xFace; draw uses xFaceScreen = xFace - camX.
   // Wild top-half value digit local is at (1,1) with size 3x5; after flip180, glyph TL is at:
   // x = xFace + (17-(1+3)) = xFace+13; y = yFace + (25-(1+5)) = yFace+19
   // drawDigitGlyph then draws spr at (x-4, y-2) with rotate=2 (inset=1 border in tile).
-  const cam = ctx.PD.render.ui.camX[ctx.PD.render.ROW_OP_TABLE] ?? 0;
+  const cam = view.camX[ctx.PD.render.ROW_OP_TABLE] ?? 0;
   const xFace = 219 - cam;
   const yFace = 13;
   const expectedX = xFace + 13 - 4; // 228
@@ -143,15 +149,14 @@ test("render: rent card draws 2px color bars at bottom", async () => {
   s.deck = s.deck.filter((uid) => uid !== rentUid);
   s.players[0].hand = [rentUid];
   s.players[1].hand = [];
-  ctx.PD.debug.state = s;
-
-  ctx.PD.render.ui.row = ctx.PD.render.ROW_P_HAND;
-  ctx.PD.render.ui.i = 0;
-  ctx.PD.render.drawFrame(ctx.PD.debug);
+  const view = newView(ctx);
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = 0;
+  drawFrame(ctx, s, view);
 
   // Player hand first card: xFace=4, yFace=110 (row5 y=109..135; inset +1).
   // Note: row-local camera may shift xFace; draw uses xFaceScreen = xFace - camX.
-  const cam = ctx.PD.render.ui.camX[ctx.PD.render.ROW_P_HAND] ?? 0;
+  const cam = view.camX[ctx.PD.render.ROW_P_HAND] ?? 0;
   const xFace = 4 - cam;
   // Bars are inside the 1px border: local x=1, w=15; local y=22 (bottom) then 20.
   const x0 = xFace + 1;
@@ -188,14 +193,13 @@ test("render: opponent table stack shadow is mirrored", async () => {
   s.players[1].hand = [];
   s.players[0].sets = [];
   s.players[0].hand = [];
-  ctx.PD.debug.state = s;
-
-  ctx.PD.render.ui.row = ctx.PD.render.ROW_OP_TABLE;
-  ctx.PD.render.ui.i = 0;
-  ctx.PD.render.drawFrame(ctx.PD.debug);
+  const view = newView(ctx);
+  view.cursor.row = ctx.PD.render.ROW_OP_TABLE;
+  view.cursor.i = 0;
+  drawFrame(ctx, s, view);
 
   const cfg = ctx.PD.config.render.layout;
-  const cam = ctx.PD.render.ui.camX[ctx.PD.render.ROW_OP_TABLE] ?? 0;
+  const cam = view.camX[ctx.PD.render.ROW_OP_TABLE] ?? 0;
   const rightCursor = cfg.screenW - cfg.rowPadX - cfg.faceW; // 240-4-17 = 219
   const xTopFace = (rightCursor - cfg.stackStrideX) - cam; // depth 1
   const yFace = cfg.rowY[ctx.PD.render.ROW_OP_TABLE] + cfg.faceInsetY; // 12 + 1
@@ -229,17 +233,15 @@ test("render: player bank renders as fanned stack in hand row", async () => {
   s.players[1].hand = [];
   s.players[1].bank = [];
   s.players[1].sets = [];
-  ctx.PD.debug.state = s;
-  ctx.PD.render.ui.lastStateRef = s; // prevent drawFrame from clobbering ui.row/ui.i
-
+  const view = newView(ctx);
   // Select a different row so the bank stack is NOT the selected item.
-  ctx.PD.render.ui.row = ctx.PD.render.ROW_CENTER;
-  ctx.PD.render.ui.i = 0;
-  ctx.PD.render.drawFrame(ctx.PD.debug);
+  view.cursor.row = ctx.PD.render.ROW_CENTER;
+  view.cursor.i = 0;
+  drawFrame(ctx, s, view);
 
   const cfg = ctx.PD.config.render.layout;
   const yFace = cfg.rowY[ctx.PD.render.ROW_P_HAND] + cfg.faceInsetY; // 109 + 1
-  const cam = ctx.PD.render.ui.camX[ctx.PD.render.ROW_P_HAND] ?? 0;
+  const cam = view.camX[ctx.PD.render.ROW_P_HAND] ?? 0;
   assert.equal(cam, 0, "expected no scrolling when bank stack fits in player hand row");
 
   const faces = rec.calls
@@ -299,17 +301,15 @@ test("render: opponent bank renders as mirrored fanned stack in hand row", async
   s.players[0].hand = [];
   s.players[0].bank = [];
   s.players[0].sets = [];
-  ctx.PD.debug.state = s;
-  ctx.PD.render.ui.lastStateRef = s; // prevent drawFrame from clobbering ui.row/ui.i
-
+  const view = newView(ctx);
   // Select a different row so the bank stack is NOT the selected item.
-  ctx.PD.render.ui.row = ctx.PD.render.ROW_CENTER;
-  ctx.PD.render.ui.i = 0;
-  ctx.PD.render.drawFrame(ctx.PD.debug);
+  view.cursor.row = ctx.PD.render.ROW_CENTER;
+  view.cursor.i = 0;
+  drawFrame(ctx, s, view);
 
   const cfg = ctx.PD.config.render.layout;
   const yFace = cfg.rowY[ctx.PD.render.ROW_OP_HAND] + cfg.rowH[ctx.PD.render.ROW_OP_HAND] - cfg.faceH;
-  const cam = ctx.PD.render.ui.camX[ctx.PD.render.ROW_OP_HAND] ?? 0;
+  const cam = view.camX[ctx.PD.render.ROW_OP_HAND] ?? 0;
   assert.equal(cam, 0, "expected no scrolling when bank stack fits in opponent hand row");
 
   const faces = rec.calls
@@ -355,15 +355,14 @@ test("render: wild in set uses assigned color for visual top", async () => {
   s.players[0].hand = [];
   s.players[1].sets = [];
   s.players[1].hand = [];
-  ctx.PD.debug.state = s;
-
-  ctx.PD.render.ui.row = ctx.PD.render.ROW_P_TABLE;
-  ctx.PD.render.ui.i = 0;
-  ctx.PD.render.drawFrame(ctx.PD.debug);
+  const view = newView(ctx);
+  view.cursor.row = ctx.PD.render.ROW_P_TABLE;
+  view.cursor.i = 0;
+  drawFrame(ctx, s, view);
 
   const L = ctx.PD.config.render.layout;
   const S = ctx.PD.config.render.style;
-  const cam = ctx.PD.render.ui.camX[ctx.PD.render.ROW_P_TABLE] ?? 0;
+  const cam = view.camX[ctx.PD.render.ROW_P_TABLE] ?? 0;
   const xFace = L.rowPadX - cam; // first set starts at padX
   const yFace = L.rowY[ctx.PD.render.ROW_P_TABLE] + L.faceInsetY; // 82 + 1
 
@@ -392,15 +391,14 @@ test("render: opponent wild in set keeps assigned color on owner-facing half", a
   s.players[1].hand = [];
   s.players[0].sets = [];
   s.players[0].hand = [];
-  ctx.PD.debug.state = s;
-
-  ctx.PD.render.ui.row = ctx.PD.render.ROW_OP_TABLE;
-  ctx.PD.render.ui.i = 0;
-  ctx.PD.render.drawFrame(ctx.PD.debug);
+  const view = newView(ctx);
+  view.cursor.row = ctx.PD.render.ROW_OP_TABLE;
+  view.cursor.i = 0;
+  drawFrame(ctx, s, view);
 
   const L = ctx.PD.config.render.layout;
   const S = ctx.PD.config.render.style;
-  const cam = ctx.PD.render.ui.camX[ctx.PD.render.ROW_OP_TABLE] ?? 0;
+  const cam = view.camX[ctx.PD.render.ROW_OP_TABLE] ?? 0;
   const xFace = (L.screenW - L.rowPadX - L.faceW) - cam;
   const yFace = L.rowY[ctx.PD.render.ROW_OP_TABLE] + L.faceInsetY;
 
@@ -433,14 +431,13 @@ test("render: no scroll when content fits (opponent hand row)", async () => {
   s.players[1].hand = [uidHand];
   s.players[0].bank = [];
   s.players[0].hand = [];
-  ctx.PD.debug.state = s;
-
+  const view = newView(ctx);
   // Select a different row so ROW_OP_HAND uses selI=0 camera update.
-  ctx.PD.render.ui.row = ctx.PD.render.ROW_P_TABLE;
-  ctx.PD.render.ui.i = 0;
-  ctx.PD.render.drawFrame(ctx.PD.debug);
+  view.cursor.row = ctx.PD.render.ROW_P_TABLE;
+  view.cursor.i = 0;
+  drawFrame(ctx, s, view);
 
-  const cam = ctx.PD.render.ui.camX[ctx.PD.render.ROW_OP_HAND] ?? 0;
+  const cam = view.camX[ctx.PD.render.ROW_OP_HAND] ?? 0;
   assert.equal(cam, 0, "expected no scrolling when opponent hand+bank fit");
 });
 
@@ -459,15 +456,13 @@ test("render: opponent hand back sprite origin is aligned for rotate=2", async (
   s.players[1].bank = [];
   s.players[0].sets = [];
   s.players[1].sets = [];
-  ctx.PD.debug.state = s;
-  ctx.PD.render.ui.lastStateRef = s;
-
-  ctx.PD.render.ui.row = ctx.PD.render.ROW_OP_HAND;
-  ctx.PD.render.ui.i = 0;
-  ctx.PD.render.drawFrame(ctx.PD.debug);
+  const view = newView(ctx);
+  view.cursor.row = ctx.PD.render.ROW_OP_HAND;
+  view.cursor.i = 0;
+  drawFrame(ctx, s, view);
 
   const L = ctx.PD.config.render.layout;
-  const cam = ctx.PD.render.ui.camX[ctx.PD.render.ROW_OP_HAND] ?? 0;
+  const cam = view.camX[ctx.PD.render.ROW_OP_HAND] ?? 0;
   const xFace = (L.screenW - L.rowPadX - L.faceW) - cam;
   const yFace = L.rowY[ctx.PD.render.ROW_OP_HAND] + L.rowH[ctx.PD.render.ROW_OP_HAND] - L.faceH;
   const backId = ctx.PD.config.render.spr.cardBackTL;
@@ -483,5 +478,218 @@ test("render: opponent hand back sprite origin is aligned for rotate=2", async (
       c.args[8] === 3
   );
   assert.ok(sprCall, `expected rotate=2 card back spr at (${xFace},${yFace})`);
+});
+
+test("render: center button strip uses dark fill and selected uses highlight fill", async () => {
+  const rec = makeRecorder();
+  const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
+
+  const s = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
+  const view = newView(ctx);
+
+  // Move selection to center row. We expect deck, discard, then endTurn button.
+  view.cursor.row = ctx.PD.render.ROW_CENTER;
+  view.cursor.i = 2; // first button (End)
+
+  drawFrame(ctx, s, view);
+
+  const L = ctx.PD.config.render.layout;
+  const stripW = 54;
+  const stripH = 10;
+  const stripX = L.screenW - L.rowPadX - stripW;
+  const stripY0 = L.rowY[ctx.PD.render.ROW_CENTER] + L.rowH[ctx.PD.render.ROW_CENTER] - 1 - 40;
+
+  // Selected button should draw a filled rect with highlight color at its bounds.
+  const fillHighlight = rec.calls.find(
+    (c) =>
+      c.kind === "rect" &&
+      c.args[0] === stripX &&
+      c.args[1] === stripY0 &&
+      c.args[2] === stripW &&
+      c.args[3] === stripH &&
+      c.args[4] === ctx.PD.config.render.style.colHighlight
+  );
+  assert.ok(fillHighlight, "expected selected End button to have highlight fill rect");
+
+  // Some button fill should be dark (center panel color), not white.
+  const darkFill = rec.calls.find(
+    (c) =>
+      c.kind === "rect" &&
+      c.args[0] === stripX &&
+      c.args[2] === stripW &&
+      c.args[3] === stripH &&
+      c.args[4] === ctx.PD.config.render.style.colCenterPanel
+  );
+  assert.ok(darkFill, "expected at least one non-selected button to use center panel fill (dark)");
+});
+
+test("render: End button shows green recommendation when out of plays", async () => {
+  const rec = makeRecorder();
+  const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
+
+  const s = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 0;
+  // Ensure End is legal (hand size <= 7).
+  s.players[0].hand = s.players[0].hand.slice(0, 5);
+
+  const view = newView(ctx);
+  // Do not select the End button (recommendation should still appear).
+  view.cursor.row = ctx.PD.render.ROW_CENTER;
+  view.cursor.i = 0; // deck
+
+  drawFrame(ctx, s, view);
+
+  const L = ctx.PD.config.render.layout;
+  const stripW = 54;
+  const stripH = 10;
+  const stripX = L.screenW - L.rowPadX - stripW;
+  const stripY0 = L.rowY[ctx.PD.render.ROW_CENTER] + L.rowH[ctx.PD.render.ROW_CENTER] - 1 - 40;
+
+  const greenBorder = rec.calls.find(
+    (c) =>
+      c.kind === "rectb" &&
+      c.args[0] === stripX &&
+      c.args[1] === stripY0 &&
+      c.args[2] === stripW &&
+      c.args[3] === stripH &&
+      c.args[4] === ctx.PD.Pal.Green
+  );
+  assert.ok(greenBorder, "expected End button border to be green when out of plays");
+});
+
+test("render: bank targeting draws preview in bank stack", async () => {
+  const rec = makeRecorder();
+  const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
+
+  const s = ctx.PD.newGame({ seedU32: 1 });
+  const moneyUid = ctx.PD.takeUid(s, "money_1");
+  assert.ok(moneyUid, "expected money_1 uid");
+  // Remove uid from any zone it might already be in.
+  s.deck = s.deck.filter((u) => u !== moneyUid);
+  s.discard = s.discard.filter((u) => u !== moneyUid);
+  for (let p = 0; p < 2; p++) {
+    s.players[p].hand = s.players[p].hand.filter((u) => u !== moneyUid);
+    s.players[p].bank = s.players[p].bank.filter((u) => u !== moneyUid);
+    for (const set of (s.players[p].sets || [])) {
+      if (!set) continue;
+      if (set.props) set.props = set.props.filter(([u]) => u !== moneyUid);
+      if (set.houseUid === moneyUid) set.houseUid = 0;
+    }
+  }
+  s.players[0].hand = [moneyUid];
+  s.players[0].bank = [];
+  s.players[0].sets = [];
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const view = newView(ctx);
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = 0;
+
+  // Enter bank targeting via hold-A grab.
+  ctx.PD.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
+  assert.equal(view.mode, "targeting");
+  assert.equal(view.targeting.kind, "bank");
+
+  drawFrame(ctx, s, view);
+
+  const L = ctx.PD.config.render.layout;
+  const bankRightX = L.screenW - L.rowPadX - L.faceW; // 219
+  const yFace = L.rowY[ctx.PD.render.ROW_P_HAND] + L.faceInsetY; // 110
+
+  const previewBorder = rec.calls.find(
+    (c) => c.kind === "rect" && c.args[0] === bankRightX && c.args[1] === yFace && c.args[2] === L.faceW && c.args[3] === L.faceH
+  );
+  assert.ok(previewBorder, `expected bank preview border rect at (${bankRightX},${yFace})`);
+});
+
+test("render: targeting draws ghost outlines and preview overlay", async () => {
+  const rec = makeRecorder();
+  const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
+
+  const s = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
+  const view = newView(ctx);
+
+  // Select first card in player hand and enter targeting (hold-A grab).
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = 0;
+  ctx.PD.ui.step(s, view, { nav: {}, a: { grabStart: true } });
+  assert.equal(view.mode, "targeting");
+
+  drawFrame(ctx, s, view);
+
+  const L = ctx.PD.config.render.layout;
+  const cam = view.camX[ctx.PD.render.ROW_P_TABLE] ?? 0;
+  const yFace = L.rowY[ctx.PD.render.ROW_P_TABLE] + L.faceInsetY; // 82 + 1
+
+  // Scenario has 1 orange set at x=padX=4. Preview placement onto that set is at x=4+stride=12.
+  const xPreview = (L.rowPadX + L.stackStrideX) - cam; // 4 + 8 = 12
+  const previewBorder = rec.calls.find(
+    (c) => c.kind === "rect" && c.args[0] === xPreview && c.args[1] === yFace && c.args[2] === L.faceW && c.args[3] === L.faceH
+  );
+  assert.ok(previewBorder, `expected preview card border rect at (${xPreview},${yFace})`);
+
+  // The other destination is New Set at x=4 + faceW(17) + gap(2) = 23.
+  const xGhost = (L.rowPadX + L.faceW + L.stackGapX) - cam;
+  const ghostGreen = rec.calls.find(
+    (c) => c.kind === "rectb" && c.args[0] === xGhost && c.args[1] === yFace && c.args[2] === L.faceW && c.args[3] === L.faceH && c.args[4] === ctx.PD.Pal.Green
+  );
+  assert.ok(ghostGreen, `expected green ghost outline rectb at (${xGhost},${yFace})`);
+});
+
+test("render: plays indicator draws 3 pips (green remaining, red used)", async () => {
+  const rec = makeRecorder();
+  const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
+
+  const s = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
+  const view = newView(ctx);
+
+  // Force a known value.
+  s.playsLeft = 2; // => 1 used (red), 2 remaining (green)
+
+  drawFrame(ctx, s, view);
+
+  const L = ctx.PD.config.render.layout;
+  const x0 = L.hudLineX;
+  const y0 = L.hudLineY;
+
+  const pipPrints = rec.calls.filter(
+    (c) => c.kind === "print" && c.args[0] === "o" && c.args[2] === y0
+  );
+  const byX = new Map(pipPrints.map((c) => [c.args[1], c]));
+  const p0 = byX.get(x0);
+  const p1 = byX.get(x0 + 6);
+  const p2 = byX.get(x0 + 12);
+  assert.ok(p0 && p1 && p2, "expected 3 pip prints at hudLineX + 0/6/12");
+
+  assert.equal(p0.args[3], ctx.PD.Pal.Red, "expected first pip red (used)");
+  assert.equal(p1.args[3], ctx.PD.Pal.Green, "expected second pip green (remaining)");
+  assert.equal(p2.args[3], ctx.PD.Pal.Green, "expected third pip green (remaining)");
+});
+
+test("render: feedback message draws a screen-top toast with background, border, and red X", async () => {
+  const rec = makeRecorder();
+  const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
+
+  const s = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
+  const view = newView(ctx);
+  view.feedback.msg = "No actions";
+  view.feedback.msgFrames = 10;
+
+  drawFrame(ctx, s, view);
+
+  // Toast is at y=2 with a black rect background and a border rectb.
+  const bg = rec.calls.find((c) => c.kind === "rect" && c.args[1] === 2 && c.args[4] === ctx.PD.Pal.Black);
+  assert.ok(bg, "expected toast black background rect at y=2");
+
+  const border = rec.calls.find((c) => c.kind === "rectb" && c.args[1] === 2);
+  assert.ok(border, "expected toast border rectb at y=2");
+
+  const redX = rec.calls.find((c) => c.kind === "print" && c.args[0] === "X" && c.args[3] === ctx.PD.Pal.Red);
+  assert.ok(redX, "expected red X print in toast");
+
+  const msg = rec.calls.find((c) => c.kind === "print" && c.args[0] === "No actions");
+  assert.ok(msg, "expected toast message print");
 });
 
