@@ -2,13 +2,19 @@
 
 This document captures the **shared MVP1 spec** and a **piece-by-piece implementation plan** for building Property Deal (Monopoly Deal–inspired) on **TIC-80 JS**.
 
+Documentation convention (for future phases):
+- `docs/phaseXX.md` should record **everything implemented** in that phase (detailed).
+- `docs/plan.md` should include **minimal Phase summary bullets** (scan-friendly; link to the phase doc).
+- Avoid retroactively rewriting older phase docs; capture deltas in the current/new phase doc instead.
+
 ## Current progress
 
 - **Phase 00 ✅**: build pipeline + committed `game.js` artifact + minimal boot cart + `node --test` scaffold. See `docs/phase00.md`.
 - **Phase 01 ✅**: deterministic RNG (xorshift32) + shuffle + tests + `saveid` metadata injection. See `docs/phase01.md`.
 - **Phase 02 ✅**: rules engine + command API + scenarios + debug screen + tests. See `docs/phase02.md`.
 - **Phase 03 ✅**: rendering baseline (5-row layout), navigation + camera, mini-card templates, rent special rendering, and draw-call render tests. See `docs/phase03.md`.
-- **Phase 03b ✅**: center-panel “big preview” + deck + discard rendering. See `docs/phase03b.md`.
+- **Phase 03b ✅**: center-panel “big preview” + card backs + deck + discard rendering. See `docs/phase03b.md`.
+- **Phase 03c ✅**: bridge rules polish (empty-hand draw-5, end-turn hand cap) + debug stepping realism. See `docs/phase03c.md`.
 
 ## Goals + Constraints
 
@@ -51,9 +57,9 @@ TIC-80 draw APIs and our rules engine work best with integers, but we avoid turn
 
 ### Turn structure
 
-- Start of turn: **draw 2**
+- Start of turn: **draw 2** (or **draw 5** if you start the turn with **0 cards in hand**)
 - Main phase: **play up to 3 cards**
-- End phase: **discard down to 7**
+- End phase: **discard down to 7** (you cannot end the turn while your hand is **>7**)
 
 ### MVP1 card pool (35-card deck)
 
@@ -293,6 +299,16 @@ Definition of done:
 - `npm test` passes, including updated render draw-call tests
 - Center preview updates as you navigate selection in Render mode
 
+### Phase 03c ✅ — Bridge: turn draw polish + end-turn hand cap
+
+This is a small “in-between” phase to keep the debug/render harness faithful to core rules before we build the full Phase 04+ UI:
+
+- Start-of-turn draw rule: **draw 5 instead of 2 when starting with an empty hand**
+- End-turn legality: **cannot end turn while hand > 7**
+- Debug stepping: step a random legal move (prefers adding properties to **existing** sets; end turns occur naturally when allowed)
+- Render polish: opponent Wilds keep assigned color **owner-facing** (orientation fix + regression test)
+- Debug HUD polish: DebugText shows Wild assignment and bank **count + total value**
+
 ### Phase 04 — UI state machine (controller UX)
 
 - Implement selection model by zone:
@@ -308,12 +324,14 @@ Definition of done:
   - payment selection UI
   - received property placement UI
   - wild replace-window prompt
+  - end turn early
 
 ### Phase 05 — Turn loop + discard down to 7
 
-- Implement start-of-turn draw 2
+- Implement full turn loop framing around the existing start-of-turn draw rule (draw 2, or draw 5 if hand is empty)
 - Track playsRemaining (3)
 - Implement discard-down-to-7 at end of turn (selection UI)
+  - If the player attempts to end turn while hand > 7, Phase 05 UI should enter a forced discard-down-to-7 mode before passing the turn.
 - Reshuffle discard into deck when needed
 
 ### Phase 06 — Debt/payment + “faux-turn placement”
@@ -354,7 +372,7 @@ Definition of done:
   - `10_debug.js` (debug harness)
   - `11_render.js` (renderer; namespaced under `PD.render.*`)
   - `99_main.js` (single `TIC()` entry point)
-+
+
 Module organization is enforced via namespaces (e.g. `PD.render`, future `PD.ui`) rather than subfolders, because the build/test tooling currently only includes top-level `src/*.js`.
 - `scripts/build.mjs` (Node; generates `game.js`)
 - `game.js` (generated, paste into TIC-80)

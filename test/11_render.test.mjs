@@ -377,6 +377,46 @@ test("render: wild in set uses assigned color for visual top", async () => {
   assert.equal(bar.args[4], ctx.PD.Pal.DarkGrey, "expected assigned black to render as top-half bar color");
 });
 
+test("render: opponent wild in set keeps assigned color on owner-facing half", async () => {
+  const rec = makeRecorder();
+  const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
+
+  const s = ctx.PD.newGame({ scenarioId: "placeWild", seedU32: 1 });
+  const wildUid = s.deck.find((uid) => ctx.PD.defByUid(s, uid).id === "wild_cb");
+  assert.ok(wildUid, "expected wild_cb uid in deck");
+  s.deck = s.deck.filter((uid) => uid !== wildUid);
+
+  const set = ctx.PD.newEmptySet();
+  set.props.push([wildUid, ctx.PD.Color.Black]); // assign black
+  s.players[1].sets = [set];
+  s.players[1].hand = [];
+  s.players[0].sets = [];
+  s.players[0].hand = [];
+  ctx.PD.debug.state = s;
+
+  ctx.PD.render.ui.row = ctx.PD.render.ROW_OP_TABLE;
+  ctx.PD.render.ui.i = 0;
+  ctx.PD.render.drawFrame(ctx.PD.debug);
+
+  const L = ctx.PD.config.render.layout;
+  const S = ctx.PD.config.render.style;
+  const cam = ctx.PD.render.ui.camX[ctx.PD.render.ROW_OP_TABLE] ?? 0;
+  const xFace = (L.screenW - L.rowPadX - L.faceW) - cam;
+  const yFace = L.rowY[ctx.PD.render.ROW_OP_TABLE] + L.faceInsetY;
+
+  // Owner-facing half for opponent is the screen-bottom half (card is drawn flip180=true).
+  // propBar local rect is (S.propBarX,S.propBarY,S.propBarW,S.propBarH); with flip180=true:
+  // x = xFace + (faceW - (x+w)), y = yFace + (faceH - (y+h))
+  const xBar = xFace + (L.faceW - (S.propBarX + S.propBarW));
+  const yBar = yFace + (L.faceH - (S.propBarY + S.propBarH));
+
+  const bar = rec.calls.find(
+    (c) => c.kind === "rect" && c.args[0] === xBar && c.args[1] === yBar && c.args[2] === S.propBarW && c.args[3] === S.propBarH
+  );
+  assert.ok(bar, "expected to find owner-facing property color bar rect for opponent wild");
+  assert.equal(bar.args[4], ctx.PD.Pal.DarkGrey, "expected assigned black to render on owner-facing half for opponent wild");
+});
+
 test("render: no scroll when content fits (opponent hand row)", async () => {
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });

@@ -348,14 +348,10 @@ PD.render = PD.render || {};
         var colHalfTrue = c1;
         if (a === c0 || a === c1) {
           var other = (a === c0) ? c1 : c0;
-          // Visual top depends on card flip: when flipped, the local bottom becomes screen top.
-          if (!flip180) {
-            colHalfFalse = a;
-            colHalfTrue = other;
-          } else {
-            colHalfFalse = other;
-            colHalfTrue = a;
-          }
+          // Keep the assigned color on the owner-facing half.
+          // `colHalfFalse` is always drawn with the card's `flip180`, which maps to the owner-facing half.
+          colHalfFalse = a;
+          colHalfTrue = other;
         }
         drawDualPropHalf(xFace, yFace, colHalfFalse, payV, !!flip180);
         drawDualPropHalf(xFace, yFace, colHalfTrue, payV, !flip180);
@@ -1046,6 +1042,15 @@ PD.render = PD.render || {};
     var it = selectedItemFromModels(models);
     if (!it) return ["Sel:(none)", ""];
 
+    function colorName(c) {
+      c = c | 0;
+      if (c === PD.Color.Cyan) return "Cyan";
+      if (c === PD.Color.Magenta) return "Magenta";
+      if (c === PD.Color.Orange) return "Orange";
+      if (c === PD.Color.Black) return "Black";
+      return "c" + c;
+    }
+
     if (it.row === R.ROW_CENTER) {
       if (it.kind === "deck") return ["Sel:Deck", "Cards:" + (debug.state.deck.length | 0)];
       if (it.kind === "discard") return ["Sel:Discard", "Cards:" + (debug.state.discard.length | 0)];
@@ -1056,8 +1061,22 @@ PD.render = PD.render || {};
       var uid = it.uid | 0;
       var def = PD.defByUid(debug.state, uid);
       var defId = def ? def.id : "?";
-      var name = (def && def.name) ? def.name : "";
-      return ["Sel:" + defId + " uid:" + uid, name];
+      var line2 = (def && def.name) ? def.name : "";
+
+      if (def && def.kind === PD.CardKind.Property) {
+        if (PD.isWildDef(def)) {
+          var c0 = def.wildColors[0] | 0;
+          var c1 = def.wildColors[1] | 0;
+          line2 = "Wild:" + colorName(c0) + "/" + colorName(c1);
+          if (it.color != null && (it.color | 0) !== PD.NO_COLOR) {
+            line2 += " As:" + colorName(it.color);
+          }
+        } else {
+          line2 = "Prop:" + colorName(def.propertyColor);
+        }
+      }
+
+      return ["Sel:" + defId + " uid:" + uid, line2];
     }
 
     return ["Sel:" + String(it.kind || "?"), ""];

@@ -42,6 +42,7 @@ PD.applyCommand = function (state, cmd) {
 
   var events = [];
   var p = state.activeP;
+  var handP = state.players[p].hand;
 
   function decPlays() {
     state.playsLeft -= 1;
@@ -165,6 +166,7 @@ PD.applyCommand = function (state, cmd) {
   }
 
   if (cmd.kind === "endTurn") {
+    if ((handP.length | 0) > (PD.HAND_MAX | 0)) throw new Error("hand_over_limit");
     applyEndTurn();
     return { events: events };
   }
@@ -185,13 +187,12 @@ PD.legalMoves = function (state) {
 
   var moves = [];
   var p = state.activeP;
+  var hand = state.players[p].hand;
 
-  // End turn is always allowed (\"play up to 3\").
-  moves.push({ kind: "endTurn" });
+  if ((hand.length | 0) <= (PD.HAND_MAX | 0)) moves.push({ kind: "endTurn" });
 
   if (state.playsLeft <= 0) return moves;
 
-  var hand = state.players[p].hand;
   var sets = state.players[p].sets;
 
   var i;

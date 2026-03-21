@@ -141,9 +141,63 @@ test("endTurn swaps active player, draws 2, resets playsLeft", async () => {
   const res = ctx.PD.applyCommand(state, { kind: "endTurn" });
 
   assert.equal(state.activeP, p1);
-  assert.equal(state.players[p1].hand.length, before + 2);
+  // In this scenario, the incoming player starts with an empty hand, so they draw 5 instead of 2.
+  assert.equal(state.players[p1].hand.length, before + 5);
   assert.equal(state.playsLeft, 3);
   assert.ok(res.events.some((e) => e.kind === "draw"));
+});
+
+test("startTurn draws 2 when the incoming player hand is non-empty", async () => {
+  const ctx = await loadSrcIntoVm();
+  const state = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
+  const p0 = state.activeP;
+  const p1 = p0 ^ 1;
+
+  // Give the incoming player a card so startTurn draws the normal 2.
+  const uid = state.deck.pop();
+  state.players[p1].hand.push(uid);
+  const before = state.players[p1].hand.length;
+
+  ctx.PD.applyCommand(state, { kind: "endTurn" });
+
+  assert.equal(state.activeP, p1);
+  assert.equal(state.players[p1].hand.length, before + 2);
+  assert.equal(state.playsLeft, 3);
+});
+
+test("endTurn is not legal (and throws) when active hand is over 7", async () => {
+  const ctx = await loadSrcIntoVm();
+  const state = ctx.PD.newGame({ seedU32: 1 });
+  const p = state.activeP;
+
+  // Starting player normally has 7 cards; force it to 8 by moving one from deck to hand.
+  state.players[p].hand.push(state.deck.pop());
+  assert.ok(state.players[p].hand.length > 7, "expected active hand > 7");
+
+  const moves = ctx.PD.legalMoves(state);
+  assert.ok(!moves.some((m) => m.kind === "endTurn"), "expected endTurn to be absent when hand > 7");
+
+  assert.throws(() => ctx.PD.applyCommand(state, { kind: "endTurn" }));
+});
+
+test("drawToHand draws partially when the deck is short (no throw)", async () => {
+  const ctx = await loadSrcIntoVm();
+  const state = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
+  const p0 = state.activeP;
+  const p1 = p0 ^ 1;
+
+  // Make the deck very small, but keep uid ownership consistent by moving the rest into discard.
+  while (state.deck.length > 2) state.discard.push(state.deck.shift());
+
+  const before = state.players[p1].hand.length; // 0 in this scenario
+  const res = ctx.PD.applyCommand(state, { kind: "endTurn" });
+
+  assert.equal(state.activeP, p1);
+  assert.equal(state.players[p1].hand.length, before + 2);
+
+  const drawEv = res.events.find((e) => e.kind === "draw");
+  assert.ok(drawEv, "expected draw event");
+  assert.equal(drawEv.uids.length, 2);
 });
 
 test("winCheck scenario: evaluateWin detects winner", async () => {

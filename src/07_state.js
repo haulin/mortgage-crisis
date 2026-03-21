@@ -1,5 +1,6 @@
 PD.NO_COLOR = -1;
 PD.NO_WINNER = -1;
+PD.HAND_MAX = 7;
 
 PD.assertPromptShape = function (prompt) {
   if (prompt == null) return;
@@ -95,7 +96,10 @@ PD.drawToHand = function (state, p, n, events) {
   p = p | 0;
   n = n | 0;
   if (n <= 0) return;
-  if (!state.deck || state.deck.length < n) throw new Error("deck_underflow");
+  if (!state.deck) state.deck = [];
+  var nAvail = state.deck.length | 0;
+  if (nAvail <= 0) return;
+  if (n > nAvail) n = nAvail;
 
   var uids = [];
   var k;
@@ -105,14 +109,16 @@ PD.drawToHand = function (state, p, n, events) {
     uids.push(uid);
   }
 
-  if (events) events.push({ kind: "draw", p: p, uids: uids });
+  if (events && (uids.length | 0) > 0) events.push({ kind: "draw", p: p, uids: uids });
 };
 
 PD.startTurn = function (state, events) {
   state.playsLeft = 3;
   PD.clearPrompt(state);
-  // Draw 2 at start of turn.
-  PD.drawToHand(state, state.activeP, 2, events);
+  var p = state.activeP | 0;
+  var nDraw = 2;
+  if ((state.players[p].hand.length | 0) === 0) nDraw = 5;
+  PD.drawToHand(state, p, nDraw, events);
   if (events) events.push({ kind: "plays", p: state.activeP, playsLeft: state.playsLeft });
 };
 

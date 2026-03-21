@@ -11,7 +11,7 @@ PD.debug.scenarios = ["default"].concat(PD.SCENARIO_IDS);
 PD.debugReset = function () {
   var d = PD.debug;
   var seedU32 = PD.computeSeed();
-  var scenarioId = d.scenarios[d.scenarioI | 0];
+  var scenarioId = d.scenarios[d.scenarioI];
   if (scenarioId === "default") {
     d.state = PD.newGame({ seedU32: seedU32 >>> 0 });
   } else {
@@ -23,24 +23,30 @@ PD.debugReset = function () {
 
 PD.debugNextScenario = function () {
   var d = PD.debug;
-  d.scenarioI = ((d.scenarioI | 0) + 1) % (d.scenarios.length | 0);
+  d.scenarioI = (d.scenarioI + 1) % d.scenarios.length;
   PD.debugReset();
 };
 
 PD.debugPickMove = function (moves) {
   var d = PD.debug;
   var state = d.state;
-  if (!moves || (moves.length | 0) === 0) return null;
+  if (!moves || moves.length === 0) return null;
 
-  // Prefer doing something other than endTurn when possible.
-  var nonEnd = [];
+  // Heuristic for dev stepping: prefer adding properties to existing sets when possible.
+  // This keeps the harness closer to typical play without changing actual legality/rules.
+  var propToExisting = [];
   var i;
-  for (i = 0; i < (moves.length | 0); i++) {
-    if (moves[i].kind !== "endTurn") nonEnd.push(moves[i]);
+  for (i = 0; i < moves.length; i++) {
+    var m = moves[i];
+    if (m && m.kind === "playProp" && m.dest && m.dest.setI != null) propToExisting.push(m);
   }
-  var pickFrom = (nonEnd.length | 0) > 0 ? nonEnd : moves;
-  var idx = PD.rngNextInt(state, pickFrom.length | 0) | 0;
-  return pickFrom[idx];
+  if (propToExisting.length > 0) {
+    var j = PD.rngNextInt(state, propToExisting.length);
+    return propToExisting[j];
+  }
+
+  var idx = PD.rngNextInt(state, moves.length);
+  return moves[idx];
 };
 
 PD.debugStep = function () {
@@ -57,10 +63,10 @@ PD.debugStep = function () {
 };
 
 PD.debugEventsToLine = function (events) {
-  if (!events || (events.length | 0) === 0) return "(none)";
+  if (!events || events.length === 0) return "(none)";
   var parts = [];
   var i;
-  for (i = 0; i < (events.length | 0); i++) {
+  for (i = 0; i < events.length; i++) {
     parts.push(events[i].kind);
   }
   return parts.join(",");
@@ -79,13 +85,26 @@ PD.debugTick = function () {
 
   var s = d.state;
 
+  function bankValueTotal(state, p) {
+    if (!state || !state.players || !state.players[p]) return 0;
+    var bank = state.players[p].bank;
+    var sum = 0;
+    var i;
+    for (i = 0; i < bank.length; i++) {
+      var uid = bank[i];
+      var def = PD.defByUid(state, uid);
+      if (def && def.bankValue) sum += def.bankValue;
+    }
+    return sum;
+  }
+
   cls(0);
   var x = 6;
   var y = 6;
   var step = 7;
 
   print("Phase 02 Debug", x, y, 12); y += step;
-  print("Scenario: " + d.scenarios[d.scenarioI | 0], x, y, 12); y += step;
+  print("Scenario: " + d.scenarios[d.scenarioI], x, y, 12); y += step;
   print("Seed: " + (PD.computeSeed() >>> 0), x, y, 12); y += step;
 
   if (PD.render && PD.render.debug && typeof PD.render.debug.selectedLines === "function") {
@@ -96,17 +115,24 @@ PD.debugTick = function () {
     }
   }
 
-  print("Active: P" + (s.activeP | 0) + "  Plays: " + (s.playsLeft | 0), x, y, 12); y += step;
-  var w = (s.winnerP | 0);
+  print("Active: P" + s.activeP + "  Plays: " + s.playsLeft, x, y, 12); y += step;
+  var w = s.winnerP;
   if (w !== PD.NO_WINNER) { print("Winner: P" + w, x, y, 11); y += step; }
 
-  print("Deck: " + (s.deck.length | 0) + "  Discard: " + (s.discard.length | 0), x, y, 12); y += step;
-  print("Hand P0/P1: " + (s.players[0].hand.length | 0) + "/" + (s.players[1].hand.length | 0), x, y, 12); y += step;
-  print("Bank P0/P1: " + (s.players[0].bank.length | 0) + "/" + (s.players[1].bank.length | 0), x, y, 12); y += step;
-  print("Sets P0/P1: " + (s.players[0].sets.length | 0) + "/" + (s.players[1].sets.length | 0), x, y, 12); y += step;
+  print("Deck: " + s.deck.length + "  Discard: " + s.discard.length, x, y, 12); y += step;
+  print("Hand P0/P1: " + s.players[0].hand.length + "/" + s.players[1].hand.length, x, y, 12); y += step;
+  print(
+    "Bank P0/P1: " +
+    s.players[0].bank.length + "($" + bankValueTotal(s, 0) + ")/" +
+    s.players[1].bank.length + "($" + bankValueTotal(s, 1) + ")",
+    x,
+    y,
+    12
+  ); y += step;
+  print("Sets P0/P1: " + s.players[0].sets.length + "/" + s.players[1].sets.length, x, y, 12); y += step;
 
   var moves = PD.legalMoves(s);
-  print("Legal moves: " + (moves.length | 0), x, y, 12); y += step;
+  print("Legal moves: " + moves.length, x, y, 12); y += step;
   print("Last cmd: " + (d.lastCmd || "(none)"), x, y, 12); y += step;
   print("Events: " + PD.debugEventsToLine(d.lastEvents), x, y, 12);
 
@@ -116,9 +142,9 @@ PD.debugTick = function () {
 PD.mainTick = function () {
   // Modes: 0=DebugText, 1=Render
   if (PD._mainMode == null) PD._mainMode = 0;
-  if (typeof btnp === "function" && btnp(7)) PD._mainMode = ((PD._mainMode | 0) ^ 1) | 0;
+  if (typeof btnp === "function" && btnp(7)) PD._mainMode = PD._mainMode ? 0 : 1;
 
-  if ((PD._mainMode | 0) === 0) {
+  if (PD._mainMode === 0) {
     PD.debugTick();
     return;
   }

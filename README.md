@@ -51,6 +51,7 @@ npm test
   - `Y`: toggle DebugText ↔ Render
   - In Render mode: `A` steps a random legal move, `B` switches scenario, `X` resets scenario
   - This is intentionally not the final UX (Phase 04 introduces A/B confirm/back menus and real prompts)
+  - DebugText includes extra dev hints (e.g. wild assigned color, bank count + total value)
 
 - **Run in TIC-80**:
   - Open a JS cart in TIC-80
