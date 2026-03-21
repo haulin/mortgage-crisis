@@ -6,13 +6,14 @@ This document captures the **shared MVP1 spec** and a **piece-by-piece implement
 
 - **Phase 00 ✅**: build pipeline + committed `game.js` artifact + minimal boot cart + `node --test` scaffold. See `docs/phase00.md`.
 - **Phase 01 ✅**: deterministic RNG (xorshift32) + shuffle + tests + `saveid` metadata injection. See `docs/phase01.md`.
-- **Phase 02 ✅**: rules engine + command API + scenarios + tests. See `docs/phase02.md`.
+- **Phase 02 ✅**: rules engine + command API + scenarios + debug screen + tests. See `docs/phase02.md`.
+- **Phase 03 ✅**: rendering baseline (5-row layout), navigation + camera, mini-card templates, rent special rendering, and draw-call render tests. See `docs/phase03.md`.
 
 ## Goals + Constraints
 
 - **Platform**: TIC-80 fantasy console, **JavaScript** (duktape)
-- **Cartridge**: single pasted file output **`game.js`**
-- **Constraints**: no DOM/Node/browser APIs, no external libs, ~64KB code limit
+- **Cartridge**: single pasted file output `**game.js`**
+- **Constraints**: no DOM/Node/browser APIs, no external libs, 8 banks of 64KB code limit
 - **Target**: **1v1 player vs AI**, controller-first (Google TV couch play)
 - **UI space**: 240×136 usable area
 - **Sprites**: `print()` text cannot be rotated 180°; use **sprites** for card values/rent/icons (rotate sprites with `spr(..., rotate=2)` for opponent). See `docs/sprites.md`.
@@ -22,6 +23,17 @@ This document captures the **shared MVP1 spec** and a **piece-by-piece implement
 - **Namespaces / enums**: PascalCase objects (e.g. `PD.ActionKind`, `PD.CardKind`)
 - **Scalar constants**: ALL_CAPS (e.g. `PD.HOUSE_RENT_BONUS`)
 - **Functions**: camelCase (e.g. `PD.applyCommand`, `PD.legalMoves`)
+
+### Numeric coercion policy (`|0`) (important)
+
+TIC-80 draw APIs and our rules engine work best with integers, but we avoid turning the whole codebase into bitwise-noise.
+
+- **Use `|0` (or `>>>0`) where it matters**:
+  - **RNG / rules math** (determinism + 32-bit behavior)
+  - **TIC-80 API boundary** (coerce just before calling `rect`, `spr`, `print`, etc.)
+- **Avoid `|0` everywhere else**:
+  - palette indices, loop counters, array lengths, and config values should stay as normal numbers
+  - keep coercion localized (e.g. wrapper helpers like `rectSafe(...)` / `sprSafe(...)`), so renderer logic remains readable
 
 ## Locked MVP1 Rules (Source of Truth)
 
@@ -124,10 +136,10 @@ Placement UX for received properties:
 
 Concrete rent tables (Option A):
 
-- **Cyan(2)**: \[1, 3]
-- **Magenta(3)**: \[1, 2, 4]
-- **Orange(3)**: \[2, 3, 5]
-- **Black(4)**: \[1, 2, 3, 6]
+- **Cyan(2)**: 1, 3]
+- **Magenta(3)**: 1, 2, 4]
+- **Orange(3)**: 2, 3, 5]
+- **Black(4)**: 1, 2, 3, 6]
 - **House bonus**: **+3** (only when charging rent from a completed set that has a House)
 
 ### Property money values (for debt payment)
@@ -262,6 +274,13 @@ Command examples (exact naming can vary, but shape should match):
   - row scroll camera
   - center panel: preview + prompt text + bank totals + deck/discard counts
 - Keep drawing deterministic: highlight drawn last; stacks draw top last.
+
+Status:
+
+- Phase 03 baseline renderer is **complete** (see `docs/phase03.md` for exact shipped behavior and constraints).
+- **Phase 03b (optional polish)** candidates before Phase 04:
+  - center-panel “big card preview” + short description text (incl. opponent hand reveal)
+  - prompt text scaffolding in center panel (Phase 04 will need this anyway)
 
 ### Phase 04 — UI state machine (controller UX)
 

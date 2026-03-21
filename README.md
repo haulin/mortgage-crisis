@@ -36,6 +36,11 @@ npm run build
 npm test
 ```
 
+### Testing workflow notes (practical)
+
+- **Regression-first**: when fixing a bug (especially a visual/render bug), add at least one **assertion** or a small **new test** so we don’t re-break it later.
+- **Renderer tests**: Phase 03 uses “draw-call recording” tests (stub TIC-80 draw APIs like `rect`, `spr`, etc. and assert call ordering/positions). See `test/11_render.test.mjs`.
+
 - **Run in TIC-80**:
   - Open a JS cart in TIC-80
   - Copy/paste the contents of `game.js` into the TIC-80 code editor

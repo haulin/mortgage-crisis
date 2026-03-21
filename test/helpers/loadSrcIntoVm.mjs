@@ -28,6 +28,12 @@ export async function loadSrcIntoVm({ extraGlobals } = {}) {
     // TIC-80 stubs used by current boot code (and safe defaults for most tests).
     cls: () => {},
     print: () => {},
+    rect: () => {},
+    rectb: () => {},
+    line: () => {},
+    spr: () => {},
+    btn: () => 0,
+    btnp: () => 0,
 
     // Useful for debugging tests.
     console,

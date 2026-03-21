@@ -111,19 +111,31 @@ PD.debugTick = function () {
   print("Last cmd: " + (d.lastCmd || "(none)"), 6, 112, 12);
   print("Events: " + PD.debugEventsToLine(d.lastEvents), 6, 120, 12);
 
-  print("A:Step  B:Next  X:Reset  Y:Boot", 6, 128, 13, true, 1, false);
+  print("A:Step  B:Next  X:Reset  Y:Mode", 6, 128, 13, true, 1, false);
 };
 
 PD.mainTick = function () {
-  // Default: debug screen (so Phase 02 is visible).
+  // Modes: 0=Boot, 1=Phase02 DebugText, 2=Phase03 Render
   if (PD._mainMode == null) PD._mainMode = 1;
-  if (typeof btnp === "function" && btnp(7)) PD._mainMode = PD._mainMode ? 0 : 1;
+  if (typeof btnp === "function" && btnp(7)) PD._mainMode = (((PD._mainMode | 0) + 1) % 3) | 0;
 
-  if (PD._mainMode) {
-    PD.debugTick();
-  } else {
+  if ((PD._mainMode | 0) === 0) {
     PD.bootTick();
-    print("Press Y for Phase 02 Debug", 6, 40, 12);
+    print("Press Y for Debug/Render", 6, 40, 12);
+    return;
+  }
+
+  if ((PD._mainMode | 0) === 1) {
+    PD.debugTick();
+    return;
+  }
+
+  // Render mode
+  if (!PD.debug || !PD.debug.state) PD.debugReset();
+  if (PD.render && typeof PD.render.tick === "function") PD.render.tick(PD.debug);
+  else {
+    cls(0);
+    print("Render not loaded", 6, 6, 12);
   }
 };
 
