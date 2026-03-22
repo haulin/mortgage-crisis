@@ -18,6 +18,7 @@ Documentation convention (for future phases):
 - **Phase 03c ✅**: bridge rules polish (empty-hand draw-5, end-turn hand cap) + debug stepping realism. See `docs/phase03c.md`.
 - **Phase 04 ✅**: UI-owned controller UX (menus/targeting/inspect) + injected controls; renderer is display-only (bounded to existing commands). See `docs/phase04.md`.
 - **Phase 05 ✅**: Inspect overlay becomes a real panel (config-driven, small-font desc) + improved card copy + rule-note gating + pile count digit offset. See `docs/phase05.md`.
+- **Phase 05b ✅**: turn loop framing + discard-down-to-7 prompt + deterministic reshuffle + toast/prompt foundation polish. See `docs/phase05b.md`.
 
 ## Goals + Constraints
 
@@ -340,18 +341,18 @@ This is a small “in-between” phase to keep the debug/render harness faithful
 - Upgrade per-card `def.desc` copy (make descriptions real/useful, not boilerplate)
 - Shift Deck/Discard pile count digits **+1,+1** so they visually “stick out” from the top card (not read as part of the card face)
 
-### Phase 05b — Turn loop + discard down to 7
+### Phase 05b **✅** — Turn loop + discard down to 7
 
 - Implement full turn loop framing around the existing start-of-turn draw rule (draw 2, or draw 5 if hand is empty)
 - Formalize “3 plays per turn” UX around `state.playsLeft` (already exists in state/rules; Phase 05b ensures the *full loop* uses it consistently)
 - Implement discard-down-to-7 at end of turn (selection UI)
-  - If the player attempts to end turn while hand > 7, Phase 05b UI should enter a forced discard-down-to-7 mode before passing the turn.
+  - If the player attempts to end turn while hand > 7, Phase 05b UI enters a discard-down-to-7 prompt before passing the turn
+  - `B` cancels **only before the first discard** in that prompt instance (after any discard, it’s forced)
 - Reshuffle discard into deck when needed (required for any future mid-turn draw/reveal effects too)
 
 Quality-of-life (still UX-level; no new rules commands):
 
 - Targeting/menu shortcut: if a menu action (e.g. Place/Build) yields **exactly 1** legal destination, consider skipping the extra confirm step (or at minimum show a more specific label like “Place → New set”)
-- Replace dev-only `Y:Mode` hint/toggle with a proper dev entrypoint (e.g. hidden debug menu) or remove for non-dev builds
 - Add an easier cancel path for hold‑A targeting (avoid requiring `B` while holding `A`):
   - option A: treat the **source** as a valid “destination” (drop back onto source = cancel)
 
@@ -393,6 +394,7 @@ Content expansion readiness (post‑MVP):
 
 ### Phase 10 — Scenarios + dev boot
 
+- Replace dev-only `Y:Mode` hint/toggle with a proper dev entrypoint (e.g. hidden debug menu) or remove for non-dev builds
 - Implement scenario list and boot selection (e.g., hidden title-screen menu)
 - (Optional later) implement seed display and seed override in dev
 - Add a scroll-stress scenario to verify row horizontal scrolling/cameras (e.g. 12 cards in hand + lots of money cards in bank + many property stacks)

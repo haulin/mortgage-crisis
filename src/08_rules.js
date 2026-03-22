@@ -19,7 +19,6 @@ PD.evaluateWin = function (state) {
 
 PD.assertCanApply = function (state) {
   if (state.winnerP !== PD.NO_WINNER) throw new Error("game_over");
-  if (state.prompt) throw new Error("prompt_active");
 };
 
 PD.locEqZone = function (loc, zone) {
@@ -43,6 +42,7 @@ PD.applyCommand = function (state, cmd) {
   var events = [];
   var p = state.activeP;
   var handP = state.players[p].hand;
+  var prompt = state.prompt;
 
   function decPlays() {
     state.playsLeft -= 1;
@@ -53,6 +53,56 @@ PD.applyCommand = function (state, cmd) {
     state.activeP = PD.otherPlayer(state.activeP);
     events.push({ kind: "turn", activeP: state.activeP });
     PD.startTurn(state, events);
+  }
+
+  function applyDiscard(cmdDiscard) {
+    var card = cmdDiscard.card;
+    if (!card || !card.loc) throw new Error("bad_cmd");
+    if (!PD.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if ((card.loc.p | 0) !== (p | 0)) throw new Error("not_your_card");
+
+    var uid = card.uid | 0;
+    PD.removeHandAtLoc(state, card);
+    state.discard.push(uid);
+
+    events.push({
+      kind: "move",
+      uid: uid,
+      from: card.loc,
+      to: { zone: "discard", i: state.discard.length - 1 }
+    });
+
+    if (state.prompt && state.prompt.kind === "discardDown") {
+      var nd = Number(state.prompt.nDiscarded || 0);
+      if (!isFinite(nd)) nd = 0;
+      state.prompt.nDiscarded = Math.floor(nd + 1);
+    }
+
+    // End-turn discard-down prompt: once <= HAND_MAX, finish ending the turn.
+    if ((handP.length | 0) <= (PD.HAND_MAX | 0)) {
+      PD.clearPrompt(state);
+      applyEndTurn();
+    }
+  }
+
+  // Prompt gating: only allow prompt-appropriate commands.
+  if (prompt) {
+    if ((prompt.p | 0) !== (p | 0)) throw new Error("prompt_wrong_player");
+    if (prompt.kind === "discardDown") {
+      if (cmd.kind === "discard") {
+        applyDiscard(cmd);
+        return { events: events };
+      }
+      if (cmd.kind === "cancelPrompt") {
+        var nDiscarded = Number(prompt.nDiscarded || 0);
+        if (!isFinite(nDiscarded)) nDiscarded = 0;
+        if (nDiscarded > 0) throw new Error("prompt_forced");
+        PD.clearPrompt(state);
+        return { events: events };
+      }
+      throw new Error("prompt_active");
+    }
+    throw new Error("prompt_active");
   }
 
   function applyBank(cmdBank) {
@@ -166,7 +216,11 @@ PD.applyCommand = function (state, cmd) {
   }
 
   if (cmd.kind === "endTurn") {
-    if ((handP.length | 0) > (PD.HAND_MAX | 0)) throw new Error("hand_over_limit");
+    if ((handP.length | 0) > (PD.HAND_MAX | 0)) {
+      PD.setPrompt(state, { kind: "discardDown", p: p });
+      if (state.prompt) state.prompt.nDiscarded = 0;
+      return { events: events };
+    }
     applyEndTurn();
     return { events: events };
   }
@@ -183,13 +237,32 @@ PD.applyCommand = function (state, cmd) {
 
 PD.legalMoves = function (state) {
   if (state.winnerP !== PD.NO_WINNER) return [];
-  if (state.prompt) return [];
+  if (state.prompt) {
+    var pr = state.prompt;
+    if (pr.kind === "discardDown") {
+      var pp = pr.p | 0;
+      if ((state.activeP | 0) !== (pp | 0)) return [];
+      var movesP = [];
+      var nDiscarded = Number(pr.nDiscarded || 0);
+      if (!isFinite(nDiscarded)) nDiscarded = 0;
+      if (nDiscarded <= 0) movesP.push({ kind: "cancelPrompt" });
+      var handP = state.players[pp].hand;
+      var iP;
+      for (iP = 0; iP < handP.length; iP++) {
+        var uidP = handP[iP];
+        movesP.push({ kind: "discard", card: { uid: uidP, loc: { p: pp, zone: "hand", i: iP } } });
+      }
+      return movesP;
+    }
+    return [];
+  }
 
   var moves = [];
   var p = state.activeP;
   var hand = state.players[p].hand;
 
-  if ((hand.length | 0) <= (PD.HAND_MAX | 0)) moves.push({ kind: "endTurn" });
+  // End turn is always available; if hand > HAND_MAX it enters a discard-down prompt.
+  moves.push({ kind: "endTurn" });
 
   if (state.playsLeft <= 0) return moves;
 

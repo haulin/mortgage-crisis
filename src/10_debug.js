@@ -5,7 +5,10 @@ PD.debug = PD.debug || {
   view: null,
   ctrl: null,
   lastCmd: "",
-  lastEvents: []
+  lastEvents: [],
+  lastRaw: null,
+  lastUiActions: null,
+  lastUiIntentSummary: ""
 };
 
 PD.debug.scenarios = ["default"].concat(PD.SCENARIO_IDS);
@@ -23,6 +26,9 @@ PD.debugReset = function () {
   d.ctrl = (PD.controls && typeof PD.controls.newState === "function") ? PD.controls.newState() : null;
   d.lastCmd = "";
   d.lastEvents = [];
+  d.lastRaw = null;
+  d.lastUiActions = null;
+  d.lastUiIntentSummary = "";
 };
 
 PD.debugNextScenario = function () {
@@ -89,6 +95,14 @@ PD.debugTick = function () {
 
   var s = d.state;
 
+  function printSmall(msg, x, y, col) {
+    if (col == null) col = 12;
+    // smallfont=true and fixed=true keeps layout predictable.
+    print(String(msg || ""), x, y, col, true, 1, true);
+  }
+
+  function bool01(v) { return v ? 1 : 0; }
+
   function bankValueTotal(state, p) {
     if (!state || !state.players || !state.players[p]) return 0;
     var bank = state.players[p].bank;
@@ -105,42 +119,106 @@ PD.debugTick = function () {
   cls(0);
   var x = 6;
   var y = 6;
-  var step = 7;
+  var step = 6;
+  var xR = 120;
 
-  print("Phase 02 Debug", x, y, 12); y += step;
-  print("Scenario: " + d.scenarios[d.scenarioI], x, y, 12); y += step;
-  print("Seed: " + (PD.computeSeed() >>> 0), x, y, 12); y += step;
+  printSmall("Phase 02 Debug", x, y, 12); y += step;
+  printSmall("Scenario:" + d.scenarios[d.scenarioI], x, y, 12); y += step;
+  printSmall("Seed:" + (PD.computeSeed() >>> 0), x, y, 12); y += step;
 
   if (PD.render && PD.render.debug && typeof PD.render.debug.selectedLines === "function") {
     var sel = PD.render.debug.selectedLines(d);
     if (sel && sel.length) {
-      print(sel[0] || "", x, y, 12); y += step;
-      if (sel[1]) { print(sel[1], x, y, 12); y += step; }
+      printSmall(sel[0] || "", x, y, 12); y += step;
+      if (sel[1]) { printSmall(sel[1], x, y, 12); y += step; }
     }
   }
 
-  print("Active: P" + s.activeP + "  Plays: " + s.playsLeft, x, y, 12); y += step;
+  printSmall("Active:P" + s.activeP + " Plays:" + s.playsLeft, x, y, 12); y += step;
   var w = s.winnerP;
-  if (w !== PD.NO_WINNER) { print("Winner: P" + w, x, y, 11); y += step; }
+  if (w !== PD.NO_WINNER) { printSmall("Winner:P" + w, x, y, 11); y += step; }
 
-  print("Deck: " + s.deck.length + "  Discard: " + s.discard.length, x, y, 12); y += step;
-  print("Hand P0/P1: " + s.players[0].hand.length + "/" + s.players[1].hand.length, x, y, 12); y += step;
-  print(
-    "Bank P0/P1: " +
+  printSmall("Deck:" + s.deck.length + " Disc:" + s.discard.length, x, y, 12); y += step;
+  printSmall("Hand0/1:" + s.players[0].hand.length + "/" + s.players[1].hand.length, x, y, 12); y += step;
+  printSmall(
+    "Bank0/1:" +
     s.players[0].bank.length + "($" + bankValueTotal(s, 0) + ")/" +
     s.players[1].bank.length + "($" + bankValueTotal(s, 1) + ")",
     x,
     y,
     12
   ); y += step;
-  print("Sets P0/P1: " + s.players[0].sets.length + "/" + s.players[1].sets.length, x, y, 12); y += step;
+  printSmall("Sets0/1:" + s.players[0].sets.length + "/" + s.players[1].sets.length, x, y, 12); y += step;
 
   var moves = PD.legalMoves(s);
-  print("Legal moves: " + moves.length, x, y, 12); y += step;
-  print("Last cmd: " + (d.lastCmd || "(none)"), x, y, 12); y += step;
-  print("Events: " + PD.debugEventsToLine(d.lastEvents), x, y, 12);
+  printSmall("Legal:" + moves.length, x, y, 12); y += step;
+  printSmall("LastCmd:" + (d.lastCmd || "(none)"), x, y, 12); y += step;
+  printSmall("Events:" + PD.debugEventsToLine(d.lastEvents), x, y, 12);
 
-  print("A:Step  B:Next  X:Reset  Y:Mode", 6, 128, 13, true, 1, false);
+  // Right column: UI snapshot (from last Render-mode tick).
+  var v = d.view;
+  var yR = 6;
+  if (v) {
+    var isDragging = !!(v.mode === "targeting" && v.targeting && v.targeting.active && v.targeting.hold);
+    printSmall("UI:" + String(v.mode || "?") + " I:" + bool01(v.inspectActive) + " Drag:" + bool01(isDragging), xR, yR, 12); yR += step;
+    if (v.cursor) printSmall("Cur:r" + (v.cursor.row | 0) + " i" + (v.cursor.i | 0), xR, yR, 12);
+    yR += step;
+
+    if (v.mode === "menu" && v.menu && v.menu.items) {
+      var nM = v.menu.items.length | 0;
+      var mi = (nM > 0) ? PD.ui.clampI(Math.floor(Number(v.menu.i || 0)), nM) : 0;
+      var it = (nM > 0) ? v.menu.items[mi] : null;
+      var id = it ? String(it.id || "?") : "(none)";
+      printSmall("Menu:" + mi + "/" + nM + " " + id, xR, yR, 12); yR += step;
+    }
+
+    if (v.mode === "targeting" && v.targeting && v.targeting.active) {
+      var t = v.targeting;
+      var nC = (t.cmds && t.cmds.length) ? (t.cmds.length | 0) : 0;
+      var ci = (nC > 0) ? PD.ui.clampI(Math.floor(Number(t.cmdI || 0)), nC) : 0;
+      printSmall("Tgt:" + String(t.kind || "?") + " " + ci + "/" + nC + " h:" + bool01(t.hold), xR, yR, 12); yR += step;
+    }
+
+    if (v.mode === "prompt" && s.prompt && s.prompt.kind) {
+      printSmall("Prompt:" + String(s.prompt.kind), xR, yR, 12); yR += step;
+    }
+  } else {
+    printSmall("UI:(no view)", xR, yR, 12); yR += step;
+  }
+
+  // Inputs/state (favor persistent states over one-frame pulses).
+  var raw0 = d.lastRaw;
+  var down0 = raw0 && raw0.down ? raw0.down : null;
+  if (down0) {
+    printSmall(
+      "Down:U" + bool01(down0[0]) + "D" + bool01(down0[1]) + "L" + bool01(down0[2]) + "R" + bool01(down0[3]) +
+      " A" + bool01(down0[4]) + "B" + bool01(down0[5]) + "X" + bool01(down0[6]) + "Y" + bool01(down0[7]),
+      xR,
+      yR,
+      13
+    ); yR += step;
+  } else {
+    printSmall("Down:(no raw yet)", xR, yR, 13); yR += step;
+  }
+
+  var st = d.ctrl;
+  if (st && st.held) {
+    var held = st.held;
+    var heldA = (held[4] | 0);
+    var heldX = (held[6] | 0);
+    printSmall(
+      "Held:A" + heldA + " X" + heldX + " Grab:" + bool01(st.aGrabActive) + " XLatch:" + bool01(st.xInspectActive),
+      xR,
+      yR,
+      13
+    ); yR += step;
+  } else {
+    printSmall("Held:(no ctrl yet)", xR, yR, 13); yR += step;
+  }
+
+  printSmall("Intent:" + (d.lastUiIntentSummary || "(none)"), xR, yR, 13);
+
+  printSmall("A:Step  B:Next  X:Reset  Y:Mode", 6, 128, 13);
 };
 
 PD.mainTick = function () {
@@ -160,9 +238,19 @@ PD.mainTick = function () {
   if (!d.ctrl && PD.controls && typeof PD.controls.newState === "function") d.ctrl = PD.controls.newState();
 
   if (PD.controls && PD.ui && PD.render && typeof PD.render.drawFrame === "function") {
+    function summarizeUiIntent(intent) {
+      if (!intent || !intent.kind) return "(none)";
+      if (intent.kind === "applyCmd" && intent.cmd && intent.cmd.kind) return "applyCmd:" + String(intent.cmd.kind);
+      if (intent.kind === "debug" && intent.action) return "debug:" + String(intent.action);
+      return String(intent.kind);
+    }
+
     var raw = PD.controls.pollGlobals();
+    d.lastRaw = raw;
     var actions = PD.controls.actions(d.ctrl, raw, PD.config.controls);
+    d.lastUiActions = actions;
     var intent = PD.ui.step(d.state, d.view, actions);
+    d.lastUiIntentSummary = summarizeUiIntent(intent);
 
     if (intent && intent.kind === "applyCmd" && intent.cmd) {
       try {

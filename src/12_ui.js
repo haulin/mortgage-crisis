@@ -6,7 +6,7 @@ PD.ui.newView = function () {
     cursor: { row: 4, i: 0 }, // default to player hand
     camX: [0, 0, 0, 0, 0],
 
-    // browse | menu | targeting
+    // browse | menu | targeting | prompt
     mode: "browse",
 
     // Menu (center panel)
@@ -36,12 +36,14 @@ PD.ui.newView = function () {
     // Inspect (hold X with delay)
     inspectActive: false,
 
+    // Toasts (Phase 05b+): stacked notifications at screen top.
+    // Each toast: { id?, kind?, text, frames?, persistent? }
+    toasts: [],
+
     // Feedback: blink + message, plus attempt counts.
     feedback: {
       blinkFrames: 0,
       blinkPhase: 0,
-      msg: "",
-      msgFrames: 0,
       attemptsByCode: {}
     },
 
@@ -68,8 +70,9 @@ PD.ui.feedbackError = function (view, code, msg) {
   fb.blinkPhase = 0;
 
   if (attempts >= 2 && msg) {
-    fb.msg = msg;
-    fb.msgFrames = 90;
+    if (PD.ui && typeof PD.ui.toastPush === "function") {
+      PD.ui.toastPush(view, { id: "err:" + code, kind: "error", text: msg, frames: 90 });
+    }
   }
 };
 
@@ -88,11 +91,87 @@ PD.ui.feedbackTick = function (view) {
     fb.blinkFrames = 0;
     fb.blinkPhase = 0;
   }
+};
 
-  var msgFrames = Number(fb.msgFrames || 0);
-  if (!isFinite(msgFrames)) msgFrames = 0;
-  if (msgFrames > 0) fb.msgFrames = msgFrames - 1;
-  else { fb.msgFrames = 0; fb.msg = ""; }
+PD.ui.toastPush = function (view, toast) {
+  if (!view) return;
+  if (!view.toasts) view.toasts = [];
+  if (!toast) return;
+  var t = {
+    id: toast.id != null ? String(toast.id) : null,
+    kind: toast.kind != null ? String(toast.kind) : "",
+    text: toast.text != null ? String(toast.text) : "",
+    frames: toast.frames != null ? Math.floor(Number(toast.frames)) : 0,
+    persistent: !!toast.persistent
+  };
+  if (!isFinite(t.frames)) t.frames = 0;
+  if (t.frames < 0) t.frames = 0;
+  if (!t.text) return;
+
+  // Replace-by-id if provided.
+  if (t.id) {
+    var i;
+    for (i = 0; i < view.toasts.length; i++) {
+      var ex = view.toasts[i];
+      if (ex && ex.id === t.id) { view.toasts[i] = t; return; }
+    }
+  }
+  view.toasts.push(t);
+};
+
+PD.ui.toastsTick = function (view) {
+  if (!view || !view.toasts) return;
+  var out = [];
+  var i;
+  for (i = 0; i < view.toasts.length; i++) {
+    var t = view.toasts[i];
+    if (!t || !t.text) continue;
+    if (t.persistent) { out.push(t); continue; }
+    var f = Number(t.frames || 0);
+    if (!isFinite(f)) f = 0;
+    f = Math.floor(f) - 1;
+    if (f > 0) { t.frames = f; out.push(t); }
+  }
+  view.toasts = out;
+};
+
+PD.ui.syncPromptToast = function (state, view) {
+  if (!state || !view) return;
+  if (!view.toasts) view.toasts = [];
+  var pr = state.prompt;
+  var has = !!(pr && pr.kind && (pr.p | 0) === 0);
+  var i;
+  var idx = -1;
+  for (i = 0; i < view.toasts.length; i++) {
+    var t = view.toasts[i];
+    if (t && t.id === "prompt") { idx = i; break; }
+  }
+
+  if (!has) {
+    if (idx >= 0) view.toasts.splice(idx, 1);
+    return;
+  }
+
+  var txt = "";
+  if (pr.kind === "discardDown") {
+    var over = (state.players[0].hand.length | 0) - (PD.HAND_MAX | 0);
+    if (over < 0) over = 0;
+    txt = "Too many cards. Discard " + over;
+  } else {
+    txt = "Prompt: " + String(pr.kind);
+  }
+
+  var toast = { id: "prompt", kind: "prompt", text: txt, persistent: true };
+  if (idx >= 0) {
+    view.toasts[idx] = toast;
+    // Keep prompt toast at the top.
+    if (idx !== 0) {
+      view.toasts.splice(idx, 1);
+      view.toasts.unshift(toast);
+    }
+  } else {
+    view.toasts.unshift(toast);
+  }
 };
 
 PD.ui.clampI = function (i, n) {
@@ -548,18 +627,19 @@ PD.ui.buildRowItems = function (state, view, row) {
       var stripH = 10;
       var stripX = C.screenW - C.centerBtnStripPadRight - stripW;
       // Bottom-align within the center row band.
-      var stripY0 = (C.rowY[2] + C.rowH[2] - 1 - 40);
+      var stripY0 = (C.rowY[2] + C.rowH[2] - 43);
 
       function pushBtn(id, label, y, disabled) {
         out.items.push({ kind: "btn", id: id, label: label, disabled: !!disabled, row: 2, x: stripX, y: y, w: stripW, h: stripH });
       }
 
-      var endDisabled = (state.winnerP !== PD.NO_WINNER) || (state.activeP !== 0) || (state.players[0].hand.length > PD.HAND_MAX);
+      // End is always available on your turn; if hand > HAND_MAX the engine enters a discard-down prompt.
+      var endDisabled = (state.winnerP !== PD.NO_WINNER) || (state.activeP !== 0);
       pushBtn("endTurn", "End", stripY0, endDisabled);
       if (dbgEnabled) {
-        pushBtn("step", "Step", stripY0 + 10, false);
-        pushBtn("reset", "Reset", stripY0 + 20, false);
-        pushBtn("nextScenario", "Next", stripY0 + 30, false);
+        pushBtn("step", "Step", stripY0 + 11, false);
+        pushBtn("reset", "Reset", stripY0 + 22, false);
+        pushBtn("nextScenario", "Next", stripY0 + 33, false);
       }
     }
 
@@ -626,6 +706,28 @@ PD.ui.computeRowModels = function (state, view) {
     var cmdI = PD.ui.clampI(Math.floor(Number(t.cmdI || 0)), cmds.length);
     t.cmdI = cmdI;
 
+    // Find source slot in models (for hold-targeting Source destination).
+    var srcX = null, srcY = null, srcRow = null;
+    if (t.card && t.card.loc && t.card.loc.zone === "hand") {
+      var srcLoc = t.card.loc;
+      var rowHand = (PD.render && PD.render.ROW_P_HAND != null) ? PD.render.ROW_P_HAND : 4;
+      var rmHand = models[rowHand];
+      if (rmHand && rmHand.items) {
+        var hi;
+        for (hi = 0; hi < rmHand.items.length; hi++) {
+          var itH = rmHand.items[hi];
+          if (!itH || itH.kind !== "hand" || !itH.loc) continue;
+          if ((itH.loc.p | 0) !== (srcLoc.p | 0)) continue;
+          if ((itH.loc.i | 0) !== (srcLoc.i | 0)) continue;
+          if ((itH.uid | 0) !== ((t.card.uid | 0))) continue;
+          srcX = itH.x;
+          srcY = itH.y;
+          srcRow = rowHand;
+          break;
+        }
+      }
+    }
+
     // Build per-set origin positions for P0 table (row 3), and a new-set slot.
     var L = PD.config.render.layout;
     var yFace = PD.ui.faceYForRow(3);
@@ -670,7 +772,32 @@ PD.ui.computeRowModels = function (state, view) {
           x = hBaseX + hnBase * stride;
         }
       } else if (c.kind === "bank") {
-        // No ghost for banking.
+        // Ghost at the bank drop position (hand row).
+        var LhG = PD.config.render.layout;
+        var yBG = PD.ui.faceYForRow(4);
+        var padXG = LhG.rowPadX;
+        var bankRightXG = LhG.screenW - padXG - LhG.faceW;
+        var strideBG = LhG.stackStrideX;
+        var gapBG = LhG.stackGapX;
+
+        var handG = state.players[0].hand || [];
+        var bankG = state.players[0].bank || [];
+        var nHandAfterG = handG.length - 1;
+        if (nHandAfterG < 0) nHandAfterG = 0;
+        var nBankAfterG = bankG.length + 1;
+
+        var handMaxXG = (nHandAfterG > 0) ? (padXG + (nHandAfterG - 1) * LhG.handStrideX + LhG.faceW - 1) : (padXG - 1);
+        var bankLeftXG = bankRightXG - ((nBankAfterG > 0) ? ((nBankAfterG - 1) * strideBG) : 0);
+        if (nBankAfterG > 0 && bankLeftXG <= (handMaxXG + gapBG)) bankLeftXG = handMaxXG + gapBG + 1;
+        var xBG = bankLeftXG + (nBankAfterG - 1) * strideBG;
+
+        ghosts.push({ row: 4, x: xBG, y: yBG, w: LhG.faceW, h: LhG.faceH, kind: "ghostDest", cmdI: j });
+        continue;
+      } else if (c.kind === "source") {
+        // Ghost at the source slot (hand row), if known.
+        if (srcX != null && srcY != null && srcRow != null) {
+          ghosts.push({ row: srcRow, x: srcX, y: srcY, w: L.faceW, h: L.faceH, kind: "ghostDest", cmdI: j });
+        }
         continue;
       } else {
         continue;
@@ -729,7 +856,136 @@ PD.ui.computeRowModels = function (state, view) {
       if (nBankAfter > 0 && bankLeftX <= (handMaxX + gapB)) bankLeftX = handMaxX + gapB + 1;
 
       var xB = bankLeftX + (nBankAfter - 1) * strideB;
-      preview = { row: 4, kind: "preview", uid: (t.card && t.card.uid) ? t.card.uid : 0, color: null, x: xB, y: yB, w: Lh.faceW, h: Lh.faceH };
+      preview = { row: 4, kind: "preview", forCmdKind: "bank", uid: (t.card && t.card.uid) ? t.card.uid : 0, color: null, x: xB, y: yB, w: Lh.faceW, h: Lh.faceH };
+    } else if (cmdSel && cmdSel.kind === "source") {
+      // Preview at the source slot (hold-targeting cancel-by-dropping-back).
+      if (srcX != null && srcY != null && srcRow != null) {
+        preview = {
+          row: srcRow,
+          kind: "preview",
+          forCmdKind: "source",
+          uid: (t.card && t.card.uid) ? t.card.uid : 0,
+          color: (t.kind === "place" && t.card && t.card.def && PD.isWildDef(t.card.def)) ? t.wildColor : null,
+          x: srcX,
+          y: srcY,
+          w: L.faceW,
+          h: L.faceH
+        };
+      }
+    }
+  }
+
+  // Menu-hover destination preview (only when unambiguous).
+  if (!preview && view.mode === "menu" && view.menu && view.menu.items && view.menu.items.length > 0 && view.menu.src) {
+    var nMenuItems = view.menu.items.length | 0;
+    var mi = PD.ui.clampI(Math.floor(Number(view.menu.i || 0)), nMenuItems);
+    view.menu.i = mi;
+    var itM = view.menu.items[mi];
+    var srcM = view.menu.src;
+    if (itM && srcM && srcM.uid) {
+      var uidM = srcM.uid | 0;
+      var defM = PD.defByUid(state, uidM);
+      var movesM = PD.legalMoves(state);
+      var cmdsM = [];
+
+      if (itM.id === "bank") {
+        var ib;
+        for (ib = 0; ib < movesM.length; ib++) {
+          var mb = movesM[ib];
+          if (!mb || mb.kind !== "bank") continue;
+          if (!mb.card || (mb.card.uid | 0) !== (uidM | 0)) continue;
+          cmdsM.push(mb);
+        }
+      } else if (itM.id === "place") {
+        if (defM && defM.kind === PD.CardKind.Property) {
+          var wildColorM = (defM && PD.isWildDef(defM)) ? PD.ui.defaultWildColorForPlace(state, uidM, defM) : PD.NO_COLOR;
+          cmdsM = PD.ui.placeCmdsForUid(state, uidM, defM, wildColorM);
+        }
+      } else if (itM.id === "build") {
+        if (defM && defM.kind === PD.CardKind.House) {
+          var ih;
+          for (ih = 0; ih < movesM.length; ih++) {
+            var mh = movesM[ih];
+            if (!mh || mh.kind !== "playHouse") continue;
+            if (!mh.card || (mh.card.uid | 0) !== (uidM | 0)) continue;
+            cmdsM.push(mh);
+          }
+        }
+      }
+
+      if (cmdsM.length === 1) {
+        var cm = cmdsM[0];
+        if (cm && (cm.kind === "playProp" || cm.kind === "playHouse")) {
+          // Same table placement math as targeting.
+          var Lm = PD.config.render.layout;
+          var yFm = PD.ui.faceYForRow(3);
+          var strideM = Lm.stackStrideX;
+          var cursorXM = Lm.rowPadX;
+          var setsM = state.players[0].sets;
+          var setXsM = [];
+          var setCardsNM = [];
+          var sm;
+          for (sm = 0; sm < setsM.length; sm++) {
+            var setm = setsM[sm];
+            if (!setm) { setXsM[sm] = cursorXM; setCardsNM[sm] = 0; continue; }
+            var nCardsM = (setm.props ? setm.props.length : 0) + (setm.houseUid ? 1 : 0);
+            setXsM[sm] = cursorXM;
+            setCardsNM[sm] = nCardsM;
+            if (nCardsM > 0) cursorXM = cursorXM + Lm.faceW + (nCardsM - 1) * strideM + Lm.stackGapX;
+            else cursorXM = cursorXM + Lm.faceW + Lm.stackGapX;
+          }
+          var newSetXM = cursorXM;
+
+          var xPm = 0;
+          if (cm.kind === "playProp") {
+            if (cm.dest && cm.dest.newSet) xPm = newSetXM;
+            else if (cm.dest && cm.dest.setI != null) {
+              var psiM = Math.floor(Number(cm.dest.setI));
+              if (isFinite(psiM)) {
+                xPm = ((setXsM[psiM] != null) ? setXsM[psiM] : 0) + (((setCardsNM[psiM] != null) ? setCardsNM[psiM] : 0) * strideM);
+              }
+            }
+          } else if (cm.kind === "playHouse") {
+            var hsiM = Math.floor(Number(cm.dest.setI));
+            if (isFinite(hsiM)) {
+              xPm = ((setXsM[hsiM] != null) ? setXsM[hsiM] : 0) + (((setCardsNM[hsiM] != null) ? setCardsNM[hsiM] : 0) * strideM);
+            }
+          }
+
+          preview = {
+            row: 3,
+            kind: "preview",
+            forCmdKind: cm.kind,
+            uid: uidM,
+            color: (cm.kind === "playProp" && defM && PD.isWildDef(defM)) ? (cm.color | 0) : null,
+            x: xPm,
+            y: yFm,
+            w: Lm.faceW,
+            h: Lm.faceH
+          };
+        } else if (cm && cm.kind === "bank") {
+          // Bank preview uses post-drop layout (hand -1, bank +1).
+          var Lb = PD.config.render.layout;
+          var yBb = PD.ui.faceYForRow(4);
+          var padXb = Lb.rowPadX;
+          var bankRightXb = Lb.screenW - padXb - Lb.faceW;
+          var strideBb = Lb.stackStrideX;
+          var gapBb = Lb.stackGapX;
+
+          var handb = state.players[0].hand || [];
+          var bankb = state.players[0].bank || [];
+          var nHandAfterb = (handb.length | 0) - 1;
+          if (nHandAfterb < 0) nHandAfterb = 0;
+          var nBankAfterb = (bankb.length | 0) + 1;
+
+          var handMaxXb = (nHandAfterb > 0) ? (padXb + (nHandAfterb - 1) * Lb.handStrideX + Lb.faceW - 1) : (padXb - 1);
+          var bankLeftXb = bankRightXb - ((nBankAfterb > 0) ? ((nBankAfterb - 1) * strideBb) : 0);
+          if (nBankAfterb > 0 && bankLeftXb <= (handMaxXb + gapBb)) bankLeftXb = handMaxXb + gapBb + 1;
+
+          var xBb = bankLeftXb + (nBankAfterb - 1) * strideBb;
+          preview = { row: 4, kind: "preview", forCmdKind: "bank", uid: uidM, color: null, x: xBb, y: yBb, w: Lb.faceW, h: Lb.faceH };
+        }
+      }
     }
   }
 
@@ -794,11 +1050,61 @@ PD.ui.updateCameras = function (state, view, computed) {
       if (rm2 && rm2.items && rm2.items.length) selItem = rm2.items[0];
     }
 
-    // In targeting mode, have the preview destination row camera follow the preview.
-    if (view.mode === "targeting" && computed.preview && row === computed.preview.row) selItem = computed.preview;
+    // In overlay modes, have the preview destination row camera follow the preview.
+    if ((view.mode === "targeting" || view.mode === "menu") && computed.preview && row === computed.preview.row) selItem = computed.preview;
 
     PD.ui.ensureCamForSelection(models[row], row, selItem, view.camX);
   }
+};
+
+// Helpers for Place command lists (shared by targeting + menu label tweaks).
+PD.ui.defaultWildColorForPlace = function (state, uid, def) {
+  if (!def || !PD.isWildDef(def)) return PD.NO_COLOR;
+  uid = uid | 0;
+  var moves = PD.legalMoves(state);
+  var c0 = def.wildColors[0];
+  var c1 = def.wildColors[1];
+  var has0 = false, has1 = false;
+  var i;
+  for (i = 0; i < moves.length; i++) {
+    var mp = moves[i];
+    if (!mp || mp.kind !== "playProp") continue;
+    if (!mp.card || (mp.card.uid | 0) !== (uid | 0)) continue;
+    if (mp.color === c0 && mp.dest && mp.dest.setI != null) has0 = true;
+    if (mp.color === c1 && mp.dest && mp.dest.setI != null) has1 = true;
+  }
+  return has0 ? c0 : (has1 ? c1 : c0);
+};
+
+PD.ui.placeCmdsForUid = function (state, uid, def, wildColor) {
+  uid = uid | 0;
+  wildColor = wildColor | 0;
+  var moves = PD.legalMoves(state);
+  var cmds = [];
+  var i;
+  var isWild = !!(def && PD.isWildDef(def));
+  for (i = 0; i < moves.length; i++) {
+    var mf = moves[i];
+    if (!mf || mf.kind !== "playProp") continue;
+    if (!mf.card || (mf.card.uid | 0) !== (uid | 0)) continue;
+    if (isWild && (mf.color | 0) !== (wildColor | 0)) continue;
+    cmds.push(mf);
+  }
+
+  // Ordering: existing sets first (by setI), then newSet.
+  var existing = [];
+  var newSet = [];
+  for (i = 0; i < cmds.length; i++) {
+    var c = cmds[i];
+    if (c && c.dest && c.dest.newSet) newSet.push(c);
+    else existing.push(c);
+  }
+  existing.sort(function (a, b) {
+    var ai = (a.dest && a.dest.setI != null) ? a.dest.setI : 9999;
+    var bi = (b.dest && b.dest.setI != null) ? b.dest.setI : 9999;
+    return ai - bi;
+  });
+  return existing.concat(newSet);
 };
 
 PD.ui.menuOpenForSelection = function (state, view, sel) {
@@ -814,20 +1120,69 @@ PD.ui.menuOpenForSelection = function (state, view, sel) {
   var def = PD.defByUid(state, uid);
   if (!def) return;
 
+  function colorName(c) {
+    c = Math.floor(Number(c));
+    if (!isFinite(c)) c = 0;
+    if (c === PD.Color.Cyan) return "Cyan";
+    if (c === PD.Color.Magenta) return "Magenta";
+    if (c === PD.Color.Orange) return "Orange";
+    if (c === PD.Color.Black) return "Black";
+    return "c" + c;
+  }
+
+  function destLabelForCmd(cmd) {
+    if (!cmd) return "";
+    if (cmd.kind === "playProp") {
+      if (cmd.dest && cmd.dest.newSet) return "New Set";
+      if (cmd.dest && cmd.dest.setI != null) {
+        var setI = Math.floor(Number(cmd.dest.setI));
+        var set = isFinite(setI) ? state.players[0].sets[setI] : null;
+        var col = set ? PD.getSetColor(set.props) : PD.NO_COLOR;
+        return colorName(col) + " Set";
+      }
+    } else if (cmd.kind === "playHouse") {
+      if (cmd.dest && cmd.dest.setI != null) {
+        var setI2 = Math.floor(Number(cmd.dest.setI));
+        var set2 = isFinite(setI2) ? state.players[0].sets[setI2] : null;
+        var col2 = set2 ? PD.getSetColor(set2.props) : PD.NO_COLOR;
+        return colorName(col2) + " Set";
+      }
+    }
+    return "";
+  }
+
   // Build/Place actions are only meaningful for the currently implemented rules.
   if (def.kind === PD.CardKind.Property) {
-    view.menu.items.push({ id: "place", label: "Place" });
+    var wildColor = (def && PD.isWildDef(def)) ? PD.ui.defaultWildColorForPlace(state, uid, def) : PD.NO_COLOR;
+    var placeCmds = PD.ui.placeCmdsForUid(state, uid, def, wildColor);
+    var placeLabel = "Place";
+    if (placeCmds.length === 1) {
+      var dl = destLabelForCmd(placeCmds[0]);
+      if (dl) placeLabel = "Place -> " + dl;
+    }
+    view.menu.items.push({ id: "place", label: placeLabel });
   }
   if (def.kind === PD.CardKind.House) {
     // Only offer Build if legal.
     var moves = PD.legalMoves(state);
     var hasBuild = false;
+    var buildMoves = [];
     var m;
     for (m = 0; m < moves.length; m++) {
       var mv = moves[m];
-      if (mv && mv.kind === "playHouse" && mv.card && mv.card.uid === uid) { hasBuild = true; break; }
+      if (mv && mv.kind === "playHouse" && mv.card && mv.card.uid === uid) {
+        hasBuild = true;
+        buildMoves.push(mv);
+      }
     }
-    if (hasBuild) view.menu.items.push({ id: "build", label: "Build" });
+    if (hasBuild) {
+      var buildLabel = "Build";
+      if (buildMoves.length === 1) {
+        var dl2 = destLabelForCmd(buildMoves[0]);
+        if (dl2) buildLabel = "Build -> " + dl2;
+      }
+      view.menu.items.push({ id: "build", label: buildLabel });
+    }
   }
   if (PD.isBankableDef(def)) {
     view.menu.items.push({ id: "bank", label: "Bank" });
@@ -859,6 +1214,7 @@ PD.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
       if (!mb.card || mb.card.uid !== uid) continue;
       cmds.push(mb);
     }
+    if (t.card && t.card.loc && t.card.loc.zone === "hand") cmds.push({ kind: "source" });
     t.cmds = cmds;
     t.cmdI = 0;
     view.mode = "targeting";
@@ -872,6 +1228,7 @@ PD.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
       if (!mh.card || mh.card.uid !== uid) continue;
       cmds.push(mh);
     }
+    if (t.card && t.card.loc && t.card.loc.zone === "hand") cmds.push({ kind: "source" });
     t.cmds = cmds;
     t.cmdI = 0;
     view.mode = "targeting";
@@ -880,49 +1237,13 @@ PD.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
 
   if (t.kind === "place") {
     if (def && PD.isWildDef(def)) {
-      // Default wild color: prefer a color that has an existing-set destination.
-      var c0 = def.wildColors[0];
-      var c1 = def.wildColors[1];
-      var has0 = false, has1 = false;
-      for (i = 0; i < moves.length; i++) {
-        var mp = moves[i];
-        if (!mp || mp.kind !== "playProp") continue;
-        if (!mp.card || mp.card.uid !== uid) continue;
-        if (mp.color === c0 && mp.dest && mp.dest.setI != null) has0 = true;
-        if (mp.color === c1 && mp.dest && mp.dest.setI != null) has1 = true;
-      }
-      t.wildColor = has0 ? c0 : (has1 ? c1 : c0);
-      for (i = 0; i < moves.length; i++) {
-        var mw = moves[i];
-        if (!mw || mw.kind !== "playProp") continue;
-        if (!mw.card || mw.card.uid !== uid) continue;
-        if (mw.color !== t.wildColor) continue;
-        cmds.push(mw);
-      }
+      t.wildColor = PD.ui.defaultWildColorForPlace(state, uid, def);
+      cmds = PD.ui.placeCmdsForUid(state, uid, def, t.wildColor);
     } else {
       t.wildColor = PD.NO_COLOR;
-      for (i = 0; i < moves.length; i++) {
-        var mf = moves[i];
-        if (!mf || mf.kind !== "playProp") continue;
-        if (!mf.card || mf.card.uid !== uid) continue;
-        cmds.push(mf);
-      }
+      cmds = PD.ui.placeCmdsForUid(state, uid, def, PD.NO_COLOR);
     }
-
-    // Ordering: existing sets first (by setI), then newSet.
-    var existing = [];
-    var newSet = [];
-    for (i = 0; i < cmds.length; i++) {
-      var c = cmds[i];
-      if (c && c.dest && c.dest.newSet) newSet.push(c);
-      else existing.push(c);
-    }
-    existing.sort(function (a, b) {
-      var ai = (a.dest && a.dest.setI != null) ? a.dest.setI : 9999;
-      var bi = (b.dest && b.dest.setI != null) ? b.dest.setI : 9999;
-      return ai - bi;
-    });
-    cmds = existing.concat(newSet);
+    if (t.card && t.card.loc && t.card.loc.zone === "hand") cmds.push({ kind: "source" });
     t.cmds = cmds;
     t.cmdI = 0; // default always-existing if any
 
@@ -951,43 +1272,24 @@ PD.ui.targetingRetargetWild = function (state, view, dir) {
   var prevCmd = (t.cmds && t.cmds.length) ? t.cmds[PD.ui.clampI(t.cmdI, t.cmds.length)] : null;
   var keepNewSet = !!(prevCmd && prevCmd.dest && prevCmd.dest.newSet);
   var keepSetI = (prevCmd && prevCmd.dest && prevCmd.dest.setI != null) ? prevCmd.dest.setI : null;
+  var keepSource = !!(prevCmd && prevCmd.kind === "source");
 
-  var moves = PD.legalMoves(state);
   var uid = t.card.uid;
-  var cmds = [];
-  var i;
-  for (i = 0; i < moves.length; i++) {
-    var mw = moves[i];
-    if (!mw || mw.kind !== "playProp") continue;
-    if (!mw.card || mw.card.uid !== uid) continue;
-    if (mw.color !== nextColor) continue;
-    cmds.push(mw);
-  }
-
-  // Ordering: existing then new.
-  var existing = [];
-  var newSet = [];
-  for (i = 0; i < cmds.length; i++) {
-    var c = cmds[i];
-    if (c && c.dest && c.dest.newSet) newSet.push(c);
-    else existing.push(c);
-  }
-  existing.sort(function (a, b) {
-    var ai = (a.dest && a.dest.setI != null) ? a.dest.setI : 9999;
-    var bi = (b.dest && b.dest.setI != null) ? b.dest.setI : 9999;
-    return ai - bi;
-  });
-  cmds = existing.concat(newSet);
+  var cmds = PD.ui.placeCmdsForUid(state, uid, def, nextColor);
+  if (t.card && t.card.loc && t.card.loc.zone === "hand") cmds.push({ kind: "source" });
 
   t.wildColor = nextColor;
   t.cmds = cmds;
 
   // Preserve selection if possible.
   var selI = 0;
+  var i;
   if (keepNewSet) {
     for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].dest && cmds[i].dest.newSet) { selI = i; break; }
   } else if (keepSetI != null) {
     for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].dest && cmds[i].dest.setI === keepSetI) { selI = i; break; }
+  } else if (keepSource) {
+    for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].kind === "source") { selI = i; break; }
   }
   t.cmdI = selI;
 };
@@ -998,9 +1300,24 @@ PD.ui.step = function (state, view, actions) {
 
   // Tick feedback timers.
   PD.ui.feedbackTick(view);
+  PD.ui.toastsTick(view);
+  PD.ui.syncPromptToast(state, view);
 
-  // Inspect is only meaningful in browse mode.
-  view.inspectActive = !!(view.mode === "browse" && actions.x && actions.x.inspectActive);
+  // Prompt mode sync (Phase 05b+): prompts are rules-owned, UI adopts a dedicated mode.
+  var pr = state.prompt;
+  var hasPrompt = !!pr;
+  var promptForP0 = !!(hasPrompt && (pr.p | 0) === 0);
+  if (promptForP0) {
+    // Prompts override overlays.
+    if (view.mode === "menu") { view.menu.items = []; }
+    if (view.targeting) view.targeting.active = false;
+    view.mode = "prompt";
+  } else {
+    if (view.mode === "prompt") view.mode = "browse";
+  }
+
+  // Inspect is meaningful in browse + prompt mode.
+  view.inspectActive = !!((view.mode === "browse" || view.mode === "prompt") && actions.x && actions.x.inspectActive);
 
   // Compute models for navigation helpers.
   var computed = PD.ui.computeRowModels(state, view);
@@ -1043,6 +1360,51 @@ PD.ui.step = function (state, view, actions) {
     return rm.items[i];
   }
 
+  function promptPickHandItemIndices() {
+    var out = [];
+    if (!computed || !computed.models) return out;
+    var rowHand = (PD.render && PD.render.ROW_P_HAND != null) ? PD.render.ROW_P_HAND : 4;
+    var rm = computed.models[rowHand];
+    if (!rm || !rm.items) return out;
+    var i;
+    for (i = 0; i < rm.items.length; i++) {
+      var it = rm.items[i];
+      if (!it || it.kind !== "hand" || !it.loc) continue;
+      if (it.loc.zone !== "hand") continue;
+      if ((it.loc.p | 0) !== 0) continue;
+      out.push(i);
+    }
+    return out;
+  }
+
+  function promptSnapCursorToHand(handItemIs) {
+    var rowHand = (PD.render && PD.render.ROW_P_HAND != null) ? PD.render.ROW_P_HAND : 4;
+    view.cursor.row = rowHand;
+    if (!handItemIs || handItemIs.length === 0) { view.cursor.i = 0; return; }
+    // If current cursor isn't on a hand card, snap to the first hand card.
+    var rm = computed.models[rowHand];
+    var cur = rm && rm.items ? rm.items[PD.ui.clampI(view.cursor.i, rm.items.length)] : null;
+    if (!cur || cur.kind !== "hand" || !cur.loc || cur.loc.zone !== "hand") {
+      view.cursor.i = handItemIs[0];
+      return;
+    }
+    // Otherwise, ensure i is an actual hand-item index.
+    var j;
+    for (j = 0; j < handItemIs.length; j++) if ((handItemIs[j] | 0) === (view.cursor.i | 0)) return;
+    view.cursor.i = handItemIs[0];
+  }
+
+  function promptCycleHand(handItemIs, dir) {
+    if (!handItemIs || handItemIs.length === 0) return;
+    var curI = view.cursor.i | 0;
+    var k;
+    var curK = 0;
+    for (k = 0; k < handItemIs.length; k++) if ((handItemIs[k] | 0) === (curI | 0)) { curK = k; break; }
+    var nextK = curK + (dir | 0);
+    nextK = PD.ui.wrapI(nextK, handItemIs.length);
+    view.cursor.i = handItemIs[nextK];
+  }
+
   // Menu mode
   if (view.mode === "menu") {
     if (actions.b && actions.b.pressed) {
@@ -1079,11 +1441,43 @@ PD.ui.step = function (state, view, actions) {
 
       if (it.id === "place") {
         PD.ui.targetingEnter(state, view, "place", false, uid, src.loc);
+        if (view.targeting && view.targeting.active && view.targeting.cmds) {
+          var real = [];
+          var r;
+          for (r = 0; r < view.targeting.cmds.length; r++) {
+            var c = view.targeting.cmds[r];
+            if (!c || !c.kind) continue;
+            if (c.kind === "source") continue;
+            real.push(c);
+          }
+          if (real.length === 1) {
+            var only = real[0];
+          view.targeting.active = false;
+          view.mode = "browse";
+            if (only && only.kind) return { kind: "applyCmd", cmd: only };
+          }
+        }
         return null;
       }
 
       if (it.id === "build") {
         PD.ui.targetingEnter(state, view, "build", false, uid, src.loc);
+        if (view.targeting && view.targeting.active && view.targeting.cmds) {
+          var realB = [];
+          var rb;
+          for (rb = 0; rb < view.targeting.cmds.length; rb++) {
+            var cb = view.targeting.cmds[rb];
+            if (!cb || !cb.kind) continue;
+            if (cb.kind === "source") continue;
+            realB.push(cb);
+          }
+          if (realB.length === 1) {
+            var onlyB = realB[0];
+          view.targeting.active = false;
+          view.mode = "browse";
+            if (onlyB && onlyB.kind) return { kind: "applyCmd", cmd: onlyB };
+          }
+        }
         return null;
       }
     }
@@ -1139,13 +1533,79 @@ PD.ui.step = function (state, view, actions) {
     view.mode = "browse";
 
     if (!cmdSel) return null;
+    if (cmdSel.kind === "source") return null;
     return { kind: "applyCmd", cmd: cmdSel };
   }
 
   // Browse mode
-  view.mode = "browse";
+  if (view.mode !== "prompt") view.mode = "browse";
+
+  // Prompt mode (Phase 05b): discard-down-to-7.
+  if (view.mode === "prompt") {
+    // Ensure we only handle known prompts for now.
+    var prompt = state.prompt;
+    if (!prompt || prompt.kind !== "discardDown" || (prompt.p | 0) !== 0) {
+      view.mode = "browse";
+      return null;
+    }
+
+    // Lock cursor to player hand cards only (not bank).
+    var handIs = promptPickHandItemIndices();
+    promptSnapCursorToHand(handIs);
+
+    // Recompute after snapping cursor.
+    computed = PD.ui.computeRowModels(state, view);
+    PD.ui.updateCameras(state, view, computed);
+
+    // Left/Right cycle within hand.
+    if (actions.nav && actions.nav.left) promptCycleHand(handIs, -1);
+    if (actions.nav && actions.nav.right) promptCycleHand(handIs, 1);
+
+    // Cancel: only before any discard has happened in this prompt instance.
+    if (actions.b && actions.b.pressed) {
+      var nDiscarded = Number(prompt.nDiscarded || 0);
+      if (!isFinite(nDiscarded)) nDiscarded = 0;
+      if (nDiscarded <= 0) {
+        return { kind: "applyCmd", cmd: { kind: "cancelPrompt" } };
+      }
+      PD.ui.feedbackError(view, "prompt_forced", "Must discard");
+      return null;
+    }
+
+    // Discard with A tap.
+    if (actions.a && actions.a.tap) {
+      computed = PD.ui.computeRowModels(state, view);
+      PD.ui.updateCameras(state, view, computed);
+      var selP = currentSelection();
+      if (selP && selP.loc && selP.loc.zone === "hand" && selP.loc.p === 0) {
+        return { kind: "applyCmd", cmd: { kind: "discard", card: { uid: selP.uid, loc: selP.loc } } };
+      }
+    }
+
+    return null;
+  }
 
   // Navigation (directional, screen-space).
+  // Hold-A grab: enter targeting *before* directional nav so the nudge that triggers
+  // grabStart doesn't also move the cursor to a different card in the same frame.
+  if (actions.a && actions.a.grabStart) {
+    var selGrab = currentSelection();
+    if (selGrab && selGrab.loc && selGrab.loc.zone === "hand" && selGrab.loc.p === 0) {
+      var uidGrab = selGrab.uid;
+      var defGrab = PD.defByUid(state, uidGrab);
+      if (defGrab && defGrab.kind === PD.CardKind.Property) {
+        PD.ui.targetingEnter(state, view, "place", true, uidGrab, selGrab.loc);
+        return null;
+      } else if (defGrab && PD.isBankableDef(defGrab)) {
+        // Prefer bank on holds (esp. House).
+        PD.ui.targetingEnter(state, view, "bank", true, uidGrab, selGrab.loc);
+        return null;
+      }
+      PD.ui.feedbackError(view, "hold_noop", "Can't do that");
+      return null;
+    }
+  }
+
   if (actions.nav) {
     var dir = null;
     if (actions.nav.up) dir = "up";
@@ -1176,7 +1636,6 @@ PD.ui.step = function (state, view, actions) {
       if (sel.disabled) {
         var msg = "Not available";
         if (sel.id === "endTurn" && state.activeP !== 0) msg = "Opponent turn";
-        else if (sel.id === "endTurn" && state.players[0].hand.length > PD.HAND_MAX) msg = "Hand > 7";
         PD.ui.feedbackError(view, "disabled_btn", msg);
 
         // Move selection to next available center button (prefer Step).
@@ -1214,23 +1673,6 @@ PD.ui.step = function (state, view, actions) {
         view.mode = "menu";
       } else {
         PD.ui.feedbackError(view, "no_actions", "No actions");
-      }
-    }
-  }
-
-  // Hold-A grab: enter targeting (Place for properties; otherwise bank-only).
-  if (actions.a && actions.a.grabStart) {
-    var sel2 = currentSelection();
-    if (sel2 && sel2.loc && sel2.loc.zone === "hand" && sel2.loc.p === 0) {
-      var uid2 = sel2.uid;
-      var def2 = PD.defByUid(state, uid2);
-      if (def2 && def2.kind === PD.CardKind.Property) {
-        PD.ui.targetingEnter(state, view, "place", true, uid2, sel2.loc);
-      } else if (def2 && PD.isBankableDef(def2)) {
-        // Prefer bank on holds (esp. House).
-        PD.ui.targetingEnter(state, view, "bank", true, uid2, sel2.loc);
-      } else {
-        PD.ui.feedbackError(view, "hold_noop", "Can't do that");
       }
     }
   }

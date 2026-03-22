@@ -18,6 +18,7 @@ JavaScript (TIC-80 JS mode via duktape).
 - TIC80_API.md — full TIC-80 API reference, pasted from official docs
 - TIC-80.wiki/ — full offline clone of the TIC-80 GitHub wiki (local reference only)  
 Always consult these before suggesting APIs or capabilities.
+- [`docs/user-manual.md`](docs/user-manual.md) — user-facing guide (controls, UX behaviors, debug harness)
 
 ## Sprites & iconography
 
@@ -66,6 +67,7 @@ We work in small increments:
 - Plan one phase in `docs/phaseXX.md` (two-digit numbering: `phase00`, `phase01`, …)
 - Implement that phase
 - Update `docs/plan.md` → **Current progress** (mark the phase ✅)
+- Update [`docs/user-manual.md`](docs/user-manual.md) when player/tester-visible behavior changes (controls, prompts, targeting, debug)
 - Update this `README.md` if the developer workflow changes
 
 ## Key Constraints

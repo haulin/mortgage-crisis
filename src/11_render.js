@@ -410,8 +410,8 @@ PD.render = PD.render || {};
     var row = R.ROW_CENTER;
     var y0 = rowY0(row);
     var y1 = rowY1(row);
-    rectSafe(0, y0, cfg.screenW, y1 - y0 + 1, cfg.colCenterPanel);
-    rectbSafe(0, y0, cfg.screenW, y1 - y0 + 1, cfg.colCenterPanelBorder);
+    rectSafe(0, y0, 239, y1 - y0 + 1, cfg.colCenterPanel);
+    rectbSafe(0, y0, 239, y1 - y0 + 1, cfg.colCenterPanelBorder);
 
     var dbgEnabled = !!(PD.config && PD.config.debug && PD.config.debug.enabled);
     var hlCol = (opts.highlightCol != null) ? opts.highlightCol : cfg.colHighlight;
@@ -591,7 +591,7 @@ PD.render = PD.render || {};
           var title = String(sel.label || sel.id || "");
           printSafe(title, xTitle, yTitle, cfg.colText);
           var help = "";
-          if (sel.id === "endTurn") help = "End your turn.\nHand must be <= 7.";
+          if (sel.id === "endTurn") help = "End your turn.\nIf hand > 7, discard down.";
           else if (sel.id === "step") help = "Debug: step 1 random\nlegal move.";
           else if (sel.id === "reset") help = "Debug: reset current\nscenario.";
           else if (sel.id === "nextScenario") help = "Debug: switch to next\nscenario.";
@@ -735,6 +735,8 @@ PD.render = PD.render || {};
         destLine = "Dest: " + colorName(col2) + " set";
       } else if (cmd && cmd.kind === "bank") {
         destLine = "Dest: Bank";
+      } else if (cmd && cmd.kind === "source") {
+        destLine = "Dest: Source";
       } else {
         destLine = "(no destination)";
       }
@@ -823,37 +825,53 @@ PD.render = PD.render || {};
     printSafe("Y:Mode", x, y, cfg.hudLineCol);
   }
 
-  function drawToast(view) {
+  function drawToasts(view) {
     var cfg = R.cfg;
-    if (!view || !view.feedback || !view.feedback.msg || view.feedback.msgFrames <= 0) return;
-    var msg = String(view.feedback.msg);
-    if (!msg) return;
-
-    // Support 1–2 lines.
-    var parts = msg.split("\n");
-    if (parts.length > 2) parts = [parts[0], parts[1]];
-    var maxLen = 0;
-    var i;
-    for (i = 0; i < parts.length; i++) if (parts[i].length > maxLen) maxLen = parts[i].length;
+    if (!view || !view.toasts || view.toasts.length === 0) return;
 
     var charW = 6;
     var lineH = 7;
     var padX = 6;
     var padY = 4;
-    var iconW = 10; // space for red X
-    var boxW = (padX * 2) + iconW + maxLen * charW;
-    if (boxW > cfg.screenW - 8) boxW = cfg.screenW - 8;
-    var boxH = (padY * 2) + parts.length * lineH;
 
-    var x0 = Math.floor((cfg.screenW - boxW) / 2);
-    var y0 = 2;
+    var yCursor = 2;
+    var ti;
+    for (ti = 0; ti < view.toasts.length; ti++) {
+      var t = view.toasts[ti];
+      if (!t || !t.text) continue;
+      var msg = String(t.text);
+      if (!msg) continue;
 
-    rectSafe(x0, y0, boxW, boxH, PD.Pal.Black);
-    rectbSafe(x0, y0, boxW, boxH, cfg.colCenterPanelBorder);
+      // Support 1–2 lines.
+      var parts = msg.split("\n");
+      if (parts.length > 2) parts = [parts[0], parts[1]];
+      var maxLen = 0;
+      var i;
+      for (i = 0; i < parts.length; i++) if (parts[i].length > maxLen) maxLen = parts[i].length;
 
-    printSafe("X", x0 + 4, y0 + padY, PD.Pal.Red);
-    for (i = 0; i < parts.length; i++) {
-      printSafe(parts[i], x0 + padX + iconW, y0 + padY + i * lineH, cfg.colText);
+      var isError = (t.kind && String(t.kind) === "error");
+      var iconW = isError ? 10 : 0;
+      var boxW = (padX * 2) + iconW + maxLen * charW;
+      if (boxW > cfg.screenW - 8) boxW = cfg.screenW - 8;
+      var boxH = (padY * 2) + parts.length * lineH;
+
+      var x0 = Math.floor((cfg.screenW - boxW) / 2);
+      var y0 = yCursor;
+
+      rectSafe(x0, y0, boxW, boxH, PD.Pal.Black);
+      rectbSafe(x0, y0, boxW, boxH, cfg.colCenterPanelBorder);
+
+      var textX = x0 + padX + iconW;
+      if (isError) {
+        printSafe("X", x0 + 4, y0 + padY, PD.Pal.Red);
+      }
+      for (i = 0; i < parts.length; i++) {
+        // Fixed-width makes centering math exact (avoids proportional font whitespace).
+        printExSafe(parts[i], textX, y0 + padY + i * lineH, cfg.colText, true, 1, false);
+      }
+
+      yCursor += boxH + 2;
+      if (yCursor > cfg.screenH - 8) break;
     }
   }
 
@@ -960,7 +978,7 @@ PD.render = PD.render || {};
     return { byKey: byKey, keys: keys };
   }
 
-  function drawRowCards(state, rowModel, row, selected, cam, highlightCol) {
+  function drawRowCards(state, view, computed, rowModel, row, selected, cam, highlightCol) {
     var cfg = R.cfg;
     if (cam == null) cam = 0;
     if (highlightCol == null) highlightCol = cfg.colHighlight;
@@ -998,11 +1016,30 @@ PD.render = PD.render || {};
     var byKeyH = groupedH.byKey;
     var keysH = groupedH.keys;
 
+    // Hide the grabbed source card during hold-targeting so it only appears as a preview.
+    var hideHand = null;
+    if (
+      view &&
+      view.mode === "targeting" &&
+      view.targeting &&
+      view.targeting.active &&
+      view.targeting.card &&
+      view.targeting.card.loc &&
+      view.targeting.card.loc.zone === "hand"
+    ) {
+      hideHand = { uid: view.targeting.card.uid | 0, loc: view.targeting.card.loc };
+    }
+
     // Draw non-bank hand items in x-order first.
     for (i = 0; i < rowModel.items.length; i++) {
       var it = rowModel.items[i];
       if (!it || it.stackKey) continue;
       if (selected && it === selected) continue;
+      if (hideHand && row === R.ROW_P_HAND && it.loc && it.loc.zone === "hand") {
+        if ((it.uid | 0) === (hideHand.uid | 0) && (it.loc.p | 0) === (hideHand.loc.p | 0) && (it.loc.i | 0) === (hideHand.loc.i | 0)) {
+          continue;
+        }
+      }
       var x = it.x - cam;
       var y = it.y;
       if (row === R.ROW_OP_HAND) {
@@ -1023,30 +1060,47 @@ PD.render = PD.render || {};
       var fanDirB = (stack0[0].fanDir != null) ? stack0[0].fanDir : 1;
       var flipBank = (row === R.ROW_OP_HAND);
       var selInThis = (selected && selected.stackKey === k0) ? selected : null;
-      drawFannedStack(stack0, { state: state, fanDir: fanDirB, flip180: !!flipBank, camX: cam, selectedItem: selInThis, drawSelected: false, highlightCol: highlightCol });
+      var camForThis = cam;
+      // Banking preview: shift the existing bank stack left by one stride so the preview
+      // card can occupy the new top slot at the right edge.
+      var isBankStack = (k0.indexOf("bank:") === 0);
+      var isBankTargeting = !!(view && view.mode === "targeting" && view.targeting && view.targeting.active && view.targeting.kind === "bank");
+      var isBankMenuPreview = !!(computed && computed.preview && computed.preview.forCmdKind === "bank");
+      if (row === R.ROW_P_HAND && isBankStack && (isBankTargeting || isBankMenuPreview)) {
+        camForThis = camForThis + R.cfg.stackStrideX;
+      }
+      drawFannedStack(stack0, { state: state, fanDir: fanDirB, flip180: !!flipBank, camX: camForThis, selectedItem: selInThis, drawSelected: false, highlightCol: highlightCol });
     }
 
-    if (selected) {
-      var xs = selected.x - cam;
-      var ys = selected.y;
+    // Skip drawing the source selection highlight during hold-targeting; preview handles the feedback.
+    var sel = selected;
+    if (hideHand && row === R.ROW_P_HAND && sel && sel.loc && sel.loc.zone === "hand") {
+      if ((sel.uid | 0) === (hideHand.uid | 0) && (sel.loc.p | 0) === (hideHand.loc.p | 0) && (sel.loc.i | 0) === (hideHand.loc.i | 0)) {
+        sel = null;
+      }
+    }
+
+    if (sel) {
+      var xs = sel.x - cam;
+      var ys = sel.y;
       if (row === R.ROW_OP_HAND) {
-        if (selected.stackKey) {
-          var sFanO = (selected.fanDir != null) ? selected.fanDir : -1;
-          var stackO = byKeyH[String(selected.stackKey)] || [selected];
-          drawFannedStack(stackO, { state: state, fanDir: sFanO, flip180: true, camX: cam, selectedItem: selected, onlySelected: true, highlightCol: highlightCol });
+        if (sel.stackKey) {
+          var sFanO = (sel.fanDir != null) ? sel.fanDir : -1;
+          var stackO = byKeyH[String(sel.stackKey)] || [sel];
+          drawFannedStack(stackO, { state: state, fanDir: sFanO, flip180: true, camX: cam, selectedItem: sel, onlySelected: true, highlightCol: highlightCol });
         } else {
           drawShadowBar(xs, ys);
           drawCardBack(xs, ys, true);
           drawHighlight(xs, ys, highlightCol);
         }
       } else if (row === R.ROW_P_HAND) {
-        if (selected.stackKey) {
-          var sFanP = (selected.fanDir != null) ? selected.fanDir : 1;
-          var stackP = byKeyH[String(selected.stackKey)] || [selected];
-          drawFannedStack(stackP, { state: state, fanDir: sFanP, flip180: false, camX: cam, selectedItem: selected, onlySelected: true, highlightCol: highlightCol });
+        if (sel.stackKey) {
+          var sFanP = (sel.fanDir != null) ? sel.fanDir : 1;
+          var stackP = byKeyH[String(sel.stackKey)] || [sel];
+          drawFannedStack(stackP, { state: state, fanDir: sFanP, flip180: false, camX: cam, selectedItem: sel, onlySelected: true, highlightCol: highlightCol });
         } else {
           drawShadowBar(xs, ys);
-          drawMiniCard(state, selected.uid, xs, ys, !!flipCards);
+          drawMiniCard(state, sel.uid, xs, ys, !!flipCards);
           drawHighlight(xs, ys, highlightCol);
         }
       }
@@ -1186,11 +1240,11 @@ PD.render = PD.render || {};
       if (!rm || !rm.items) continue;
       var cam = (view.camX && view.camX[row] != null) ? view.camX[row] : 0;
       var selected = (view.cursor.row === row) ? sel : null;
-      drawRowCards(state, rm, row, selected, cam, hlCol);
+      drawRowCards(state, view, computed, rm, row, selected, cam, hlCol);
     }
 
-    // Targeting overlays (ghosts + preview).
-    if (view.mode === "targeting") {
+    // Overlays (ghosts + preview): targeting always; menu may provide a preview too.
+    if (view.mode === "targeting" || (view.mode === "menu" && computed.preview)) {
       var ghosts = args.ghosts || computed.ghosts || [];
       // Skip the selected destination ghost: preview replaces it.
       if (view.targeting && view.targeting.active) {
@@ -1242,7 +1296,7 @@ PD.render = PD.render || {};
     // HUD / UX chrome (draw last).
     drawPlaysPips(state);
     drawModeHintNearButtons(view, computed);
-    drawToast(view);
+    drawToasts(view);
   };
 })();
 

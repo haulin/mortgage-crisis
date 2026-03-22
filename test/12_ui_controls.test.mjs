@@ -61,6 +61,53 @@ test("controls: A tap vs hold+move grab", async () => {
   }
 });
 
+test("ui: early hold-A grab does not move cursor selection", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  // Build a deterministic hand with 2 known properties so we can detect drift.
+  const s = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  function takeFromDeckByDefId(defId) {
+    const uid = s.deck.find((u) => ctx.PD.defByUid(s, u).id === defId);
+    assert.ok(uid, `expected ${defId} uid in deck`);
+    s.deck = s.deck.filter((u) => u !== uid);
+    return uid;
+  }
+
+  // Use money cards (always bankable) so grabStart reliably enters targeting.
+  const uidA = takeFromDeckByDefId("money_1");
+  const uidB = takeFromDeckByDefId("money_2");
+  s.players[0].hand = [uidA, uidB];
+  s.players[0].bank = [];
+  s.players[0].sets = [];
+  s.players[1].hand = [];
+  s.players[1].bank = [];
+  s.players[1].sets = [];
+
+  const view = ctx.PD.ui.newView();
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = 0;
+
+  const st = ctx.PD.controls.newState();
+  const cfg = ctx.PD.config.controls;
+
+  // Frame 1: press A (start holding).
+  const a1 = ctx.PD.controls.actions(st, rawButtons({ downIds: [4], pressedIds: [4] }), cfg);
+  ctx.PD.ui.step(s, view, a1);
+
+  // Frame 2: while holding A, press Right. This should trigger grabStart,
+  // but must NOT move the cursor to the right-hand card before entering targeting.
+  const a2 = ctx.PD.controls.actions(st, rawButtons({ downIds: [3, 4], pressedIds: [3] }), cfg);
+  ctx.PD.ui.step(s, view, a2);
+
+  assert.equal(view.mode, "targeting");
+  assert.ok(view.targeting && view.targeting.active, "expected targeting to be active");
+  assert.equal(view.targeting.card.uid, uidA, "expected grabbed uid to remain the original selection");
+  assert.equal(view.cursor.i, 0, "expected cursor index to remain unchanged on early-grab frame");
+});
+
 test("controls: d-pad repeat pulses after delay", async () => {
   const ctx = await loadSrcIntoVm();
   const st = ctx.PD.controls.newState();
@@ -292,6 +339,158 @@ test("ui: out of plays snaps to End button (one-shot)", async () => {
   assert.equal(c.selected.id, "endTurn");
 });
 
+test("ui: discardDown prompt locks to hand and A discards a hand card", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  const s = ctx.PD.newGame({ seedU32: 1 });
+  s.activeP = 0;
+  // Force discard prompt.
+  ctx.PD.setPrompt(s, { kind: "discardDown", p: 0 });
+
+  const view = ctx.PD.ui.newView();
+  // Start somewhere else to prove prompt forces us into hand.
+  view.cursor.row = ctx.PD.render.ROW_CENTER;
+  view.cursor.i = 2;
+
+  // First step: mode sync + cursor lock.
+  const intent0 = ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  assert.equal(intent0, null);
+  assert.equal(view.mode, "prompt");
+
+  const c0 = ctx.PD.ui.computeRowModels(s, view);
+  assert.ok(c0.selected, "expected selected item in prompt mode");
+  assert.equal(c0.selected.row, ctx.PD.render.ROW_P_HAND);
+  assert.equal(c0.selected.kind, "hand");
+
+  // Tap A: discard highlighted hand card.
+  const intent = ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.ok(intent && intent.kind === "applyCmd", "expected applyCmd intent");
+  assert.equal(intent.cmd.kind, "discard");
+  assert.equal(intent.cmd.card.loc.zone, "hand");
+  assert.equal(intent.cmd.card.loc.p, 0);
+});
+
+test("ui: discardDown prompt allows B to cancel before any discard", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  const s = ctx.PD.newGame({ seedU32: 1 });
+  s.activeP = 0;
+  ctx.PD.setPrompt(s, { kind: "discardDown", p: 0 });
+
+  const view = ctx.PD.ui.newView();
+  // Enter prompt mode.
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  assert.equal(view.mode, "prompt");
+
+  const intent = ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: { pressed: true }, x: {} });
+  assert.ok(intent && intent.kind === "applyCmd");
+  assert.equal(intent.cmd.kind, "cancelPrompt");
+});
+
+test("ui: discardDown prompt B after discarding gives negative feedback (no cancel)", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  const s = ctx.PD.newGame({ seedU32: 1 });
+  s.activeP = 0;
+  ctx.PD.setPrompt(s, { kind: "discardDown", p: 0 });
+  // Simulate a discard having already happened.
+  if (s.prompt) s.prompt.nDiscarded = 1;
+
+  const view = ctx.PD.ui.newView();
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  assert.equal(view.mode, "prompt");
+
+  const intent = ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: { pressed: true }, x: {} });
+  assert.equal(intent, null);
+  assert.ok(view.feedback && view.feedback.blinkFrames > 0, "expected negative feedback blink");
+});
+
+test("ui: menu Place auto-applies when only one destination exists", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  const s = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  // Add a property color that does not match any existing set => only New set is legal.
+  const uid = s.deck.find((u) => ctx.PD.defByUid(s, u).id === "prop_cyan");
+  assert.ok(uid, "expected prop_cyan uid in deck");
+  s.deck = s.deck.filter((u) => u !== uid);
+  s.players[0].hand.push(uid);
+
+  const view = ctx.PD.ui.newView();
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = s.players[0].hand.length - 1;
+
+  // Tap A to open menu, then tap A again to choose Place (only menu item).
+  ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(view.mode, "menu");
+  assert.equal(view.menu.items.length, 1);
+  assert.equal(view.menu.items[0].id, "place");
+  assert.equal(view.menu.items[0].label, "Place -> New Set");
+
+  const intent = ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.ok(intent && intent.kind === "applyCmd", "expected applyCmd intent");
+  assert.equal(intent.cmd.kind, "playProp");
+  assert.equal(view.mode, "browse");
+});
+
+test("ui: hold-A targeting includes a Source destination (release-A cancels)", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  const s = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const view = ctx.PD.ui.newView();
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = 0;
+
+  // Enter targeting via hold-A grab.
+  ctx.PD.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
+  assert.equal(view.mode, "targeting");
+  assert.equal(view.targeting.hold, true);
+  assert.ok(view.targeting.cmds.length >= 2, "expected at least one dest + source");
+  assert.equal(view.targeting.cmds.at(-1).kind, "source", "expected source as last destination");
+
+  // Select source and release A.
+  view.targeting.cmdI = view.targeting.cmds.length - 1;
+  const intent = ctx.PD.ui.step(s, view, { nav: {}, a: { released: true }, b: {}, x: {} });
+  assert.equal(intent, null);
+  assert.equal(view.mode, "browse");
+});
+
+test("ui: menu targeting includes a Source destination (tap-A cancels)", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  const s = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const view = ctx.PD.ui.newView();
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = 0;
+
+  // Open menu on a property.
+  ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(view.mode, "menu");
+  assert.ok(view.menu.items.some((it) => it && it.id === "place"), "expected Place in menu");
+
+  // Pick Place (index 0 in our current menu composition for properties).
+  view.menu.i = 0;
+  ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(view.mode, "targeting");
+  assert.equal(view.targeting.hold, false);
+  assert.equal(view.targeting.kind, "place");
+  assert.equal(view.targeting.cmds.at(-1).kind, "source", "expected Source destination");
+
+  // Select source and tap A to cancel.
+  view.targeting.cmdI = view.targeting.cmds.length - 1;
+  const intent = ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(intent, null);
+  assert.equal(view.mode, "browse");
+});
+
 test("ui: winCheck scenario is navigable (cursor relocates off empty hand)", async () => {
   const ctx = await loadSrcIntoVm();
 
@@ -365,5 +564,45 @@ test("ui: bank targeting produces a preview in the bank stack row", async () => 
   const c = ctx.PD.ui.computeRowModels(s, view);
   assert.ok(c.preview, "expected preview for bank targeting");
   assert.equal(c.preview.row, ctx.PD.render.ROW_P_HAND);
+});
+
+test("ui: menu hover Bank produces a preview when unambiguous", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  const s = ctx.PD.newGame({ seedU32: 1 });
+  const moneyUid = ctx.PD.takeUid(s, "money_1");
+  assert.ok(moneyUid, "expected money_1 uid");
+  // Force a simple state: one money card in hand, empty bank/sets.
+  s.deck = s.deck.filter((u) => u !== moneyUid);
+  s.discard = s.discard.filter((u) => u !== moneyUid);
+  for (let p = 0; p < 2; p++) {
+    s.players[p].hand = s.players[p].hand.filter((u) => u !== moneyUid);
+    s.players[p].bank = s.players[p].bank.filter((u) => u !== moneyUid);
+    for (const set of (s.players[p].sets || [])) {
+      if (!set) continue;
+      if (set.props) set.props = set.props.filter(([u]) => u !== moneyUid);
+      if (set.houseUid === moneyUid) set.houseUid = 0;
+    }
+  }
+  s.players[0].hand = [moneyUid];
+  s.players[0].bank = [];
+  s.players[0].sets = [];
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const view = ctx.PD.ui.newView();
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = 0;
+
+  // Open menu on the money card.
+  ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(view.mode, "menu");
+  assert.equal(view.menu.items.length, 1);
+  assert.equal(view.menu.items[0].id, "bank");
+
+  const c = ctx.PD.ui.computeRowModels(s, view);
+  assert.ok(c.preview, "expected preview while hovering Bank in menu mode");
+  assert.equal(c.preview.row, ctx.PD.render.ROW_P_HAND);
+  assert.equal(c.preview.forCmdKind, "bank");
 });
 

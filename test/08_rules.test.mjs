@@ -165,19 +165,88 @@ test("startTurn draws 2 when the incoming player hand is non-empty", async () =>
   assert.equal(state.playsLeft, 3);
 });
 
-test("endTurn is not legal (and throws) when active hand is over 7", async () => {
+test("endTurn enters discardDown prompt when active hand is over 7 (then discarding completes endTurn)", async () => {
   const ctx = await loadSrcIntoVm();
   const state = ctx.PD.newGame({ seedU32: 1 });
   const p = state.activeP;
+  const o = p ^ 1;
 
   // Starting player normally has 7 cards; force it to 8 by moving one from deck to hand.
   state.players[p].hand.push(state.deck.pop());
   assert.ok(state.players[p].hand.length > 7, "expected active hand > 7");
 
   const moves = ctx.PD.legalMoves(state);
-  assert.ok(!moves.some((m) => m.kind === "endTurn"), "expected endTurn to be absent when hand > 7");
+  assert.ok(moves.some((m) => m.kind === "endTurn"), "expected endTurn to be legal even when hand > 7");
 
-  assert.throws(() => ctx.PD.applyCommand(state, { kind: "endTurn" }));
+  const playsBefore = state.playsLeft;
+  ctx.PD.applyCommand(state, { kind: "endTurn" });
+
+  // Turn does not pass yet; we enter a forced discard prompt instead.
+  assert.equal(state.activeP, p);
+  assert.equal(state.playsLeft, playsBefore);
+  assert.ok(state.prompt, "expected prompt to be set");
+  assert.equal(state.prompt.kind, "discardDown");
+  assert.equal(state.prompt.p, p);
+
+  // While prompt is active, only discard moves are returned.
+  const m2 = ctx.PD.legalMoves(state);
+  assert.ok(m2.length > 0, "expected discard moves during prompt");
+  assert.ok(
+    m2.every((m) => m.kind === "discard" || m.kind === "cancelPrompt"),
+    "expected only discard/cancelPrompt moves during prompt"
+  );
+
+  // Discard until prompt clears; this auto-finishes endTurn and starts opponent turn.
+  while (state.prompt) {
+    const mv = ctx.PD.legalMoves(state).find((m) => m.kind === "discard");
+    ctx.PD.applyCommand(state, mv);
+  }
+
+  assert.equal(state.activeP, o);
+  assert.equal(state.playsLeft, 3);
+});
+
+test("cancelPrompt cancels discardDown only before any discard", async () => {
+  const ctx = await loadSrcIntoVm();
+  const state = ctx.PD.newGame({ seedU32: 1 });
+  const p = state.activeP;
+
+  // Force prompt via endTurn attempt.
+  state.players[p].hand.push(state.deck.pop());
+  ctx.PD.applyCommand(state, { kind: "endTurn" });
+  assert.ok(state.prompt && state.prompt.kind === "discardDown");
+
+  // Cancel immediately (no discards yet).
+  ctx.PD.applyCommand(state, { kind: "cancelPrompt" });
+  assert.equal(state.prompt, null);
+  assert.equal(state.activeP, p);
+
+  // Re-enter prompt, discard once, then cancel should be rejected.
+  ctx.PD.applyCommand(state, { kind: "endTurn" });
+  assert.ok(state.prompt && state.prompt.kind === "discardDown");
+
+  const mv = ctx.PD.legalMoves(state).find((m) => m.kind === "discard");
+  assert.ok(mv, "expected discard move");
+  ctx.PD.applyCommand(state, mv);
+
+  assert.throws(() => ctx.PD.applyCommand(state, { kind: "cancelPrompt" }));
+});
+
+test("drawToHand reshuffles discard into deck when needed (continues drawing)", async () => {
+  const ctx = await loadSrcIntoVm();
+  const state = ctx.PD.newGame({ seedU32: 1 });
+  const p = state.activeP;
+
+  // Move almost the entire deck into discard so a draw must reshuffle.
+  while (state.deck.length > 1) state.discard.push(state.deck.shift());
+  assert.equal(state.deck.length, 1);
+  assert.ok(state.discard.length > 0);
+
+  const before = state.players[p].hand.length;
+  ctx.PD.drawToHand(state, p, 5, null);
+
+  assert.equal(state.players[p].hand.length, before + 5);
+  assert.equal(state.discard.length, 0, "expected discard to be consumed into deck during reshuffle");
 });
 
 test("drawToHand draws partially when the deck is short (no throw)", async () => {
@@ -186,8 +255,10 @@ test("drawToHand draws partially when the deck is short (no throw)", async () =>
   const p0 = state.activeP;
   const p1 = p0 ^ 1;
 
-  // Make the deck very small, but keep uid ownership consistent by moving the rest into discard.
-  while (state.deck.length > 2) state.discard.push(state.deck.shift());
+  // Make the deck very small *and* keep discard empty so the draw is forced to be partial.
+  // (Phase 05b reshuffles discard into deck when available.)
+  while (state.deck.length > 2) state.players[p0].bank.push(state.deck.shift());
+  state.discard = [];
 
   const before = state.players[p1].hand.length; // 0 in this scenario
   const res = ctx.PD.applyCommand(state, { kind: "endTurn" });

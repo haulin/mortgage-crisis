@@ -97,16 +97,32 @@ PD.drawToHand = function (state, p, n, events) {
   n = n | 0;
   if (n <= 0) return;
   if (!state.deck) state.deck = [];
-  var nAvail = state.deck.length | 0;
-  if (nAvail <= 0) return;
-  if (n > nAvail) n = nAvail;
+  if (!state.discard) state.discard = [];
 
   var uids = [];
-  var k;
-  for (k = 0; k < n; k++) {
-    var uid = state.deck.pop();
-    state.players[p].hand.push(uid);
-    uids.push(uid);
+  while (n > 0) {
+    var nAvail = state.deck.length | 0;
+    if (nAvail <= 0) {
+      var nDisc = state.discard.length | 0;
+      if (nDisc <= 0) break;
+      // Reshuffle discard into deck (deterministic).
+      var i;
+      for (i = 0; i < nDisc; i++) state.deck.push(state.discard[i] | 0);
+      state.discard = [];
+      PD.shuffleUidsInPlace(state, state.deck);
+      nAvail = state.deck.length | 0;
+      if (nAvail <= 0) break;
+    }
+
+    var take = nAvail;
+    if (take > n) take = n;
+    var k;
+    for (k = 0; k < take; k++) {
+      var uid = state.deck.pop();
+      state.players[p].hand.push(uid);
+      uids.push(uid);
+    }
+    n -= take;
   }
 
   if (events && (uids.length | 0) > 0) events.push({ kind: "draw", p: p, uids: uids });

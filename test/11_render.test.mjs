@@ -491,36 +491,37 @@ test("render: center button strip uses dark fill and selected uses highlight fil
   view.cursor.row = ctx.PD.render.ROW_CENTER;
   view.cursor.i = 2; // first button (End)
 
-  drawFrame(ctx, s, view);
-
-  const L = ctx.PD.config.render.layout;
-  const stripW = L.centerBtnStripW;
-  const stripH = 10;
-  const stripX = L.screenW - L.centerBtnStripPadRight - stripW;
-  const stripY0 = L.rowY[ctx.PD.render.ROW_CENTER] + L.rowH[ctx.PD.render.ROW_CENTER] - 1 - 40;
+  const computed = drawFrame(ctx, s, view);
+  const rowM = computed.models[ctx.PD.render.ROW_CENTER];
+  const endBtn = rowM.items.find((it) => it && it.kind === "btn" && it.id === "endTurn");
+  assert.ok(endBtn, "expected to find End button model item");
 
   // Selected button should draw a filled rect with highlight color at its bounds.
   const fillHighlight = rec.calls.find(
     (c) =>
       c.kind === "rect" &&
-      c.args[0] === stripX &&
-      c.args[1] === stripY0 &&
-      c.args[2] === stripW &&
-      c.args[3] === stripH &&
+      c.args[0] === endBtn.x &&
+      c.args[1] === endBtn.y &&
+      c.args[2] === endBtn.w &&
+      c.args[3] === endBtn.h &&
       c.args[4] === ctx.PD.config.render.style.colHighlight
   );
   assert.ok(fillHighlight, "expected selected End button to have highlight fill rect");
 
-  // Some button fill should be dark (center panel color), not white.
-  const darkFill = rec.calls.find(
-    (c) =>
-      c.kind === "rect" &&
-      c.args[0] === stripX &&
-      c.args[2] === stripW &&
-      c.args[3] === stripH &&
-      c.args[4] === ctx.PD.config.render.style.colCenterPanel
-  );
-  assert.ok(darkFill, "expected at least one non-selected button to use center panel fill (dark)");
+  // Some non-selected debug button (if present) should be dark (center panel color), not highlight.
+  const otherBtn = rowM.items.find((it) => it && it.kind === "btn" && it.id !== "endTurn");
+  if (otherBtn) {
+    const darkFill = rec.calls.find(
+      (c) =>
+        c.kind === "rect" &&
+        c.args[0] === otherBtn.x &&
+        c.args[1] === otherBtn.y &&
+        c.args[2] === otherBtn.w &&
+        c.args[3] === otherBtn.h &&
+        c.args[4] === ctx.PD.config.render.style.colCenterPanel
+    );
+    assert.ok(darkFill, "expected at least one non-selected button to use center panel fill (dark)");
+  }
 });
 
 test("render: End button shows green recommendation when out of plays", async () => {
@@ -538,21 +539,18 @@ test("render: End button shows green recommendation when out of plays", async ()
   view.cursor.row = ctx.PD.render.ROW_CENTER;
   view.cursor.i = 0; // deck
 
-  drawFrame(ctx, s, view);
-
-  const L = ctx.PD.config.render.layout;
-  const stripW = L.centerBtnStripW;
-  const stripH = 10;
-  const stripX = L.screenW - L.centerBtnStripPadRight - stripW;
-  const stripY0 = L.rowY[ctx.PD.render.ROW_CENTER] + L.rowH[ctx.PD.render.ROW_CENTER] - 1 - 40;
+  const computed = drawFrame(ctx, s, view);
+  const rowM = computed.models[ctx.PD.render.ROW_CENTER];
+  const endBtn = rowM.items.find((it) => it && it.kind === "btn" && it.id === "endTurn");
+  assert.ok(endBtn, "expected to find End button model item");
 
   const greenBorder = rec.calls.find(
     (c) =>
       c.kind === "rectb" &&
-      c.args[0] === stripX &&
-      c.args[1] === stripY0 &&
-      c.args[2] === stripW &&
-      c.args[3] === stripH &&
+      c.args[0] === endBtn.x &&
+      c.args[1] === endBtn.y &&
+      c.args[2] === endBtn.w &&
+      c.args[3] === endBtn.h &&
       c.args[4] === ctx.PD.Pal.Green
   );
   assert.ok(greenBorder, "expected End button border to be green when out of plays");
@@ -565,6 +563,8 @@ test("render: bank targeting draws preview in bank stack", async () => {
   const s = ctx.PD.newGame({ seedU32: 1 });
   const moneyUid = ctx.PD.takeUid(s, "money_1");
   assert.ok(moneyUid, "expected money_1 uid");
+  const bankUid = ctx.PD.takeUid(s, "money_2");
+  assert.ok(bankUid, "expected money_2 uid");
   // Remove uid from any zone it might already be in.
   s.deck = s.deck.filter((u) => u !== moneyUid);
   s.discard = s.discard.filter((u) => u !== moneyUid);
@@ -578,7 +578,7 @@ test("render: bank targeting draws preview in bank stack", async () => {
     }
   }
   s.players[0].hand = [moneyUid];
-  s.players[0].bank = [];
+  s.players[0].bank = [bankUid];
   s.players[0].sets = [];
   s.activeP = 0;
   s.playsLeft = 3;
@@ -602,6 +602,70 @@ test("render: bank targeting draws preview in bank stack", async () => {
     (c) => c.kind === "rect" && c.args[0] === bankRightX && c.args[1] === yFace && c.args[2] === L.faceW && c.args[3] === L.faceH
   );
   assert.ok(previewBorder, `expected bank preview border rect at (${bankRightX},${yFace})`);
+
+  // Existing bank stack should shift left by one stride during bank targeting.
+  const shiftedX = bankRightX - L.stackStrideX;
+  const existingBorder = rec.calls.find(
+    (c) => c.kind === "rect" && c.args[0] === shiftedX && c.args[1] === yFace && c.args[2] === L.faceW && c.args[3] === L.faceH
+  );
+  assert.ok(existingBorder, `expected existing bank card border rect at (${shiftedX},${yFace})`);
+
+  // Source destination should show as a green ghost outline at the grabbed slot (x=rowPadX).
+  const xSource = L.rowPadX;
+  const ghostSource = rec.calls.find(
+    (c) =>
+      c.kind === "rectb" &&
+      c.args[0] === xSource &&
+      c.args[1] === yFace &&
+      c.args[2] === L.faceW &&
+      c.args[3] === L.faceH &&
+      c.args[4] === ctx.PD.Pal.Green
+  );
+  assert.ok(ghostSource, `expected green ghost outline at Source (${xSource},${yFace})`);
+});
+
+test("render: bank targeting shows green ghost for bank when Source is selected", async () => {
+  const rec = makeRecorder();
+  const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
+
+  const s = ctx.PD.newGame({ seedU32: 1 });
+  const moneyUid = ctx.PD.takeUid(s, "money_1");
+  // Remove uid from any zone it might already be in.
+  s.deck = s.deck.filter((u) => u !== moneyUid);
+  s.discard = s.discard.filter((u) => u !== moneyUid);
+  for (let p = 0; p < 2; p++) {
+    s.players[p].hand = s.players[p].hand.filter((u) => u !== moneyUid);
+    s.players[p].bank = s.players[p].bank.filter((u) => u !== moneyUid);
+  }
+  s.players[0].hand = [moneyUid];
+  s.players[0].bank = [];
+  s.players[0].sets = [];
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const view = newView(ctx);
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = 0;
+  ctx.PD.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
+  assert.equal(view.mode, "targeting");
+
+  // Select Source destination (last), so bank becomes non-selected and should be ghosted.
+  view.targeting.cmdI = view.targeting.cmds.length - 1;
+  drawFrame(ctx, s, view);
+
+  const L = ctx.PD.config.render.layout;
+  const bankRightX = L.screenW - L.rowPadX - L.faceW;
+  const yFace = L.rowY[ctx.PD.render.ROW_P_HAND] + L.faceInsetY;
+  const ghostBank = rec.calls.find(
+    (c) =>
+      c.kind === "rectb" &&
+      c.args[0] === bankRightX &&
+      c.args[1] === yFace &&
+      c.args[2] === L.faceW &&
+      c.args[3] === L.faceH &&
+      c.args[4] === ctx.PD.Pal.Green
+  );
+  assert.ok(ghostBank, `expected green ghost outline at Bank (${bankRightX},${yFace}) when Source selected`);
 });
 
 test("render: targeting draws ghost outlines and preview overlay", async () => {
@@ -636,6 +700,20 @@ test("render: targeting draws ghost outlines and preview overlay", async () => {
     (c) => c.kind === "rectb" && c.args[0] === xGhost && c.args[1] === yFace && c.args[2] === L.faceW && c.args[3] === L.faceH && c.args[4] === ctx.PD.Pal.Green
   );
   assert.ok(ghostGreen, `expected green ghost outline rectb at (${xGhost},${yFace})`);
+
+  // Source destination should also be ghosted in the hand row.
+  const yHandFace = L.rowY[ctx.PD.render.ROW_P_HAND] + L.faceInsetY;
+  const xSource = L.rowPadX;
+  const ghostSource = rec.calls.find(
+    (c) =>
+      c.kind === "rectb" &&
+      c.args[0] === xSource &&
+      c.args[1] === yHandFace &&
+      c.args[2] === L.faceW &&
+      c.args[3] === L.faceH &&
+      c.args[4] === ctx.PD.Pal.Green
+  );
+  assert.ok(ghostSource, `expected green ghost outline at Source (${xSource},${yHandFace})`);
 });
 
 test("render: plays indicator draws 3 pips (green remaining, red used)", async () => {
@@ -674,8 +752,7 @@ test("render: feedback message draws a screen-top toast with background, border,
 
   const s = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
   const view = newView(ctx);
-  view.feedback.msg = "No actions";
-  view.feedback.msgFrames = 10;
+  view.toasts = [{ kind: "error", text: "No actions", frames: 10 }];
 
   drawFrame(ctx, s, view);
 
@@ -691,5 +768,29 @@ test("render: feedback message draws a screen-top toast with background, border,
 
   const msg = rec.calls.find((c) => c.kind === "print" && c.args[0] === "No actions");
   assert.ok(msg, "expected toast message print");
+});
+
+test("render: toasts stack top-to-bottom (prompt then error)", async () => {
+  const rec = makeRecorder();
+  const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
+
+  const s = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
+  const view = newView(ctx);
+  view.toasts = [
+    { kind: "prompt", text: "Discard 1 more (A:Discard)", persistent: true },
+    { kind: "error", text: "No plays left", frames: 10 },
+  ];
+
+  drawFrame(ctx, s, view);
+
+  // Expect 2 toast backgrounds at different y positions.
+  const toastBgs = rec.calls
+    .filter((c) => c.kind === "rect" && c.args[4] === ctx.PD.Pal.Black && c.args[1] <= 30)
+    .map((c) => c.args[1]);
+  assert.ok(toastBgs.includes(2), "expected first toast at y=2");
+  assert.ok(toastBgs.some((y) => y > 2 && y <= 30), "expected second toast below the first");
+
+  const redX = rec.calls.find((c) => c.kind === "print" && c.args[0] === "X" && c.args[3] === ctx.PD.Pal.Red);
+  assert.ok(redX, "expected red X for error toast");
 });
 
