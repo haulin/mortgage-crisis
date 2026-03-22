@@ -76,6 +76,16 @@ test("config sanity: render.layout/style/spr/moneyBgByValue shape", async () => 
     "centerPreviewX",
     "centerPreviewGapX",
     "centerDescDy",
+    "centerBtnStripW",
+    "centerBtnStripPadRight",
+    "inspectPanelX0",
+    "inspectPanelY0",
+    "inspectPanelX1",
+    "inspectPanelY1",
+    "inspectPanelPadX",
+    "inspectPanelPadY",
+    "inspectTitleGapX",
+    "inspectDescDy",
     "pileUnderDx1",
     "pileUnderDy1",
     "pileUnderDx2",
@@ -115,7 +125,10 @@ test("config sanity: render.layout/style/spr/moneyBgByValue shape", async () => 
     "hudLineCol",
     "pileShadowOutlineCol",
     "pileOutlineUnder1Col",
-    "pileOutlineUnder2Col"
+    "pileOutlineUnder2Col",
+    "inspectPanelFillCol",
+    "pileCountDx",
+    "pileCountDy"
   ].forEach((k) => requireNum(S, k));
 
   requireNum(r.spr, "digit0");
@@ -145,6 +158,16 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   // Directional navigation cone penalties.
   requirePosNum(PD.config.ui, "navConeKLeftRight");
   requirePosNum(PD.config.ui, "navConeKUpDown");
+});
+
+test("config sanity: rule notes are configured", async () => {
+  const ctx = await loadSrcFilesIntoVm(["00_prelude.js", "01_config.js"]);
+  const { PD } = ctx;
+
+  assert.equal(typeof PD.RuleNote, "object", "expected PD.RuleNote");
+  assert.equal(typeof PD.config.rules, "object", "expected PD.config.rules");
+  assert.ok(Array.isArray(PD.config.rules.enabledRuleNotes), "expected enabledRuleNotes array");
+  assert.ok(PD.config.rules.enabledRuleNotes.length > 0, "expected enabledRuleNotes to be non-empty");
 });
 
 test("sanity: scenarios are registered after full load", async () => {

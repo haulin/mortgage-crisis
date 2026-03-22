@@ -17,6 +17,7 @@ Documentation convention (for future phases):
 - **Phase 03b ✅**: center-panel “big preview” + card backs + deck + discard rendering. See `docs/phase03b.md`.
 - **Phase 03c ✅**: bridge rules polish (empty-hand draw-5, end-turn hand cap) + debug stepping realism. See `docs/phase03c.md`.
 - **Phase 04 ✅**: UI-owned controller UX (menus/targeting/inspect) + injected controls; renderer is display-only (bounded to existing commands). See `docs/phase04.md`.
+- **Phase 05 ✅**: Inspect overlay becomes a real panel (config-driven, small-font desc) + improved card copy + rule-note gating + pile count digit offset. See `docs/phase05.md`.
 
 ## Goals + Constraints
 
@@ -301,7 +302,7 @@ This is a small “in-between” phase to keep the debug/render harness faithful
 - Render polish: opponent Wilds keep assigned color **owner-facing** (orientation fix + regression test)
 - Debug HUD polish: DebugText shows Wild assignment and bank **count + total value**
 
-### Phase 04 — UI state machine (controller UX)
+### Phase 04 **✅** — UI state machine (controller UX)
 
 - Implement a **UI-owned view state machine** (`PD.ui`) + injected controls (`PD.controls`), with renderer as **display-only**.
 - **Selection model by zone** (5-row layout retained):
@@ -330,18 +331,29 @@ This is a small “in-between” phase to keep the debug/render harness faithful
   - `endTurn`, `bank`, `playProp` (Place), `playHouse` (Build)
   - Rent/SlyDeal/JSN/debt/payment/received-property placement/wild replace-window are deferred to later phases (Phase 05+).
 
-### Phase 05 — Turn loop + discard down to 7
+### Phase 05 **✅** — Inspect overlay + tiny render polish
+
+- Fix Inspect overlay (hold `X`) so it **does not overlap** player table sets (keep it visually contained to the center panel area)
+- Improve Inspect overlay readability (no big-card rendering yet):
+  - Use **small font** for description text
+  - Nicer-looking overlay box (layout/spacing/borders so it reads as an intentional modal)
+- Upgrade per-card `def.desc` copy (make descriptions real/useful, not boilerplate)
+- Shift Deck/Discard pile count digits **+1,+1** so they visually “stick out” from the top card (not read as part of the card face)
+
+### Phase 05b — Turn loop + discard down to 7
 
 - Implement full turn loop framing around the existing start-of-turn draw rule (draw 2, or draw 5 if hand is empty)
-- Formalize “3 plays per turn” UX around `state.playsLeft` (already exists in state/rules; Phase 05 ensures the *full loop* uses it consistently)
+- Formalize “3 plays per turn” UX around `state.playsLeft` (already exists in state/rules; Phase 05b ensures the *full loop* uses it consistently)
 - Implement discard-down-to-7 at end of turn (selection UI)
-  - If the player attempts to end turn while hand > 7, Phase 05 UI should enter a forced discard-down-to-7 mode before passing the turn.
-- Reshuffle discard into deck when needed
+  - If the player attempts to end turn while hand > 7, Phase 05b UI should enter a forced discard-down-to-7 mode before passing the turn.
+- Reshuffle discard into deck when needed (required for any future mid-turn draw/reveal effects too)
 
 Quality-of-life (still UX-level; no new rules commands):
 
 - Targeting/menu shortcut: if a menu action (e.g. Place/Build) yields **exactly 1** legal destination, consider skipping the extra confirm step (or at minimum show a more specific label like “Place → New set”)
 - Replace dev-only `Y:Mode` hint/toggle with a proper dev entrypoint (e.g. hidden debug menu) or remove for non-dev builds
+- Add an easier cancel path for hold‑A targeting (avoid requiring `B` while holding `A`):
+  - option A: treat the **source** as a valid “destination” (drop back onto source = cancel)
 
 ### Phase 06 — Debt/payment + “faux-turn placement”
 
@@ -351,15 +363,27 @@ Quality-of-life (still UX-level; no new rules commands):
   - transfer to recipient (bank/properties)
 - Implement recipient placement step for each received property, including Wild assignment
 
+Content expansion readiness (post‑MVP):
+
+- Keep the debt/payment UX generic so Phase 11 can add “pay/select/transfer” actions (e.g. Forced Purchase) without inventing new interaction patterns
+
 ### Phase 07 — Actions + responses
 
 - Implement Rent + JSN response window
 - Implement Sly Deal + JSN response window + legality (not from complete set)
 
+Content expansion readiness (post‑MVP):
+
+- Keep the response window + targeting UX generic so Phase 11 can add additional action card types without bespoke UI
+
 ### Phase 08 — Wild replace-window
 
 - Detect replace-window eligibility after property plays
 - Offer optional prompt to move exactly 1 Wild if legal (source remains complete)
+
+Content expansion readiness (post‑MVP):
+
+- Keep replace-window prompts generic so Phase 11 can add more Wild/board-state manipulation cards that reuse this workflow
 
 ### Phase 09 — AI (random legal) + narrated pacing
 
@@ -371,6 +395,40 @@ Quality-of-life (still UX-level; no new rules commands):
 
 - Implement scenario list and boot selection (e.g., hidden title-screen menu)
 - (Optional later) implement seed display and seed override in dev
+- Add a scroll-stress scenario to verify row horizontal scrolling/cameras (e.g. 12 cards in hand + lots of money cards in bank + many property stacks)
+- Add a Rules / How-to-play screen (reachable from boot/title screen) so the game is self-explanatory without external docs
+
+### Phase 11 — Post‑MVP1 content expansion (make it feel like a real game)
+
+- Add more property colors/sets (new `PD.Color` entries + `PD.SET_RULES` + `CARD_DEFS`)
+- Expand deck composition (properties/money/actions) while keeping turn UX readable
+- Add additional card types **only once the workflow exists** (so no dead draws). Practical rule of thumb:
+  - After Phase 06 (debt/payment): add 1–2 “pay/select/transfer” actions that reuse that pipeline (e.g. Forced Purchase)
+  - After Phase 07 (actions + responses): add 1–2 action cards that reuse the response window (JSN)
+  - After Phase 08 (replace-window): add 1–2 Wild/board-state manipulation cards that reuse replace eligibility
+
+### Phase 12 — UX/readability polish
+
+- Optional vertical area labels explaining the different zones (hand/bank/properties/opponent areas)
+- Continue Inspect overlay polish as needed (still not “big cards”)
+- Free organization / preparation actions (UI-only; no play cost):
+  - Reorder/sort hand, bank, and stacks for readability (purely cosmetic; no rules/commands)
+  - Flip a Wild property’s preferred color **in the source** (e.g. via context menu) so you can “pre-set” it before targeting/placing
+
+### Phase 13 — Card art + palette polish
+
+- Replace placeholder action icons with larger **~15×15** icons (implemented as a 2×2 sprite block with a colorkey padding row/col to yield an effective 15×15)
+- Money/action card faces: dithered / lighter background treatment (sprite pattern or fast overlay)
+- (Optional, later) implement true “big card” rendering for previews once icons exist for all card types (keeps big-card work dependent on art readiness)
+
+### Phase 14 — Background treatment
+
+- More exciting animated abstract background; fallback to tiled sprite patterns if per-frame generation is too expensive
+
+### Phase 15 — Mouse + audio + extra polish grab-bag
+
+- Add mouse controls (TIC-80 `mouse()`) layered on top of controller UX
+- Music / sound effects (TIC-80 `music()` / `sfx()`)
 
 ## Recommended file layout (after Phase 0)
 

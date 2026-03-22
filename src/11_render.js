@@ -424,8 +424,8 @@ PD.render = PD.render || {};
       var sN = String(n);
       if (sN.length > 2) sN = sN.slice(-2);
       var len = sN.length;
-      var yTL = cfg.faceH - 1 - cfg.digitGlyphH;
-      var xEnd = cfg.faceW - 1 - cfg.digitGlyphW;
+      var yTL = cfg.faceH - 1 - cfg.digitGlyphH + cfg.pileCountDy;
+      var xEnd = cfg.faceW - 1 - cfg.digitGlyphW + cfg.pileCountDx;
       var xStart = xEnd - (len - 1) * cfg.propRentDx;
       var i;
       for (i = 0; i < len; i++) {
@@ -522,6 +522,32 @@ PD.render = PD.render || {};
     var xDesc = C.desc.x;
     var yDesc = C.desc.y;
 
+    // Phase 05: Inspect uses a screen-space panel with panel-driven anchors.
+    var panel = null;
+    if (view.inspectActive) {
+      var Lp = PD.config.render.layout;
+      panel = {
+        x0: Lp.inspectPanelX0,
+        y0: Lp.inspectPanelY0,
+        x1: Lp.inspectPanelX1,
+        y1: Lp.inspectPanelY1
+      };
+      // Backing panel behind preview+title+desc.
+      rectSafe(panel.x0, panel.y0, panel.x1 - panel.x0 + 1, panel.y1 - panel.y0 + 1, cfg.inspectPanelFillCol);
+      rectbSafe(panel.x0, panel.y0, panel.x1 - panel.x0 + 1, panel.y1 - panel.y0 + 1, cfg.colCenterPanelBorder);
+
+      var padX = Lp.inspectPanelPadX;
+      var padY = Lp.inspectPanelPadY;
+      var gapX = Lp.inspectTitleGapX;
+      var descDy = Lp.inspectDescDy;
+      xPrev = panel.x0 + padX;
+      yPrev = panel.y0 + padY;
+      xTitle = xPrev + cfg.faceW + gapX;
+      yTitle = yPrev;
+      xDesc = xTitle;
+      yDesc = yTitle + descDy;
+    }
+
     function colorName(c) {
       c = Math.floor(Number(c));
       if (!isFinite(c)) c = 0;
@@ -539,35 +565,37 @@ PD.render = PD.render || {};
       if (sel.row === R.ROW_CENTER && !sel.uid) {
         if (sel.kind === "deck") {
           printSafe("Deck", xTitle, yTitle, cfg.colText);
-          printExSafe("Cards: " + s.deck.length, xDesc, yDesc, cfg.colText, false, 1, false);
+          var deckDesc = "Cards: " + s.deck.length;
           if (dbgEnabled && s.deck.length > 0) {
             var topUid = s.deck[s.deck.length - 1];
             drawMiniCard(s, topUid, xPrev, yPrev, false);
             var defT = PD.defByUid(s, topUid);
-            if (defT && defT.name) printSafe(defT.name, xTitle, yTitle + 10, cfg.colText);
+            if (defT && defT.name) deckDesc += "\nTop: " + String(defT.name);
           }
+          printExSafe(deckDesc, xDesc, yDesc, cfg.colText, false, 1, true);
           return;
         }
         if (sel.kind === "discard") {
           printSafe("Discard", xTitle, yTitle, cfg.colText);
-          printExSafe("Cards: " + s.discard.length, xDesc, yDesc, cfg.colText, false, 1, false);
+          var discardDesc = "Cards: " + s.discard.length;
           if (s.discard.length > 0) {
             var topUid2 = s.discard[s.discard.length - 1];
             drawMiniCard(s, topUid2, xPrev, yPrev, false);
             var defD = PD.defByUid(s, topUid2);
-            if (defD && defD.name) printSafe(defD.name, xTitle, yTitle + 10, cfg.colText);
+            if (defD && defD.name) discardDesc += "\nTop: " + String(defD.name);
           }
+          printExSafe(discardDesc, xDesc, yDesc, cfg.colText, false, 1, true);
           return;
         }
         if (sel.kind === "btn") {
           var title = String(sel.label || sel.id || "");
           printSafe(title, xTitle, yTitle, cfg.colText);
           var help = "";
-          if (sel.id === "endTurn") help = "End your turn\n(if legal).";
-          else if (sel.id === "step") help = "Step 1 random\nlegal move.";
-          else if (sel.id === "reset") help = "Reset scenario.";
-          else if (sel.id === "nextScenario") help = "Next scenario.";
-          printExSafe(help, xDesc, yDesc, cfg.colText, false, 1, false);
+          if (sel.id === "endTurn") help = "End your turn.\nHand must be <= 7.";
+          else if (sel.id === "step") help = "Debug: step 1 random\nlegal move.";
+          else if (sel.id === "reset") help = "Debug: reset current\nscenario.";
+          else if (sel.id === "nextScenario") help = "Debug: switch to next\nscenario.";
+          printExSafe(help, xDesc, yDesc, cfg.colText, false, 1, true);
           return;
         }
       }
@@ -585,12 +613,67 @@ PD.render = PD.render || {};
         return;
       }
 
+      function valueForDef(def) {
+        if (!def) return null;
+        if (def.kind === PD.CardKind.Property) {
+          if (def.propertyPayValue != null) return def.propertyPayValue;
+          return 0;
+        }
+        if (def.bankValue != null) return def.bankValue;
+        return null;
+      }
+
+      function inspectTitleForDef(def) {
+        var t = def.name ? String(def.name) : (def.id ? String(def.id) : "");
+        return t;
+      }
+
+      function inspectDescForDef(def, selColor) {
+        var base = def && def.desc ? String(def.desc) : "";
+        base = appendRuleNotes(def, base);
+        var v = valueForDef(def);
+        var vLine = (v != null && v > 0) ? ("Value: $" + String(v)) : "";
+        var usedAs = "";
+        if (def && PD.isWildDef && typeof PD.isWildDef === "function" && PD.isWildDef(def)) {
+          var c = Math.floor(Number(selColor));
+          if (isFinite(c) && c !== PD.NO_COLOR && def.wildColors && (c === def.wildColors[0] || c === def.wildColors[1])) {
+            usedAs = "Currently used as: " + colorName(c);
+          }
+        }
+
+        var out = "";
+        if (vLine) out = vLine;
+        if (usedAs) out = out ? (out + "\n" + usedAs) : usedAs;
+        if (base) out = out ? (out + "\n" + base) : base;
+        return out;
+      }
+
+      function appendRuleNotes(def, baseDesc) {
+        baseDesc = baseDesc ? String(baseDesc) : "";
+        if (!def || !def.ruleNotes || def.ruleNotes.length === 0) return baseDesc;
+        var enabled = (PD.config && PD.config.rules && PD.config.rules.enabledRuleNotes) ? PD.config.rules.enabledRuleNotes : [];
+        if (!enabled || enabled.length === 0) return baseDesc;
+
+        var out = baseDesc;
+        var i;
+        for (i = 0; i < def.ruleNotes.length; i++) {
+          var id = def.ruleNotes[i];
+          var j;
+          var on = false;
+          for (j = 0; j < enabled.length; j++) if ((enabled[j] | 0) === (id | 0)) { on = true; break; }
+          if (!on) continue;
+          var txt = (PD.ruleNoteTextById && PD.ruleNoteTextById[id | 0]) ? String(PD.ruleNoteTextById[id | 0]) : "";
+          if (!txt) continue;
+          if (out) out += "\n";
+          out += txt;
+        }
+        return out;
+      }
+
       drawMiniCard(s, uid, xPrev, yPrev, false, sel.color);
-      var title2 = def.name ? def.name : (def.id ? def.id : "");
-      printSafe(title2, xTitle, yTitle, cfg.colText);
-      var desc = def.desc ? String(def.desc) : "";
-      // normal font (smallfont=false) for inspect readability
-      printExSafe(desc, xDesc, yDesc, cfg.colText, false, 1, false);
+      printSafe(inspectTitleForDef(def), xTitle, yTitle, cfg.colText);
+      var desc = inspectDescForDef(def, sel.color);
+      printExSafe(desc, xDesc, yDesc, cfg.colText, false, 1, true);
     }
 
     function drawMenuOverlay() {
@@ -674,14 +757,6 @@ PD.render = PD.render || {};
     if (view.mode === "menu") drawMenuOverlay();
     else if (view.mode === "targeting") drawTargetingOverlay();
     else if (view.inspectActive) {
-      // Backing box for inspect readability.
-      var boxX2 = xDesc - 2;
-      var boxY2 = yDesc - 2;
-      var boxW2 = cfg.screenW - boxX2 - cfg.rowPadX;
-      var boxH2 = 32;
-      rectSafe(boxX2, boxY2, boxW2, boxH2, PD.Pal.Black);
-      rectbSafe(boxX2, boxY2, boxW2, boxH2, cfg.colCenterPanelBorder);
-
       drawInspectForSelection(selectedItem);
     }
 
@@ -1168,17 +1243,6 @@ PD.render = PD.render || {};
     drawPlaysPips(state);
     drawModeHintNearButtons(view, computed);
     drawToast(view);
-  };
-
-  // Legacy hook (Phase 03): draw-only; input/nav moved to PD.ui.
-  R.tick = function (debug) {
-    if (!debug || !debug.state) return;
-    if (debug.view && PD.ui && typeof PD.ui.computeRowModels === "function") {
-      var c = PD.ui.computeRowModels(debug.state, debug.view);
-      R.drawFrame({ state: debug.state, view: debug.view, computed: c });
-      return;
-    }
-    // Fallback: do nothing (Phase 04 wiring owns the loop).
   };
 })();
 

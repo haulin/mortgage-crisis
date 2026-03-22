@@ -109,6 +109,39 @@ PD.ui.wrapI = function (i, n) {
   return i;
 };
 
+// Pick the first item matching a predicate from the given row order.
+// Returns { row, i, item } or null.
+PD.ui.findBestCursorTarget = function (models, rowOrder, predicate) {
+  if (!models) return null;
+  rowOrder = rowOrder || [0, 1, 2, 3, 4];
+  predicate = predicate || function () { return true; };
+
+  var ri;
+  for (ri = 0; ri < rowOrder.length; ri++) {
+    var row = Math.floor(Number(rowOrder[ri]));
+    if (!isFinite(row)) continue;
+    if (row < 0 || row > 4) continue;
+
+    var rm = models[row];
+    if (!rm || !rm.items || rm.items.length === 0) continue;
+
+    var i;
+    for (i = 0; i < rm.items.length; i++) {
+      var it = rm.items[i];
+      if (!it) continue;
+      if (!predicate(it)) continue;
+      return { row: row, i: i, item: it };
+    }
+  }
+  return null;
+};
+
+PD.ui.cursorMoveTo = function (view, pick) {
+  if (!view || !view.cursor || !pick) return;
+  view.cursor.row = pick.row;
+  view.cursor.i = pick.i;
+};
+
 PD.ui.nearestByX = function (items, xCenter) {
   if (!items || items.length === 0) return 0;
   var bestI = 0;
@@ -506,13 +539,14 @@ PD.ui.buildRowItems = function (state, view, row) {
 
     var dbgEnabled = !!(PD.config && PD.config.debug && PD.config.debug.enabled);
 
-    // Hide buttons while an overlay is active (menu/targeting/inspect).
-    var overlayActive = !!(view && (view.mode === "menu" || view.mode === "targeting" || view.inspectActive));
+    // Hide buttons while an overlay is active (menu/targeting).
+    // Inspect should keep buttons visible/selectable so they can be inspected too.
+    var overlayActive = !!(view && (view.mode === "menu" || view.mode === "targeting"));
     if (!overlayActive) {
       // Right-side vertical strip: 4*10px = 40px tall, fits inside center row.
-      var stripW = 54;
+      var stripW = C.centerBtnStripW;
       var stripH = 10;
-      var stripX = C.screenW - C.rowPadX - stripW;
+      var stripX = C.screenW - C.centerBtnStripPadRight - stripW;
       // Bottom-align within the center row band.
       var stripY0 = (C.rowY[2] + C.rowH[2] - 1 - 40);
 
@@ -520,7 +554,7 @@ PD.ui.buildRowItems = function (state, view, row) {
         out.items.push({ kind: "btn", id: id, label: label, disabled: !!disabled, row: 2, x: stripX, y: y, w: stripW, h: stripH });
       }
 
-      var endDisabled = (state.activeP !== 0) || (state.players[0].hand.length > PD.HAND_MAX);
+      var endDisabled = (state.winnerP !== PD.NO_WINNER) || (state.activeP !== 0) || (state.players[0].hand.length > PD.HAND_MAX);
       pushBtn("endTurn", "End", stripY0, endDisabled);
       if (dbgEnabled) {
         pushBtn("step", "Step", stripY0 + 10, false);
@@ -570,6 +604,17 @@ PD.ui.computeRowModels = function (state, view) {
   view.cursor.i = PD.ui.clampI(curI, n);
 
   var sel = (rm && rm.items && rm.items.length) ? rm.items[view.cursor.i] : null;
+
+  // If the cursor is on an empty row (common in scenarios like winCheck where hand is empty),
+  // relocate to the first row that has at least 1 selectable item so navigation is never "stuck".
+  if (!sel) {
+    var pick = PD.ui.findBestCursorTarget(models, [4, 3, 2, 1, 0], function () { return true; });
+    if (pick) {
+      PD.ui.cursorMoveTo(view, pick);
+      rm = models[pick.row];
+      sel = pick.item;
+    }
+  }
 
   // Targeting overlays: ghosts + preview-in-stack for the selected destination.
   var ghosts = [];
@@ -973,19 +1018,13 @@ PD.ui.step = function (state, view, actions) {
     if (!isFinite(curPlays)) curPlays = 0;
 
     if (prevP === 0 && prevPlays != null && prevPlays > 0 && curPlays <= 0) {
-      var center = computed.models ? computed.models[2] : null;
-      if (center && center.items) {
-        var bi;
-        for (bi = 0; bi < center.items.length; bi++) {
-          var it = center.items[bi];
-          if (it && it.kind === "btn" && it.id === "endTurn" && !it.disabled) {
-            view.cursor.row = 2;
-            view.cursor.i = bi;
-            computed = PD.ui.computeRowModels(state, view);
-            PD.ui.updateCameras(state, view, computed);
-            break;
-          }
-        }
+      var pickEnd = PD.ui.findBestCursorTarget(computed.models, [2], function (it) {
+        return it && it.kind === "btn" && it.id === "endTurn" && !it.disabled;
+      });
+      if (pickEnd) {
+        PD.ui.cursorMoveTo(view, pickEnd);
+        computed = PD.ui.computeRowModels(state, view);
+        PD.ui.updateCameras(state, view, computed);
       }
     }
 
@@ -1141,30 +1180,19 @@ PD.ui.step = function (state, view, actions) {
         PD.ui.feedbackError(view, "disabled_btn", msg);
 
         // Move selection to next available center button (prefer Step).
-        var center = computed.models ? computed.models[2] : null;
-        var nextI = null;
-        if (center && center.items) {
-          var ii;
-          for (ii = 0; ii < center.items.length; ii++) {
-            var it = center.items[ii];
-            if (it && it.kind === "btn" && it.id === "step" && !it.disabled) { nextI = ii; break; }
-          }
-          if (nextI == null) {
-            for (ii = 0; ii < center.items.length; ii++) {
-              var it2 = center.items[ii];
-              if (it2 && it2.kind === "btn" && !it2.disabled && it2.id !== "endTurn") { nextI = ii; break; }
-            }
-          }
-          if (nextI == null) {
-            for (ii = 0; ii < center.items.length; ii++) {
-              var it3 = center.items[ii];
-              if (it3 && (it3.kind === "discard" || it3.kind === "deck")) { nextI = ii; break; }
-            }
-          }
-        }
-        if (nextI != null) {
-          view.cursor.row = 2;
-          view.cursor.i = nextI;
+        var pickNext =
+          PD.ui.findBestCursorTarget(computed.models, [2], function (it) {
+            return it && it.kind === "btn" && it.id === "step" && !it.disabled;
+          }) ||
+          PD.ui.findBestCursorTarget(computed.models, [2], function (it) {
+            return it && it.kind === "btn" && !it.disabled && it.id !== "endTurn";
+          }) ||
+          PD.ui.findBestCursorTarget(computed.models, [2], function (it) {
+            return it && (it.kind === "discard" || it.kind === "deck");
+          });
+
+        if (pickNext) {
+          PD.ui.cursorMoveTo(view, pickNext);
           computed = PD.ui.computeRowModels(state, view);
           PD.ui.updateCameras(state, view, computed);
         }

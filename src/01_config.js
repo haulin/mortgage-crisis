@@ -38,6 +38,25 @@ PD.config.ui = {
   navConeKUpDown: 6
 };
 
+// Rule-note IDs (Phase 05+). These are small display-only annotations in Inspect.
+PD.RuleNote = {
+  // MVP1 rule constraints.
+  SlyDeal_NotFromFullSet: 1,
+
+  // Optional / other-version rules (not enabled in MVP1).
+  House_StationsUtilities: 2,
+  JSN_Chain: 3
+};
+
+// Rules display knobs (Phase 05+).
+PD.config.rules = {
+  // List of enabled RuleNote IDs to show in Inspect.
+  // Note: keep this intentionally small; it's easy to mislead players with future-rule text.
+  enabledRuleNotes: [
+    PD.RuleNote.SlyDeal_NotFromFullSet
+  ]
+};
+
 // TIC-80 default palette is Sweetie-16.
 // These are palette *indices* (0..15), not RGB values.
 PD.Pal = {
@@ -101,6 +120,22 @@ PD.config.render = {
     centerPreviewGapX: 8,
     centerDescDy: 8,
 
+    // Center row button strip (Phase 04+).
+    centerBtnStripW: 39,
+    centerBtnStripPadRight: 1,
+
+    // Inspect panel (Phase 05): screen-space panel bounds.
+    // These are absolute so we can tune without coupling to centerPreviewX.
+    inspectPanelX0: 48,
+    inspectPanelY0: 35,
+    inspectPanelX1: 198,
+    inspectPanelY1: 85,
+    // Content anchors derived from the panel.
+    inspectPanelPadX: 2,
+    inspectPanelPadY: 2,
+    inspectTitleGapX: 2,
+    inspectDescDy: 8,
+
     // Pile depth under-layers (visual only)
     pileUnderDx1: 2,
     pileUnderDy1: 2,
@@ -155,7 +190,14 @@ PD.config.render = {
     // - under2: the deeper (larger offset) layer
     // Deeper is intentionally darker.
     pileOutlineUnder1Col: PD.Pal.LightGrey,
-    pileOutlineUnder2Col: PD.Pal.Grey
+    pileOutlineUnder2Col: PD.Pal.Grey,
+
+    // Inspect panel colors (Phase 05).
+    inspectPanelFillCol: PD.Pal.DarkGreen,
+
+    // Deck/Discard pile count digit offset (Phase 05).
+    pileCountDx: 1,
+    pileCountDy: 1
   },
 
   // Sprite IDs (NOT locked yet; keep all in one place for easy remap).

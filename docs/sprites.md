@@ -23,6 +23,7 @@ We keep a **single mapping** for these sprite IDs in both:
 
 - **Tile size**: 8×8
 - **Glyph size**: start with 1 tile (8×8). If something needs more detail, use a 2×1 or 2×2 sprite block and treat it as an atlas entry.
+- **15×15 icons (plan)**: implement as a **2×2 (16×16)** block where the **last column + last row** are color **15** (colorkey), yielding an effective **15×15** visible icon. (Matches the Phase 03b card-back padding convention.)
 - **Reserved ID range (proposal)**: `0–63` for UI glyphs/icons. (Adjust if you already use IDs in that range.)
 
 ## MVP glyph inventory (minimum)

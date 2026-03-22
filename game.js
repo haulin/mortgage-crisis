@@ -46,6 +46,25 @@ PD.config.ui = {
   navConeKUpDown: 6
 };
 
+// Rule-note IDs (Phase 05+). These are small display-only annotations in Inspect.
+PD.RuleNote = {
+  // MVP1 rule constraints.
+  SlyDeal_NotFromFullSet: 1,
+
+  // Optional / other-version rules (not enabled in MVP1).
+  House_StationsUtilities: 2,
+  JSN_Chain: 3
+};
+
+// Rules display knobs (Phase 05+).
+PD.config.rules = {
+  // List of enabled RuleNote IDs to show in Inspect.
+  // Note: keep this intentionally small; it's easy to mislead players with future-rule text.
+  enabledRuleNotes: [
+    PD.RuleNote.SlyDeal_NotFromFullSet
+  ]
+};
+
 // TIC-80 default palette is Sweetie-16.
 // These are palette *indices* (0..15), not RGB values.
 PD.Pal = {
@@ -109,6 +128,22 @@ PD.config.render = {
     centerPreviewGapX: 8,
     centerDescDy: 8,
 
+    // Center row button strip (Phase 04+).
+    centerBtnStripW: 39,
+    centerBtnStripPadRight: 1,
+
+    // Inspect panel (Phase 05): screen-space panel bounds.
+    // These are absolute so we can tune without coupling to centerPreviewX.
+    inspectPanelX0: 48,
+    inspectPanelY0: 35,
+    inspectPanelX1: 198,
+    inspectPanelY1: 85,
+    // Content anchors derived from the panel.
+    inspectPanelPadX: 2,
+    inspectPanelPadY: 2,
+    inspectTitleGapX: 2,
+    inspectDescDy: 8,
+
     // Pile depth under-layers (visual only)
     pileUnderDx1: 2,
     pileUnderDy1: 2,
@@ -163,7 +198,14 @@ PD.config.render = {
     // - under2: the deeper (larger offset) layer
     // Deeper is intentionally darker.
     pileOutlineUnder1Col: PD.Pal.LightGrey,
-    pileOutlineUnder2Col: PD.Pal.Grey
+    pileOutlineUnder2Col: PD.Pal.Grey,
+
+    // Inspect panel colors (Phase 05).
+    inspectPanelFillCol: PD.Pal.DarkGreen,
+
+    // Deck/Discard pile count digit offset (Phase 05).
+    pileCountDx: 1,
+    pileCountDy: 1
   },
 
   // Sprite IDs (NOT locked yet; keep all in one place for easy remap).
@@ -193,19 +235,6 @@ PD.config.render = {
     PD.Pal.LightBlue,  // 4
     PD.Pal.Purple      // 5
   ]
-};
-
-// ---- src/02_boot.js ----
-PD.bootTick = function () {
-  cls(0);
-
-  var title = "Property Deal";
-  var subtitle = "Build OK";
-  var seed = "SeedBase: " + PD.config.seedBase;
-
-  print(title, 6, 6, 12, true, 1, false);
-  print(subtitle, 6, 16, 12, true, 1, false);
-  print(seed, 6, 28, 12, true, 1, false);
 };
 
 // ---- src/03_rng.js ----
@@ -461,6 +490,12 @@ PD.ActionKind = {
   JustSayNo: 2,
 };
 
+// Rule note display text (Phase 05+). These are appended in Inspect when enabled by config.
+PD.ruleNoteTextById = PD.ruleNoteTextById || [];
+PD.ruleNoteTextById[PD.RuleNote.SlyDeal_NotFromFullSet] = "(Cannot be part of a full set)";
+PD.ruleNoteTextById[PD.RuleNote.House_StationsUtilities] = "(Except stations & utilities)";
+PD.ruleNoteTextById[PD.RuleNote.JSN_Chain] = "(You can say No to a No)";
+
 PD.SET_RULES = [];
 PD.SET_RULES[PD.Color.Cyan] = {
   requiredSize: 2,
@@ -485,40 +520,40 @@ PD.CARD_DEFS = [
   // Money (10)
   {
     id: "money_1",
-    name: "$1",
-    desc: "Money.\nBank: $1",
+    name: "Money",
+    desc: "Spend to pay debts.\nBank as money.",
     kind: PD.CardKind.Money,
     count: 3,
     bankValue: 1,
   },
   {
     id: "money_2",
-    name: "$2",
-    desc: "Money.\nBank: $2",
+    name: "Money",
+    desc: "Spend to pay debts.\nBank as money.",
     kind: PD.CardKind.Money,
     count: 3,
     bankValue: 2,
   },
   {
     id: "money_3",
-    name: "$3",
-    desc: "Money.\nBank: $3",
+    name: "Money",
+    desc: "Spend to pay debts.\nBank as money.",
     kind: PD.CardKind.Money,
     count: 2,
     bankValue: 3,
   },
   {
     id: "money_4",
-    name: "$4",
-    desc: "Money.\nBank: $4",
+    name: "Money",
+    desc: "Spend to pay debts.\nBank as money.",
     kind: PD.CardKind.Money,
     count: 1,
     bankValue: 4,
   },
   {
     id: "money_5",
-    name: "$5",
-    desc: "Money.\nBank: $5",
+    name: "Money",
+    desc: "Spend to pay debts.\nBank as money.",
     kind: PD.CardKind.Money,
     count: 1,
     bankValue: 5,
@@ -527,8 +562,8 @@ PD.CARD_DEFS = [
   // Properties (12 fixed + 2 wild = 14)
   {
     id: "prop_cyan",
-    name: "Property (Cyan)",
-    desc: "Property.\nColor: Cyan\nPay: $3",
+    name: "Property Cyan",
+    desc: "Full set: 2 required.\nRent for 1 property: $1\nRent for 2 properties: $3",
     kind: PD.CardKind.Property,
     count: 2,
     propertyColor: PD.Color.Cyan,
@@ -536,8 +571,8 @@ PD.CARD_DEFS = [
   },
   {
     id: "prop_magenta",
-    name: "Property (Magenta)",
-    desc: "Property.\nColor: Magenta\nPay: $2",
+    name: "Property Magenta",
+    desc: "Full set: 3 required.\nRent for 1 property: $1\nRent for 2 properties: $2\nRent for 3 properties: $4",
     kind: PD.CardKind.Property,
     count: 3,
     propertyColor: PD.Color.Magenta,
@@ -545,8 +580,8 @@ PD.CARD_DEFS = [
   },
   {
     id: "prop_orange",
-    name: "Property (Orange)",
-    desc: "Property.\nColor: Orange\nPay: $2",
+    name: "Property Orange",
+    desc: "Full set: 3 required.\nRent for 1 property: $2\nRent for 2 properties: $3\nRent for 3 properties: $5",
     kind: PD.CardKind.Property,
     count: 3,
     propertyColor: PD.Color.Orange,
@@ -554,8 +589,8 @@ PD.CARD_DEFS = [
   },
   {
     id: "prop_black",
-    name: "Property (Black)",
-    desc: "Property.\nColor: Black\nPay: $1",
+    name: "Property Black",
+    desc: "Full set: 4 required.\nRent for 1 property: $1\nRent for 2 properties: $2\nRent for 3 properties: $3\nRent for 4 properties: $6",
     kind: PD.CardKind.Property,
     count: 4,
     propertyColor: PD.Color.Black,
@@ -563,8 +598,8 @@ PD.CARD_DEFS = [
   },
   {
     id: "wild_mo",
-    name: "Wild (Magenta/Orange)",
-    desc: "Wild property.\nColors: Magenta/Orange\nPay: $2",
+    name: "Wild Magenta/Orange",
+    desc: "Orange rent: $2/$3/$5\nMagenta rent: $1/$2/$4",
     kind: PD.CardKind.Property,
     count: 1,
     wildColors: [PD.Color.Magenta, PD.Color.Orange],
@@ -572,8 +607,8 @@ PD.CARD_DEFS = [
   },
   {
     id: "wild_cb",
-    name: "Wild (Cyan/Black)",
-    desc: "Wild property.\nColors: Cyan/Black\nPay: $2",
+    name: "Wild Cyan/Black",
+    desc: "Cyan rent: $1/$3\nBlack rent: $1/$2/$3/$6",
     kind: PD.CardKind.Property,
     count: 1,
     wildColors: [PD.Color.Cyan, PD.Color.Black],
@@ -584,17 +619,18 @@ PD.CARD_DEFS = [
   {
     id: "house",
     name: "House",
-    desc: "Add to a complete set.\nRent bonus: +3\nBank: $3",
+    desc: "Action card. Add onto any\nfull set you own to add\n$3 to the rent value.",
     kind: PD.CardKind.House,
     count: 2,
     bankValue: 3,
+    ruleNotes: [PD.RuleNote.House_StationsUtilities]
   },
 
   // Actions (9)
   {
     id: "rent_mo",
-    name: "Rent (Magenta/Orange)",
-    desc: "Charge rent.\nColors: Magenta/Orange\nBank: $1",
+    name: "Rent Magenta/Orange",
+    desc: "Action card. Your opponent\npays you rent for your\nMagenta or Orange sets.\n(Play into center to use)",
     kind: PD.CardKind.Action,
     actionKind: PD.ActionKind.Rent,
     count: 2,
@@ -603,8 +639,8 @@ PD.CARD_DEFS = [
   },
   {
     id: "rent_cb",
-    name: "Rent (Cyan/Black)",
-    desc: "Charge rent.\nColors: Cyan/Black\nBank: $1",
+    name: "Rent Cyan/Black",
+    desc: "Action card. Your opponent\npays you rent for your\nCyan or Black sets.\n(Play into center to use)",
     kind: PD.CardKind.Action,
     actionKind: PD.ActionKind.Rent,
     count: 2,
@@ -613,8 +649,8 @@ PD.CARD_DEFS = [
   },
   {
     id: "rent_any",
-    name: "Rent (Any)",
-    desc: "Charge rent.\nAny color\nBank: $1",
+    name: "Rent Any",
+    desc: "Action card. Your opponent\npays you rent for one set\nof your choice.\n(Play into center to use)",
     kind: PD.CardKind.Action,
     actionKind: PD.ActionKind.Rent,
     count: 1,
@@ -624,20 +660,22 @@ PD.CARD_DEFS = [
   {
     id: "sly_deal",
     name: "Sly Deal",
-    desc: "Steal 1 property\nfrom an incomplete set.\nBank: $3",
+    desc: "Action card. Steal 1 property\nfrom your opponent.\n(Play into center to use)",
     kind: PD.CardKind.Action,
     actionKind: PD.ActionKind.SlyDeal,
     count: 2,
     bankValue: 3,
+    ruleNotes: [PD.RuleNote.SlyDeal_NotFromFullSet]
   },
   {
     id: "just_say_no",
     name: "Just Say No",
-    desc: "Cancel an action\nplayed against you.\nBank: $4",
+    desc: "Action card. Use any time\nwhen an action is played\nagainst you.\n(Play into center to use)",
     kind: PD.CardKind.Action,
     actionKind: PD.ActionKind.JustSayNo,
     count: 2,
     bankValue: 4,
+    ruleNotes: [PD.RuleNote.JSN_Chain]
   },
 ];
 
@@ -1875,8 +1913,8 @@ PD.render = PD.render || {};
       var sN = String(n);
       if (sN.length > 2) sN = sN.slice(-2);
       var len = sN.length;
-      var yTL = cfg.faceH - 1 - cfg.digitGlyphH;
-      var xEnd = cfg.faceW - 1 - cfg.digitGlyphW;
+      var yTL = cfg.faceH - 1 - cfg.digitGlyphH + cfg.pileCountDy;
+      var xEnd = cfg.faceW - 1 - cfg.digitGlyphW + cfg.pileCountDx;
       var xStart = xEnd - (len - 1) * cfg.propRentDx;
       var i;
       for (i = 0; i < len; i++) {
@@ -1973,6 +2011,32 @@ PD.render = PD.render || {};
     var xDesc = C.desc.x;
     var yDesc = C.desc.y;
 
+    // Phase 05: Inspect uses a screen-space panel with panel-driven anchors.
+    var panel = null;
+    if (view.inspectActive) {
+      var Lp = PD.config.render.layout;
+      panel = {
+        x0: Lp.inspectPanelX0,
+        y0: Lp.inspectPanelY0,
+        x1: Lp.inspectPanelX1,
+        y1: Lp.inspectPanelY1
+      };
+      // Backing panel behind preview+title+desc.
+      rectSafe(panel.x0, panel.y0, panel.x1 - panel.x0 + 1, panel.y1 - panel.y0 + 1, cfg.inspectPanelFillCol);
+      rectbSafe(panel.x0, panel.y0, panel.x1 - panel.x0 + 1, panel.y1 - panel.y0 + 1, cfg.colCenterPanelBorder);
+
+      var padX = Lp.inspectPanelPadX;
+      var padY = Lp.inspectPanelPadY;
+      var gapX = Lp.inspectTitleGapX;
+      var descDy = Lp.inspectDescDy;
+      xPrev = panel.x0 + padX;
+      yPrev = panel.y0 + padY;
+      xTitle = xPrev + cfg.faceW + gapX;
+      yTitle = yPrev;
+      xDesc = xTitle;
+      yDesc = yTitle + descDy;
+    }
+
     function colorName(c) {
       c = Math.floor(Number(c));
       if (!isFinite(c)) c = 0;
@@ -1990,35 +2054,37 @@ PD.render = PD.render || {};
       if (sel.row === R.ROW_CENTER && !sel.uid) {
         if (sel.kind === "deck") {
           printSafe("Deck", xTitle, yTitle, cfg.colText);
-          printExSafe("Cards: " + s.deck.length, xDesc, yDesc, cfg.colText, false, 1, false);
+          var deckDesc = "Cards: " + s.deck.length;
           if (dbgEnabled && s.deck.length > 0) {
             var topUid = s.deck[s.deck.length - 1];
             drawMiniCard(s, topUid, xPrev, yPrev, false);
             var defT = PD.defByUid(s, topUid);
-            if (defT && defT.name) printSafe(defT.name, xTitle, yTitle + 10, cfg.colText);
+            if (defT && defT.name) deckDesc += "\nTop: " + String(defT.name);
           }
+          printExSafe(deckDesc, xDesc, yDesc, cfg.colText, false, 1, true);
           return;
         }
         if (sel.kind === "discard") {
           printSafe("Discard", xTitle, yTitle, cfg.colText);
-          printExSafe("Cards: " + s.discard.length, xDesc, yDesc, cfg.colText, false, 1, false);
+          var discardDesc = "Cards: " + s.discard.length;
           if (s.discard.length > 0) {
             var topUid2 = s.discard[s.discard.length - 1];
             drawMiniCard(s, topUid2, xPrev, yPrev, false);
             var defD = PD.defByUid(s, topUid2);
-            if (defD && defD.name) printSafe(defD.name, xTitle, yTitle + 10, cfg.colText);
+            if (defD && defD.name) discardDesc += "\nTop: " + String(defD.name);
           }
+          printExSafe(discardDesc, xDesc, yDesc, cfg.colText, false, 1, true);
           return;
         }
         if (sel.kind === "btn") {
           var title = String(sel.label || sel.id || "");
           printSafe(title, xTitle, yTitle, cfg.colText);
           var help = "";
-          if (sel.id === "endTurn") help = "End your turn\n(if legal).";
-          else if (sel.id === "step") help = "Step 1 random\nlegal move.";
-          else if (sel.id === "reset") help = "Reset scenario.";
-          else if (sel.id === "nextScenario") help = "Next scenario.";
-          printExSafe(help, xDesc, yDesc, cfg.colText, false, 1, false);
+          if (sel.id === "endTurn") help = "End your turn.\nHand must be <= 7.";
+          else if (sel.id === "step") help = "Debug: step 1 random\nlegal move.";
+          else if (sel.id === "reset") help = "Debug: reset current\nscenario.";
+          else if (sel.id === "nextScenario") help = "Debug: switch to next\nscenario.";
+          printExSafe(help, xDesc, yDesc, cfg.colText, false, 1, true);
           return;
         }
       }
@@ -2036,12 +2102,67 @@ PD.render = PD.render || {};
         return;
       }
 
+      function valueForDef(def) {
+        if (!def) return null;
+        if (def.kind === PD.CardKind.Property) {
+          if (def.propertyPayValue != null) return def.propertyPayValue;
+          return 0;
+        }
+        if (def.bankValue != null) return def.bankValue;
+        return null;
+      }
+
+      function inspectTitleForDef(def) {
+        var t = def.name ? String(def.name) : (def.id ? String(def.id) : "");
+        return t;
+      }
+
+      function inspectDescForDef(def, selColor) {
+        var base = def && def.desc ? String(def.desc) : "";
+        base = appendRuleNotes(def, base);
+        var v = valueForDef(def);
+        var vLine = (v != null && v > 0) ? ("Value: $" + String(v)) : "";
+        var usedAs = "";
+        if (def && PD.isWildDef && typeof PD.isWildDef === "function" && PD.isWildDef(def)) {
+          var c = Math.floor(Number(selColor));
+          if (isFinite(c) && c !== PD.NO_COLOR && def.wildColors && (c === def.wildColors[0] || c === def.wildColors[1])) {
+            usedAs = "Currently used as: " + colorName(c);
+          }
+        }
+
+        var out = "";
+        if (vLine) out = vLine;
+        if (usedAs) out = out ? (out + "\n" + usedAs) : usedAs;
+        if (base) out = out ? (out + "\n" + base) : base;
+        return out;
+      }
+
+      function appendRuleNotes(def, baseDesc) {
+        baseDesc = baseDesc ? String(baseDesc) : "";
+        if (!def || !def.ruleNotes || def.ruleNotes.length === 0) return baseDesc;
+        var enabled = (PD.config && PD.config.rules && PD.config.rules.enabledRuleNotes) ? PD.config.rules.enabledRuleNotes : [];
+        if (!enabled || enabled.length === 0) return baseDesc;
+
+        var out = baseDesc;
+        var i;
+        for (i = 0; i < def.ruleNotes.length; i++) {
+          var id = def.ruleNotes[i];
+          var j;
+          var on = false;
+          for (j = 0; j < enabled.length; j++) if ((enabled[j] | 0) === (id | 0)) { on = true; break; }
+          if (!on) continue;
+          var txt = (PD.ruleNoteTextById && PD.ruleNoteTextById[id | 0]) ? String(PD.ruleNoteTextById[id | 0]) : "";
+          if (!txt) continue;
+          if (out) out += "\n";
+          out += txt;
+        }
+        return out;
+      }
+
       drawMiniCard(s, uid, xPrev, yPrev, false, sel.color);
-      var title2 = def.name ? def.name : (def.id ? def.id : "");
-      printSafe(title2, xTitle, yTitle, cfg.colText);
-      var desc = def.desc ? String(def.desc) : "";
-      // normal font (smallfont=false) for inspect readability
-      printExSafe(desc, xDesc, yDesc, cfg.colText, false, 1, false);
+      printSafe(inspectTitleForDef(def), xTitle, yTitle, cfg.colText);
+      var desc = inspectDescForDef(def, sel.color);
+      printExSafe(desc, xDesc, yDesc, cfg.colText, false, 1, true);
     }
 
     function drawMenuOverlay() {
@@ -2125,14 +2246,6 @@ PD.render = PD.render || {};
     if (view.mode === "menu") drawMenuOverlay();
     else if (view.mode === "targeting") drawTargetingOverlay();
     else if (view.inspectActive) {
-      // Backing box for inspect readability.
-      var boxX2 = xDesc - 2;
-      var boxY2 = yDesc - 2;
-      var boxW2 = cfg.screenW - boxX2 - cfg.rowPadX;
-      var boxH2 = 32;
-      rectSafe(boxX2, boxY2, boxW2, boxH2, PD.Pal.Black);
-      rectbSafe(boxX2, boxY2, boxW2, boxH2, cfg.colCenterPanelBorder);
-
       drawInspectForSelection(selectedItem);
     }
 
@@ -2620,17 +2733,6 @@ PD.render = PD.render || {};
     drawModeHintNearButtons(view, computed);
     drawToast(view);
   };
-
-  // Legacy hook (Phase 03): draw-only; input/nav moved to PD.ui.
-  R.tick = function (debug) {
-    if (!debug || !debug.state) return;
-    if (debug.view && PD.ui && typeof PD.ui.computeRowModels === "function") {
-      var c = PD.ui.computeRowModels(debug.state, debug.view);
-      R.drawFrame({ state: debug.state, view: debug.view, computed: c });
-      return;
-    }
-    // Fallback: do nothing (Phase 04 wiring owns the loop).
-  };
 })();
 
 // ---- src/12_ui.js ----
@@ -2743,6 +2845,39 @@ PD.ui.wrapI = function (i, n) {
   i = i % n;
   if (i < 0) i = i + n;
   return i;
+};
+
+// Pick the first item matching a predicate from the given row order.
+// Returns { row, i, item } or null.
+PD.ui.findBestCursorTarget = function (models, rowOrder, predicate) {
+  if (!models) return null;
+  rowOrder = rowOrder || [0, 1, 2, 3, 4];
+  predicate = predicate || function () { return true; };
+
+  var ri;
+  for (ri = 0; ri < rowOrder.length; ri++) {
+    var row = Math.floor(Number(rowOrder[ri]));
+    if (!isFinite(row)) continue;
+    if (row < 0 || row > 4) continue;
+
+    var rm = models[row];
+    if (!rm || !rm.items || rm.items.length === 0) continue;
+
+    var i;
+    for (i = 0; i < rm.items.length; i++) {
+      var it = rm.items[i];
+      if (!it) continue;
+      if (!predicate(it)) continue;
+      return { row: row, i: i, item: it };
+    }
+  }
+  return null;
+};
+
+PD.ui.cursorMoveTo = function (view, pick) {
+  if (!view || !view.cursor || !pick) return;
+  view.cursor.row = pick.row;
+  view.cursor.i = pick.i;
 };
 
 PD.ui.nearestByX = function (items, xCenter) {
@@ -3142,13 +3277,14 @@ PD.ui.buildRowItems = function (state, view, row) {
 
     var dbgEnabled = !!(PD.config && PD.config.debug && PD.config.debug.enabled);
 
-    // Hide buttons while an overlay is active (menu/targeting/inspect).
-    var overlayActive = !!(view && (view.mode === "menu" || view.mode === "targeting" || view.inspectActive));
+    // Hide buttons while an overlay is active (menu/targeting).
+    // Inspect should keep buttons visible/selectable so they can be inspected too.
+    var overlayActive = !!(view && (view.mode === "menu" || view.mode === "targeting"));
     if (!overlayActive) {
       // Right-side vertical strip: 4*10px = 40px tall, fits inside center row.
-      var stripW = 54;
+      var stripW = C.centerBtnStripW;
       var stripH = 10;
-      var stripX = C.screenW - C.rowPadX - stripW;
+      var stripX = C.screenW - C.centerBtnStripPadRight - stripW;
       // Bottom-align within the center row band.
       var stripY0 = (C.rowY[2] + C.rowH[2] - 1 - 40);
 
@@ -3156,7 +3292,7 @@ PD.ui.buildRowItems = function (state, view, row) {
         out.items.push({ kind: "btn", id: id, label: label, disabled: !!disabled, row: 2, x: stripX, y: y, w: stripW, h: stripH });
       }
 
-      var endDisabled = (state.activeP !== 0) || (state.players[0].hand.length > PD.HAND_MAX);
+      var endDisabled = (state.winnerP !== PD.NO_WINNER) || (state.activeP !== 0) || (state.players[0].hand.length > PD.HAND_MAX);
       pushBtn("endTurn", "End", stripY0, endDisabled);
       if (dbgEnabled) {
         pushBtn("step", "Step", stripY0 + 10, false);
@@ -3206,6 +3342,17 @@ PD.ui.computeRowModels = function (state, view) {
   view.cursor.i = PD.ui.clampI(curI, n);
 
   var sel = (rm && rm.items && rm.items.length) ? rm.items[view.cursor.i] : null;
+
+  // If the cursor is on an empty row (common in scenarios like winCheck where hand is empty),
+  // relocate to the first row that has at least 1 selectable item so navigation is never "stuck".
+  if (!sel) {
+    var pick = PD.ui.findBestCursorTarget(models, [4, 3, 2, 1, 0], function () { return true; });
+    if (pick) {
+      PD.ui.cursorMoveTo(view, pick);
+      rm = models[pick.row];
+      sel = pick.item;
+    }
+  }
 
   // Targeting overlays: ghosts + preview-in-stack for the selected destination.
   var ghosts = [];
@@ -3609,19 +3756,13 @@ PD.ui.step = function (state, view, actions) {
     if (!isFinite(curPlays)) curPlays = 0;
 
     if (prevP === 0 && prevPlays != null && prevPlays > 0 && curPlays <= 0) {
-      var center = computed.models ? computed.models[2] : null;
-      if (center && center.items) {
-        var bi;
-        for (bi = 0; bi < center.items.length; bi++) {
-          var it = center.items[bi];
-          if (it && it.kind === "btn" && it.id === "endTurn" && !it.disabled) {
-            view.cursor.row = 2;
-            view.cursor.i = bi;
-            computed = PD.ui.computeRowModels(state, view);
-            PD.ui.updateCameras(state, view, computed);
-            break;
-          }
-        }
+      var pickEnd = PD.ui.findBestCursorTarget(computed.models, [2], function (it) {
+        return it && it.kind === "btn" && it.id === "endTurn" && !it.disabled;
+      });
+      if (pickEnd) {
+        PD.ui.cursorMoveTo(view, pickEnd);
+        computed = PD.ui.computeRowModels(state, view);
+        PD.ui.updateCameras(state, view, computed);
       }
     }
 
@@ -3777,30 +3918,19 @@ PD.ui.step = function (state, view, actions) {
         PD.ui.feedbackError(view, "disabled_btn", msg);
 
         // Move selection to next available center button (prefer Step).
-        var center = computed.models ? computed.models[2] : null;
-        var nextI = null;
-        if (center && center.items) {
-          var ii;
-          for (ii = 0; ii < center.items.length; ii++) {
-            var it = center.items[ii];
-            if (it && it.kind === "btn" && it.id === "step" && !it.disabled) { nextI = ii; break; }
-          }
-          if (nextI == null) {
-            for (ii = 0; ii < center.items.length; ii++) {
-              var it2 = center.items[ii];
-              if (it2 && it2.kind === "btn" && !it2.disabled && it2.id !== "endTurn") { nextI = ii; break; }
-            }
-          }
-          if (nextI == null) {
-            for (ii = 0; ii < center.items.length; ii++) {
-              var it3 = center.items[ii];
-              if (it3 && (it3.kind === "discard" || it3.kind === "deck")) { nextI = ii; break; }
-            }
-          }
-        }
-        if (nextI != null) {
-          view.cursor.row = 2;
-          view.cursor.i = nextI;
+        var pickNext =
+          PD.ui.findBestCursorTarget(computed.models, [2], function (it) {
+            return it && it.kind === "btn" && it.id === "step" && !it.disabled;
+          }) ||
+          PD.ui.findBestCursorTarget(computed.models, [2], function (it) {
+            return it && it.kind === "btn" && !it.disabled && it.id !== "endTurn";
+          }) ||
+          PD.ui.findBestCursorTarget(computed.models, [2], function (it) {
+            return it && (it.kind === "discard" || it.kind === "deck");
+          });
+
+        if (pickNext) {
+          PD.ui.cursorMoveTo(view, pickNext);
           computed = PD.ui.computeRowModels(state, view);
           PD.ui.updateCameras(state, view, computed);
         }
@@ -3850,7 +3980,6 @@ PD.ui.step = function (state, view, actions) {
 
 // ---- src/99_main.js ----
 function TIC() {
-  if (PD.mainTick) PD.mainTick();
-  else PD.bootTick();
+  PD.mainTick();
 }
 

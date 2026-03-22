@@ -18,6 +18,12 @@ PD.ActionKind = {
   JustSayNo: 2,
 };
 
+// Rule note display text (Phase 05+). These are appended in Inspect when enabled by config.
+PD.ruleNoteTextById = PD.ruleNoteTextById || [];
+PD.ruleNoteTextById[PD.RuleNote.SlyDeal_NotFromFullSet] = "(Cannot be part of a full set)";
+PD.ruleNoteTextById[PD.RuleNote.House_StationsUtilities] = "(Except stations & utilities)";
+PD.ruleNoteTextById[PD.RuleNote.JSN_Chain] = "(You can say No to a No)";
+
 PD.SET_RULES = [];
 PD.SET_RULES[PD.Color.Cyan] = {
   requiredSize: 2,
@@ -42,40 +48,40 @@ PD.CARD_DEFS = [
   // Money (10)
   {
     id: "money_1",
-    name: "$1",
-    desc: "Money.\nBank: $1",
+    name: "Money",
+    desc: "Spend to pay debts.\nBank as money.",
     kind: PD.CardKind.Money,
     count: 3,
     bankValue: 1,
   },
   {
     id: "money_2",
-    name: "$2",
-    desc: "Money.\nBank: $2",
+    name: "Money",
+    desc: "Spend to pay debts.\nBank as money.",
     kind: PD.CardKind.Money,
     count: 3,
     bankValue: 2,
   },
   {
     id: "money_3",
-    name: "$3",
-    desc: "Money.\nBank: $3",
+    name: "Money",
+    desc: "Spend to pay debts.\nBank as money.",
     kind: PD.CardKind.Money,
     count: 2,
     bankValue: 3,
   },
   {
     id: "money_4",
-    name: "$4",
-    desc: "Money.\nBank: $4",
+    name: "Money",
+    desc: "Spend to pay debts.\nBank as money.",
     kind: PD.CardKind.Money,
     count: 1,
     bankValue: 4,
   },
   {
     id: "money_5",
-    name: "$5",
-    desc: "Money.\nBank: $5",
+    name: "Money",
+    desc: "Spend to pay debts.\nBank as money.",
     kind: PD.CardKind.Money,
     count: 1,
     bankValue: 5,
@@ -84,8 +90,8 @@ PD.CARD_DEFS = [
   // Properties (12 fixed + 2 wild = 14)
   {
     id: "prop_cyan",
-    name: "Property (Cyan)",
-    desc: "Property.\nColor: Cyan\nPay: $3",
+    name: "Property Cyan",
+    desc: "Full set: 2 required.\nRent for 1 property: $1\nRent for 2 properties: $3",
     kind: PD.CardKind.Property,
     count: 2,
     propertyColor: PD.Color.Cyan,
@@ -93,8 +99,8 @@ PD.CARD_DEFS = [
   },
   {
     id: "prop_magenta",
-    name: "Property (Magenta)",
-    desc: "Property.\nColor: Magenta\nPay: $2",
+    name: "Property Magenta",
+    desc: "Full set: 3 required.\nRent for 1 property: $1\nRent for 2 properties: $2\nRent for 3 properties: $4",
     kind: PD.CardKind.Property,
     count: 3,
     propertyColor: PD.Color.Magenta,
@@ -102,8 +108,8 @@ PD.CARD_DEFS = [
   },
   {
     id: "prop_orange",
-    name: "Property (Orange)",
-    desc: "Property.\nColor: Orange\nPay: $2",
+    name: "Property Orange",
+    desc: "Full set: 3 required.\nRent for 1 property: $2\nRent for 2 properties: $3\nRent for 3 properties: $5",
     kind: PD.CardKind.Property,
     count: 3,
     propertyColor: PD.Color.Orange,
@@ -111,8 +117,8 @@ PD.CARD_DEFS = [
   },
   {
     id: "prop_black",
-    name: "Property (Black)",
-    desc: "Property.\nColor: Black\nPay: $1",
+    name: "Property Black",
+    desc: "Full set: 4 required.\nRent for 1 property: $1\nRent for 2 properties: $2\nRent for 3 properties: $3\nRent for 4 properties: $6",
     kind: PD.CardKind.Property,
     count: 4,
     propertyColor: PD.Color.Black,
@@ -120,8 +126,8 @@ PD.CARD_DEFS = [
   },
   {
     id: "wild_mo",
-    name: "Wild (Magenta/Orange)",
-    desc: "Wild property.\nColors: Magenta/Orange\nPay: $2",
+    name: "Wild Magenta/Orange",
+    desc: "Orange rent: $2/$3/$5\nMagenta rent: $1/$2/$4",
     kind: PD.CardKind.Property,
     count: 1,
     wildColors: [PD.Color.Magenta, PD.Color.Orange],
@@ -129,8 +135,8 @@ PD.CARD_DEFS = [
   },
   {
     id: "wild_cb",
-    name: "Wild (Cyan/Black)",
-    desc: "Wild property.\nColors: Cyan/Black\nPay: $2",
+    name: "Wild Cyan/Black",
+    desc: "Cyan rent: $1/$3\nBlack rent: $1/$2/$3/$6",
     kind: PD.CardKind.Property,
     count: 1,
     wildColors: [PD.Color.Cyan, PD.Color.Black],
@@ -141,17 +147,18 @@ PD.CARD_DEFS = [
   {
     id: "house",
     name: "House",
-    desc: "Add to a complete set.\nRent bonus: +3\nBank: $3",
+    desc: "Action card. Add onto any\nfull set you own to add\n$3 to the rent value.",
     kind: PD.CardKind.House,
     count: 2,
     bankValue: 3,
+    ruleNotes: [PD.RuleNote.House_StationsUtilities]
   },
 
   // Actions (9)
   {
     id: "rent_mo",
-    name: "Rent (Magenta/Orange)",
-    desc: "Charge rent.\nColors: Magenta/Orange\nBank: $1",
+    name: "Rent Magenta/Orange",
+    desc: "Action card. Your opponent\npays you rent for your\nMagenta or Orange sets.\n(Play into center to use)",
     kind: PD.CardKind.Action,
     actionKind: PD.ActionKind.Rent,
     count: 2,
@@ -160,8 +167,8 @@ PD.CARD_DEFS = [
   },
   {
     id: "rent_cb",
-    name: "Rent (Cyan/Black)",
-    desc: "Charge rent.\nColors: Cyan/Black\nBank: $1",
+    name: "Rent Cyan/Black",
+    desc: "Action card. Your opponent\npays you rent for your\nCyan or Black sets.\n(Play into center to use)",
     kind: PD.CardKind.Action,
     actionKind: PD.ActionKind.Rent,
     count: 2,
@@ -170,8 +177,8 @@ PD.CARD_DEFS = [
   },
   {
     id: "rent_any",
-    name: "Rent (Any)",
-    desc: "Charge rent.\nAny color\nBank: $1",
+    name: "Rent Any",
+    desc: "Action card. Your opponent\npays you rent for one set\nof your choice.\n(Play into center to use)",
     kind: PD.CardKind.Action,
     actionKind: PD.ActionKind.Rent,
     count: 1,
@@ -181,20 +188,22 @@ PD.CARD_DEFS = [
   {
     id: "sly_deal",
     name: "Sly Deal",
-    desc: "Steal 1 property\nfrom an incomplete set.\nBank: $3",
+    desc: "Action card. Steal 1 property\nfrom your opponent.\n(Play into center to use)",
     kind: PD.CardKind.Action,
     actionKind: PD.ActionKind.SlyDeal,
     count: 2,
     bankValue: 3,
+    ruleNotes: [PD.RuleNote.SlyDeal_NotFromFullSet]
   },
   {
     id: "just_say_no",
     name: "Just Say No",
-    desc: "Cancel an action\nplayed against you.\nBank: $4",
+    desc: "Action card. Use any time\nwhen an action is played\nagainst you.\n(Play into center to use)",
     kind: PD.CardKind.Action,
     actionKind: PD.ActionKind.JustSayNo,
     count: 2,
     bankValue: 4,
+    ruleNotes: [PD.RuleNote.JSN_Chain]
   },
 ];
 

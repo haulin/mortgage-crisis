@@ -83,6 +83,53 @@ test("controls: d-pad repeat pulses after delay", async () => {
   assert.deepEqual(pulses, [true, false, false, true, false, true]);
 });
 
+test("ui: findBestCursorTarget picks first match in preferred row order", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  const models = [
+    { items: [{ kind: "a" }] },          // row 0
+    { items: [{ kind: "b" }] },          // row 1
+    { items: [{ kind: "c" }, { kind: "x" }] }, // row 2
+    { items: [] },                       // row 3
+    { items: [{ kind: "x" }] },          // row 4
+  ];
+
+  const pick = ctx.PD.ui.findBestCursorTarget(models, [4, 2, 1], (it) => it.kind === "x");
+  assert.ok(pick);
+  assert.equal(pick.row, 4);
+  assert.equal(pick.i, 0);
+  assert.equal(pick.item.kind, "x");
+});
+
+test("ui: findBestCursorTarget returns null when no match", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  const models = [
+    { items: [{ kind: "a" }] },
+    { items: [] },
+    { items: [{ kind: "b" }] },
+    { items: [] },
+    { items: [] },
+  ];
+
+  const pick = ctx.PD.ui.findBestCursorTarget(models, [2, 0], (it) => it.kind === "nope");
+  assert.equal(pick, null);
+});
+
+test("ui: center buttons remain visible during Inspect", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  const s = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
+  const view = ctx.PD.ui.newView();
+  view.mode = "browse";
+  view.inspectActive = true;
+
+  const c = ctx.PD.ui.computeRowModels(s, view);
+  const center = c.models[ctx.PD.render.ROW_CENTER];
+  assert.ok(center && center.items && center.items.length > 0, "expected center items");
+  assert.ok(center.items.some((it) => it && it.kind === "btn" && it.id === "endTurn"), "expected End button during Inspect");
+});
+
 test("ui: targeting defaults to existing set when available (Place)", async () => {
   const ctx = await loadSrcIntoVm();
 
@@ -243,6 +290,20 @@ test("ui: out of plays snaps to End button (one-shot)", async () => {
   assert.equal(c.selected.row, ctx.PD.render.ROW_CENTER);
   assert.equal(c.selected.kind, "btn");
   assert.equal(c.selected.id, "endTurn");
+});
+
+test("ui: winCheck scenario is navigable (cursor relocates off empty hand)", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  const s = ctx.PD.newGame({ scenarioId: "winCheck", seedU32: 1 });
+  const view = ctx.PD.ui.newView();
+  // Default view cursor is player hand, which is empty in winCheck.
+  assert.equal(view.cursor.row, ctx.PD.render.ROW_P_HAND);
+
+  const c = ctx.PD.ui.computeRowModels(s, view);
+  assert.ok(c.selected, "expected a selected item even when the current row is empty");
+  // winCheck gives P0 multiple table stacks; selection should relocate to something selectable.
+  assert.notEqual(c.selected.row, ctx.PD.render.ROW_P_HAND);
 });
 
 test("ui: pressing disabled End (opponent turn) gives feedback + moves to Step", async () => {

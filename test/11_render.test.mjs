@@ -494,9 +494,9 @@ test("render: center button strip uses dark fill and selected uses highlight fil
   drawFrame(ctx, s, view);
 
   const L = ctx.PD.config.render.layout;
-  const stripW = 54;
+  const stripW = L.centerBtnStripW;
   const stripH = 10;
-  const stripX = L.screenW - L.rowPadX - stripW;
+  const stripX = L.screenW - L.centerBtnStripPadRight - stripW;
   const stripY0 = L.rowY[ctx.PD.render.ROW_CENTER] + L.rowH[ctx.PD.render.ROW_CENTER] - 1 - 40;
 
   // Selected button should draw a filled rect with highlight color at its bounds.
@@ -541,9 +541,9 @@ test("render: End button shows green recommendation when out of plays", async ()
   drawFrame(ctx, s, view);
 
   const L = ctx.PD.config.render.layout;
-  const stripW = 54;
+  const stripW = L.centerBtnStripW;
   const stripH = 10;
-  const stripX = L.screenW - L.rowPadX - stripW;
+  const stripX = L.screenW - L.centerBtnStripPadRight - stripW;
   const stripY0 = L.rowY[ctx.PD.render.ROW_CENTER] + L.rowH[ctx.PD.render.ROW_CENTER] - 1 - 40;
 
   const greenBorder = rec.calls.find(
