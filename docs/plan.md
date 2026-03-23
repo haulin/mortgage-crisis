@@ -19,6 +19,7 @@ Documentation convention (for future phases):
 - **Phase 04 ✅**: UI-owned controller UX (menus/targeting/inspect) + injected controls; renderer is display-only (bounded to existing commands). See `docs/phase04.md`.
 - **Phase 05 ✅**: Inspect overlay becomes a real panel (config-driven, small-font desc) + improved card copy + rule-note gating + pile count digit offset. See `docs/phase05.md`.
 - **Phase 05b ✅**: turn loop framing + discard-down-to-7 prompt + deterministic reshuffle + toast/prompt foundation polish. See `docs/phase05b.md`.
+- **Phase 05c ✅**: draw + reshuffle visibility (staged dealing + shuffle toast/animation), plus renderer‑oblivious animation presentation via `PD.anim.present`. See `docs/phase05c.md`.
 
 ## Goals + Constraints
 
@@ -356,6 +357,16 @@ Quality-of-life (still UX-level; no new rules commands):
 - Add an easier cancel path for hold‑A targeting (avoid requiring `B` while holding `A`):
   - option A: treat the **source** as a valid “destination” (drop back onto source = cancel)
 
+### Phase 05c **✅** — Draw + reshuffle visibility (animations) + animation architecture
+
+- Make draws readable: stage multi-card draws so cards appear **one-by-one** instead of popping in instantly
+- Make reshuffles readable:
+  - show a short toast **“Deck ran out. Shuffling”**
+  - animate the deck pile underlayers (0/1/2) while input is locked
+  - during shuffle, show discard as **empty** and mask the deck count as **empty** until the shuffle finishes
+- Refactor: centralize animation + feedback presentation in `PD.anim` so the renderer stays display-only:
+  - renderer consumes `computed` presentation (`nVis/pileLayers`, `computed.animOverlay`, `computed.highlightCol`) and is oblivious to `view.anim` / `view.feedback`
+
 ### Phase 06 — Debt/payment + “faux-turn placement”
 
 - Implement debt context:
@@ -363,6 +374,11 @@ Quality-of-life (still UX-level; no new rules commands):
   - enforce House-pay-first rule
   - transfer to recipient (bank/properties)
 - Implement recipient placement step for each received property, including Wild assignment
+
+Issues:
+- When player is out of moves and they attempt to place a card, the only valid destination is source. They no longer get negative feedback about no action possible. If only source is a valid destination then action should be disallowed.
+- still lots of |0 coercions in code that does not directly call TIC APIs.
+- scrolling in the last scenario is not good
 
 Content expansion readiness (post‑MVP):
 
@@ -413,6 +429,9 @@ Content expansion readiness (post‑MVP):
 
 - Optional vertical area labels explaining the different zones (hand/bank/properties/opponent areas)
 - Continue Inspect overlay polish as needed (still not “big cards”)
+- (Optional later) Reduced motion accessibility toggle:
+  - make `PD.anim.present()` a no-op pass-through
+  - optionally skip/short-circuit `PD.anim.onEvents/tick` so there’s no waiting/locks beyond toasts (or keep only toast pauses)
 - Free organization / preparation actions (UI-only; no play cost):
   - Reorder/sort hand, bank, and stacks for readability (purely cosmetic; no rules/commands)
   - Flip a Wild property’s preferred color **in the source** (e.g. via context menu) so you can “pre-set” it before targeting/placing

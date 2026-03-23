@@ -606,3 +606,53 @@ test("ui: menu hover Bank produces a preview when unambiguous", async () => {
   assert.equal(c.preview.forCmdKind, "bank");
 });
 
+test("ui: onEvents stages dealing and hides drawn cards until revealed", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  const s = ctx.PD.newGame({ seedU32: 1 });
+  const p = 0;
+  const view = ctx.PD.ui.newView();
+
+  // Force a known draw and capture events.
+  const events = [];
+  const beforeHand = s.players[p].hand.slice();
+  ctx.PD.drawToHand(s, p, 2, events);
+  const drawEv = events.find((e) => e && e.kind === "draw" && e.p === p);
+  assert.ok(drawEv, "expected draw event");
+  assert.equal(drawEv.uids.length, 2);
+
+  // Feed events to UI: should hide the newly drawn cards and lock input while animating.
+  ctx.PD.anim.onEvents(s, view, events);
+  assert.ok(view.anim && view.anim.lock, "expected anim lock after draw events");
+
+  const uid0 = drawEv.uids[0];
+  const uid1 = drawEv.uids[1];
+  assert.ok(view.anim.hiddenByP[p][uid0], "expected first drawn uid hidden initially");
+  assert.ok(view.anim.hiddenByP[p][uid1], "expected second drawn uid hidden initially");
+
+  // Before revealing, computeRowModels should not include hidden uids in the hand row.
+  let c = ctx.PD.ui.computeRowModels(s, view);
+  const handItems0 = c.models[ctx.PD.render.ROW_P_HAND].items.filter((it) => it && it.kind === "hand");
+  const visibleUids0 = handItems0.map((it) => it.uid);
+  assert.ok(!visibleUids0.includes(uid0), "expected uid0 hidden from hand row models");
+  assert.ok(!visibleUids0.includes(uid1), "expected uid1 hidden from hand row models");
+
+  // Tick until first card is revealed.
+  const frames = ctx.PD.config.ui.dealFramesPerCard;
+  for (let f = 0; f < frames; f++) ctx.PD.anim.tick(s, view);
+  assert.ok(!view.anim.hiddenByP[p][uid0], "expected uid0 revealed after dealFramesPerCard");
+  assert.ok(view.anim.hiddenByP[p][uid1], "expected uid1 still hidden");
+
+  // Tick through gap + second reveal.
+  for (let f = 0; f < ctx.PD.config.ui.dealGapFrames; f++) ctx.PD.anim.tick(s, view);
+  for (let f = 0; f < frames; f++) ctx.PD.anim.tick(s, view);
+  assert.ok(!view.anim.hiddenByP[p][uid1], "expected uid1 revealed after second deal");
+
+  // Once done, lock should clear.
+  ctx.PD.anim.tick(s, view);
+  assert.equal(!!view.anim.lock, false, "expected anim lock cleared after dealing completes");
+
+  // Ensure original hand cards are still present (sanity).
+  for (const u of beforeHand) assert.ok(s.players[p].hand.includes(u), "expected original hand uid to remain");
+});
+

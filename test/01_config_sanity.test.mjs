@@ -158,6 +158,12 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   // Directional navigation cone penalties.
   requirePosNum(PD.config.ui, "navConeKLeftRight");
   requirePosNum(PD.config.ui, "navConeKUpDown");
+
+  // Animation timings (frames).
+  requirePosNum(PD.config.ui, "dealFramesPerCard");
+  requirePosNum(PD.config.ui, "dealGapFrames");
+  requirePosNum(PD.config.ui, "shuffleAnimFrames");
+  requirePosNum(PD.config.ui, "shuffleToastFrames");
 });
 
 test("config sanity: rule notes are configured", async () => {

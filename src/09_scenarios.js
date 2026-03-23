@@ -60,7 +60,7 @@ PD.applyScenario = function (state, scenarioId) {
 };
 
 // Scenario registry (single source of truth).
-PD.SCENARIO_IDS = ["placeFixed", "placeWild", "houseOnComplete", "winCheck"];
+PD.SCENARIO_IDS = ["placeFixed", "placeWild", "houseOnComplete", "winCheck", "bankScrollShuffle"];
 
 PD._scenarioApplyById = {
   placeFixed: function (state) {
@@ -128,6 +128,58 @@ PD._scenarioApplyById = {
 
     state.playsLeft = 0;
     state.winnerP = PD.evaluateWin(state);
+  },
+
+  bankScrollShuffle: function (state) {
+    // Dev scenario:
+    // - P0 bank contains *all* bankable cards (money/action/house) to stress bank stack/scrolling.
+    // - Most remaining cards are in discard (to stress reshuffle).
+    // - Leave exactly 1 card in deck so the next draw forces a reshuffle.
+    // - Ensure P1 hand is non-empty so endTurn draws 2 (not 5).
+
+    if (!state._pool) PD.cardPoolInit(state);
+
+    // Seed P1 hand with 1 property so startTurn draws 2.
+    state.players[1].hand.push(PD.takeUid(state, "prop_cyan"));
+
+    // Drain pool: bankables -> P0 bank; non-bankables -> discard.
+    var di;
+    for (di = 0; di < PD.CARD_DEFS.length; di++) {
+      var def = PD.CARD_DEFS[di];
+      if (!def || !def.id) continue;
+      var defId = def.id;
+      var a = state._pool[defId];
+      if (!a || (a.length | 0) === 0) continue;
+
+      // NOTE: scenario pool contains only uids, so we inspect the def kind here.
+      var bankable = PD.isBankableDef(def);
+      while (a.length > 0) {
+        var uid = a.pop() | 0;
+        if (bankable) state.players[0].bank.push(uid);
+        else state.discard.push(uid);
+      }
+    }
+
+    // Put back one card into the pool so it becomes the (1-card) deck.
+    // Prefer taking from discard so the discard->deck reshuffle still has plenty of cards.
+    if (state.discard.length > 0) {
+      var keepUid = state.discard.pop() | 0;
+      var keepDef = PD.defByUid(state, keepUid);
+      var keepId = keepDef && keepDef.id ? String(keepDef.id) : "";
+      if (keepId) {
+        if (!state._pool[keepId]) state._pool[keepId] = [];
+        state._pool[keepId].push(keepUid);
+      } else {
+        // Fallback: if we can't map it, just return it to discard (deck will be empty).
+        state.discard.push(keepUid);
+      }
+    }
+
+    // Keep hand small and end-turn legal.
+    state.players[0].hand = [];
+    state.activeP = 0;
+    state.playsLeft = 0;
+    state.winnerP = PD.NO_WINNER;
   }
 };
 

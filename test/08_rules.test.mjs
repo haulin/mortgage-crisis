@@ -243,10 +243,12 @@ test("drawToHand reshuffles discard into deck when needed (continues drawing)", 
   assert.ok(state.discard.length > 0);
 
   const before = state.players[p].hand.length;
-  ctx.PD.drawToHand(state, p, 5, null);
+  const events = [];
+  ctx.PD.drawToHand(state, p, 5, events);
 
   assert.equal(state.players[p].hand.length, before + 5);
   assert.equal(state.discard.length, 0, "expected discard to be consumed into deck during reshuffle");
+  assert.ok(events.some((e) => e && e.kind === "reshuffle"), "expected reshuffle event");
 });
 
 test("drawToHand draws partially when the deck is short (no throw)", async () => {

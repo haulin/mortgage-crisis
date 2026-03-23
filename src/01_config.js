@@ -35,7 +35,14 @@ PD.config.ui = {
   // - Left/Right usually wants a *narrower* cone to avoid jumping to other rows.
   // - Up/Down can stay more permissive.
   navConeKLeftRight: 18,
-  navConeKUpDown: 6
+  navConeKUpDown: 6,
+
+  // Phase 05c+: animation timings (frames at 60fps).
+  dealFramesPerCard: 8,
+  dealGapFrames: 2,
+  // Shuffle: default includes ~1 extra 1→2→3 loop for readability.
+  shuffleAnimFrames: 42,
+  shuffleToastFrames: 42
 };
 
 // Rule-note IDs (Phase 05+). These are small display-only annotations in Inspect.

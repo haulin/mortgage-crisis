@@ -110,6 +110,7 @@ PD.drawToHand = function (state, p, n, events) {
       for (i = 0; i < nDisc; i++) state.deck.push(state.discard[i] | 0);
       state.discard = [];
       PD.shuffleUidsInPlace(state, state.deck);
+      if (events) events.push({ kind: "reshuffle", from: "discard", to: "deck", n: nDisc });
       nAvail = state.deck.length | 0;
       if (nAvail <= 0) break;
     }

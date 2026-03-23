@@ -5,6 +5,17 @@
 // ---- src/00_prelude.js ----
 var PD = PD || {};
 
+// Phase 05c+ animation module baseline.
+// Keep these definitions early so the rest of the cartridge can call `PD.anim.*`
+// without defensive existence checks. Real implementations live in `src/13_anim.js`.
+PD.anim = PD.anim || {};
+PD.anim.ensure = PD.anim.ensure || function (view) { return view && view.anim ? view.anim : null; };
+PD.anim.onEvents = PD.anim.onEvents || function () {};
+PD.anim.tick = PD.anim.tick || function () {};
+PD.anim.present = PD.anim.present || function (state, view, computed) { return computed; };
+PD.anim.feedbackTick = PD.anim.feedbackTick || function () {};
+PD.anim.feedbackError = PD.anim.feedbackError || function () {};
+
 // ---- src/01_config.js ----
 PD.config = {
   screenW: 240,
@@ -43,7 +54,14 @@ PD.config.ui = {
   // - Left/Right usually wants a *narrower* cone to avoid jumping to other rows.
   // - Up/Down can stay more permissive.
   navConeKLeftRight: 18,
-  navConeKUpDown: 6
+  navConeKUpDown: 6,
+
+  // Phase 05c+: animation timings (frames at 60fps).
+  dealFramesPerCard: 8,
+  dealGapFrames: 2,
+  // Shuffle: default includes ~1 extra 1→2→3 loop for readability.
+  shuffleAnimFrames: 42,
+  shuffleToastFrames: 42
 };
 
 // Rule-note IDs (Phase 05+). These are small display-only annotations in Inspect.
@@ -804,6 +822,7 @@ PD.drawToHand = function (state, p, n, events) {
       for (i = 0; i < nDisc; i++) state.deck.push(state.discard[i] | 0);
       state.discard = [];
       PD.shuffleUidsInPlace(state, state.deck);
+      if (events) events.push({ kind: "reshuffle", from: "discard", to: "deck", n: nDisc });
       nAvail = state.deck.length | 0;
       if (nAvail <= 0) break;
     }
@@ -1299,7 +1318,7 @@ PD.applyScenario = function (state, scenarioId) {
 };
 
 // Scenario registry (single source of truth).
-PD.SCENARIO_IDS = ["placeFixed", "placeWild", "houseOnComplete", "winCheck"];
+PD.SCENARIO_IDS = ["placeFixed", "placeWild", "houseOnComplete", "winCheck", "bankScrollShuffle"];
 
 PD._scenarioApplyById = {
   placeFixed: function (state) {
@@ -1367,6 +1386,58 @@ PD._scenarioApplyById = {
 
     state.playsLeft = 0;
     state.winnerP = PD.evaluateWin(state);
+  },
+
+  bankScrollShuffle: function (state) {
+    // Dev scenario:
+    // - P0 bank contains *all* bankable cards (money/action/house) to stress bank stack/scrolling.
+    // - Most remaining cards are in discard (to stress reshuffle).
+    // - Leave exactly 1 card in deck so the next draw forces a reshuffle.
+    // - Ensure P1 hand is non-empty so endTurn draws 2 (not 5).
+
+    if (!state._pool) PD.cardPoolInit(state);
+
+    // Seed P1 hand with 1 property so startTurn draws 2.
+    state.players[1].hand.push(PD.takeUid(state, "prop_cyan"));
+
+    // Drain pool: bankables -> P0 bank; non-bankables -> discard.
+    var di;
+    for (di = 0; di < PD.CARD_DEFS.length; di++) {
+      var def = PD.CARD_DEFS[di];
+      if (!def || !def.id) continue;
+      var defId = def.id;
+      var a = state._pool[defId];
+      if (!a || (a.length | 0) === 0) continue;
+
+      // NOTE: scenario pool contains only uids, so we inspect the def kind here.
+      var bankable = PD.isBankableDef(def);
+      while (a.length > 0) {
+        var uid = a.pop() | 0;
+        if (bankable) state.players[0].bank.push(uid);
+        else state.discard.push(uid);
+      }
+    }
+
+    // Put back one card into the pool so it becomes the (1-card) deck.
+    // Prefer taking from discard so the discard->deck reshuffle still has plenty of cards.
+    if (state.discard.length > 0) {
+      var keepUid = state.discard.pop() | 0;
+      var keepDef = PD.defByUid(state, keepUid);
+      var keepId = keepDef && keepDef.id ? String(keepDef.id) : "";
+      if (keepId) {
+        if (!state._pool[keepId]) state._pool[keepId] = [];
+        state._pool[keepId].push(keepUid);
+      } else {
+        // Fallback: if we can't map it, just return it to discard (deck will be empty).
+        state.discard.push(keepUid);
+      }
+    }
+
+    // Keep hand small and end-turn legal.
+    state.players[0].hand = [];
+    state.activeP = 0;
+    state.playsLeft = 0;
+    state.winnerP = PD.NO_WINNER;
   }
 };
 
@@ -1395,8 +1466,8 @@ PD.debugReset = function () {
   } else {
     d.state = PD.newGame({ seedU32: seedU32 >>> 0, scenarioId: scenarioId });
   }
-  d.view = (PD.ui && typeof PD.ui.newView === "function") ? PD.ui.newView() : null;
-  d.ctrl = (PD.controls && typeof PD.controls.newState === "function") ? PD.controls.newState() : null;
+  d.view = PD.ui.newView();
+  d.ctrl = PD.controls.newState();
   d.lastCmd = "";
   d.lastEvents = [];
   d.lastRaw = null;
@@ -1607,10 +1678,10 @@ PD.mainTick = function () {
   // Render mode
   if (!PD.debug || !PD.debug.state) PD.debugReset();
   var d = PD.debug;
-  if (!d.view && PD.ui && typeof PD.ui.newView === "function") d.view = PD.ui.newView();
-  if (!d.ctrl && PD.controls && typeof PD.controls.newState === "function") d.ctrl = PD.controls.newState();
+  if (!d.view) d.view = PD.ui.newView();
+  if (!d.ctrl) d.ctrl = PD.controls.newState();
 
-  if (PD.controls && PD.ui && PD.render && typeof PD.render.drawFrame === "function") {
+  {
     function summarizeUiIntent(intent) {
       if (!intent || !intent.kind) return "(none)";
       if (intent.kind === "applyCmd" && intent.cmd && intent.cmd.kind) return "applyCmd:" + String(intent.cmd.kind);
@@ -1630,6 +1701,7 @@ PD.mainTick = function () {
         var res = PD.applyCommand(d.state, intent.cmd);
         d.lastCmd = intent.cmd.kind;
         d.lastEvents = (res && res.events) ? res.events : [];
+        PD.anim.onEvents(d.state, d.view, d.lastEvents);
       } catch (err) {
         d.lastCmd = intent.cmd.kind + "(!)";
         d.lastEvents = [];
@@ -1643,10 +1715,13 @@ PD.mainTick = function () {
         else if (code === "set_color_mismatch") msg = "Wrong set color";
         else if (code === "wild_color_illegal") msg = "Wild color illegal";
         else if (code === "no_targets") msg = "No valid destination";
-        if (PD.ui && typeof PD.ui.feedbackError === "function") PD.ui.feedbackError(d.view, code, msg);
+        PD.anim.feedbackError(d.view, code, msg);
       }
     } else if (intent && intent.kind === "debug") {
-      if (intent.action === "step") PD.debugStep();
+      if (intent.action === "step") {
+        PD.debugStep();
+        PD.anim.onEvents(d.state, d.view, d.lastEvents);
+      }
       else if (intent.action === "reset") PD.debugReset();
       else if (intent.action === "nextScenario") PD.debugNextScenario();
     }
@@ -1657,9 +1732,6 @@ PD.mainTick = function () {
     computed = PD.ui.computeRowModels(d.state, d.view);
 
     PD.render.drawFrame({ state: d.state, view: d.view, computed: computed });
-  } else {
-    cls(0);
-    print("Render not loaded", 6, 6, 12);
   }
 };
 
@@ -2108,21 +2180,26 @@ PD.render = PD.render || {};
       rectbSafe(xFace + dx, yFace + dy, cfg.faceW, cfg.faceH, colMain);
     }
 
-    function drawDeckAt(xFace, yFace) {
-      var n = s.deck.length;
-      if (n > 2) {
-        drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx2, cfg.pileUnderDy2);
-        drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
-      } else if (n > 1) {
-        drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
+    function drawDeckAt(xFace, yFace, nVis, layersOverride) {
+      var n = (nVis != null) ? (nVis | 0) : (s.deck.length | 0);
+      var layers = (layersOverride != null) ? (layersOverride | 0) : -1;
+      if (layers < 0) {
+        // Default: derive visible pile depth from actual count.
+        if (n > 2) layers = 2;
+        else if (n > 1) layers = 1;
+        else layers = 0;
       }
+
+      // Underlayers first (so the top card is always on top).
+      if (layers >= 2) drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx2, cfg.pileUnderDy2);
+      if (layers >= 1) drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
       drawShadowBar(xFace, yFace);
       drawCardBack(xFace, yFace, false);
       drawCountDigits(n, xFace, yFace);
     }
 
-    function drawDiscardAt(xFace, yFace) {
-      var n = s.discard.length;
+    function drawDiscardAt(xFace, yFace, nVis, topUidVis) {
+      var n = (nVis != null) ? (nVis | 0) : (s.discard.length | 0);
       if (n > 2) {
         drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx2, cfg.pileUnderDy2);
         drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
@@ -2137,21 +2214,25 @@ PD.render = PD.render || {};
         return;
       }
 
-      var topUid = s.discard[n - 1];
+      var topUid = (topUidVis != null) ? (topUidVis | 0) : (s.discard[n - 1] | 0);
       drawShadowBar(xFace, yFace);
-      drawMiniCard(s, topUid, xFace, yFace, false);
+      if (topUid) drawMiniCard(s, topUid, xFace, yFace, false);
+      else {
+        // Masked-top fallback (used during shuffle animation): show an empty pile face with count.
+        rectbSafe(xFace, yFace, cfg.faceW, cfg.faceH, cfg.colText);
+      }
       drawCountDigits(n, xFace, yFace);
     }
 
-    // Center row items (deck/discard/buttons).
+    // Center row items (deck/discard/buttons). Presentation hints come from computed models.
     var rowM = computed.models ? computed.models[row] : null;
     var i;
     if (rowM && rowM.items) {
       for (i = 0; i < rowM.items.length; i++) {
         var it = rowM.items[i];
         if (!it) continue;
-        if (it.kind === "deck") drawDeckAt(it.x, it.y);
-        else if (it.kind === "discard") drawDiscardAt(it.x, it.y);
+        if (it.kind === "deck") drawDeckAt(it.x, it.y, it.nVis, it.pileLayers);
+        else if (it.kind === "discard") drawDiscardAt(it.x, it.y, it.nVis, it.topUidVis);
         else if (it.kind === "btn") {
           // Flat UI button: dark fill + white text; selected uses highlight fill + black text.
           // Note: debug gating and overlay hiding is handled in PD.ui.computeRowModels.
@@ -2300,7 +2381,7 @@ PD.render = PD.render || {};
         var v = valueForDef(def);
         var vLine = (v != null && v > 0) ? ("Value: $" + String(v)) : "";
         var usedAs = "";
-        if (def && PD.isWildDef && typeof PD.isWildDef === "function" && PD.isWildDef(def)) {
+        if (def && PD.isWildDef(def)) {
           var c = Math.floor(Number(selColor));
           if (isFinite(c) && c !== PD.NO_COLOR && def.wildColors && (c === def.wildColors[0] || c === def.wildColors[1])) {
             usedAs = "Currently used as: " + colorName(c);
@@ -2779,7 +2860,7 @@ PD.render = PD.render || {};
   R.debug.selectedLines = function (debug) {
     if (!debug || !debug.state) return ["Sel:(none)", ""];
     var it = null;
-    if (debug.view && PD.ui && typeof PD.ui.computeRowModels === "function") {
+    if (debug.view) {
       var computed = PD.ui.computeRowModels(debug.state, debug.view);
       it = computed ? computed.selected : null;
     }
@@ -2826,16 +2907,6 @@ PD.render = PD.render || {};
     return ["Sel:" + String(it.kind || "?"), ""];
   };
 
-  function highlightColFromView(view) {
-    var cfg = R.cfg;
-    if (!view || !view.feedback) return cfg.colHighlight;
-    var fb = view.feedback;
-    if (fb.blinkFrames <= 0) return cfg.colHighlight;
-    // Blink red on alternating phases.
-    if ((fb.blinkPhase % 2) === 0) return PD.Pal.Red;
-    return cfg.colHighlight;
-  }
-
   function drawGhostOutlines(ghosts, camX) {
     if (!ghosts || ghosts.length === 0) return;
     var L = R.cfg;
@@ -2862,6 +2933,23 @@ PD.render = PD.render || {};
     drawHighlight(x, y, highlightCol);
   }
 
+  // Phase 05c: shuffle + deal animations (render-only visuals).
+  // Renderer is oblivious to `view.anim`; UI/anim modules provide presentation in `computed`.
+  function drawAnimOverlay(state, view, computed) {
+    if (!state || !view || !computed) return;
+    var ov = computed.animOverlay;
+    if (!ov || !ov.kind) return;
+    if (ov.kind === "dealCard") {
+      var x = ov.x | 0;
+      var y = ov.y | 0;
+      var p = ov.p | 0;
+      var uid = ov.uid | 0;
+      drawShadowBar(x, y);
+      if (p === 1) drawCardBack(x, y, true);
+      else drawMiniCard(state, uid, x, y, false);
+    }
+  }
+
   function selectedFromModels(view, models) {
     if (!view || !view.cursor || !models) return null;
     var row = Math.floor(Number(view.cursor.row || 0));
@@ -2884,16 +2972,14 @@ PD.render = PD.render || {};
     if (!state || !view) return;
 
     var computed = args.computed;
-    if (!computed && PD.ui && typeof PD.ui.computeRowModels === "function") {
-      computed = PD.ui.computeRowModels(state, view);
-    }
+    if (!computed) computed = PD.ui.computeRowModels(state, view);
     if (!computed || !computed.models) return;
 
     var models = computed.models;
     var sel = selectedFromModels(view, models);
 
     var cfg = R.cfg;
-    var hlCol = highlightColFromView(view);
+    var hlCol = (computed.highlightCol != null) ? (computed.highlightCol | 0) : cfg.colHighlight;
 
     // Clear background.
     cls(cfg.colBg);
@@ -2954,6 +3040,9 @@ PD.render = PD.render || {};
     // Center panel last (so text overlays are readable).
     drawCenter({ state: state, view: view, computed: computed, selected: sel, highlightCol: hlCol });
 
+    // Phase 05c: animations on top of scene (but under toasts).
+    drawAnimOverlay(state, view, computed);
+
     // Highlight center widgets if selected.
     if (view.cursor.row === R.ROW_CENTER && sel) {
       rectbSafe(sel.x - 1, sel.y - 1, sel.w + 2, sel.h + 2, hlCol);
@@ -3009,6 +3098,15 @@ PD.ui.newView = function () {
     // Each toast: { id?, kind?, text, frames?, persistent? }
     toasts: [],
 
+    // Animations (Phase 05c+): shuffle + staged dealing. Purely view-owned.
+    anim: {
+      q: [],
+      active: null,
+      lock: false,
+      // hiddenByP[p][uid] = true means uid is in-hand but not yet revealed.
+      hiddenByP: [{}, {}]
+    },
+
     // Feedback: blink + message, plus attempt counts.
     feedback: {
       blinkFrames: 0,
@@ -3022,44 +3120,6 @@ PD.ui.newView = function () {
       lastPlaysLeft: null
     }
   };
-};
-
-PD.ui.feedbackError = function (view, code, msg) {
-  if (!view || !view.feedback) return;
-  code = String(code || "error");
-  msg = String(msg || "");
-
-  var fb = view.feedback;
-  var attempts = fb.attemptsByCode[code] || 0;
-  attempts += 1;
-  fb.attemptsByCode[code] = attempts;
-
-  // Always blink; only show message on repeated attempts.
-  fb.blinkFrames = 18;
-  fb.blinkPhase = 0;
-
-  if (attempts >= 2 && msg) {
-    if (PD.ui && typeof PD.ui.toastPush === "function") {
-      PD.ui.toastPush(view, { id: "err:" + code, kind: "error", text: msg, frames: 90 });
-    }
-  }
-};
-
-PD.ui.feedbackTick = function (view) {
-  if (!view || !view.feedback) return;
-  var fb = view.feedback;
-
-  var blinkFrames = Number(fb.blinkFrames || 0);
-  if (!isFinite(blinkFrames)) blinkFrames = 0;
-  if (blinkFrames > 0) {
-    blinkFrames = blinkFrames - 1;
-    fb.blinkFrames = blinkFrames;
-    // 2 blinks: toggle every 3 frames.
-    fb.blinkPhase = Math.floor(blinkFrames / 3);
-  } else {
-    fb.blinkFrames = 0;
-    fb.blinkPhase = 0;
-  }
 };
 
 PD.ui.toastPush = function (view, toast) {
@@ -3422,7 +3482,8 @@ PD.ui.buildRowItems = function (state, view, row) {
     var xHandStart = isOp ? (L.screenW - padX - L.faceW) : padX;
     var handStep = isOp ? (-L.handStrideX) : L.handStrideX;
     for (i = 0; i < nHand; i++) {
-      pushHandRowItem("hand", hand[i], xHandStart + i * handStep, i, 0);
+      var uidH = hand[i];
+      pushHandRowItem("hand", uidH, xHandStart + i * handStep, i, 0);
     }
 
     // Bank zone (overlapped stack), opposite side.
@@ -3679,7 +3740,7 @@ PD.ui.computeRowModels = function (state, view) {
     var srcX = null, srcY = null, srcRow = null;
     if (t.card && t.card.loc && t.card.loc.zone === "hand") {
       var srcLoc = t.card.loc;
-      var rowHand = (PD.render && PD.render.ROW_P_HAND != null) ? PD.render.ROW_P_HAND : 4;
+      var rowHand = PD.render.ROW_P_HAND;
       var rmHand = models[rowHand];
       if (rmHand && rmHand.items) {
         var hi;
@@ -3958,7 +4019,9 @@ PD.ui.computeRowModels = function (state, view) {
     }
   }
 
-  return { models: models, selected: sel, ghosts: ghosts, preview: preview };
+  var computed = { models: models, selected: sel, ghosts: ghosts, preview: preview };
+  computed = PD.anim.present(state, view, computed) || computed;
+  return computed;
 };
 
 PD.ui.ensureCamForSelection = function (rowModel, row, selItem, camArr) {
@@ -4268,9 +4331,10 @@ PD.ui.step = function (state, view, actions) {
   actions = actions || {};
 
   // Tick feedback timers.
-  PD.ui.feedbackTick(view);
+  PD.anim.feedbackTick(view);
   PD.ui.toastsTick(view);
   PD.ui.syncPromptToast(state, view);
+  PD.anim.tick(state, view);
 
   // Prompt mode sync (Phase 05b+): prompts are rules-owned, UI adopts a dedicated mode.
   var pr = state.prompt;
@@ -4291,6 +4355,13 @@ PD.ui.step = function (state, view, actions) {
   // Compute models for navigation helpers.
   var computed = PD.ui.computeRowModels(state, view);
   PD.ui.updateCameras(state, view, computed);
+
+  // While animating (shuffle/deal), lock input and just keep the view stable.
+  if (view.anim && view.anim.lock) {
+    computed = PD.ui.computeRowModels(state, view);
+    PD.ui.updateCameras(state, view, computed);
+    return null;
+  }
 
   // One-shot nudge: when P0 runs out of plays, snap selection to End (browse-only).
   // This makes "A to end turn" frictionless while still allowing players to wander away.
@@ -4332,7 +4403,7 @@ PD.ui.step = function (state, view, actions) {
   function promptPickHandItemIndices() {
     var out = [];
     if (!computed || !computed.models) return out;
-    var rowHand = (PD.render && PD.render.ROW_P_HAND != null) ? PD.render.ROW_P_HAND : 4;
+    var rowHand = PD.render.ROW_P_HAND;
     var rm = computed.models[rowHand];
     if (!rm || !rm.items) return out;
     var i;
@@ -4347,7 +4418,7 @@ PD.ui.step = function (state, view, actions) {
   }
 
   function promptSnapCursorToHand(handItemIs) {
-    var rowHand = (PD.render && PD.render.ROW_P_HAND != null) ? PD.render.ROW_P_HAND : 4;
+    var rowHand = PD.render.ROW_P_HAND;
     view.cursor.row = rowHand;
     if (!handItemIs || handItemIs.length === 0) { view.cursor.i = 0; return; }
     // If current cursor isn't on a hand card, snap to the first hand card.
@@ -4490,7 +4561,7 @@ PD.ui.step = function (state, view, actions) {
     }
 
     if (!t.cmds || t.cmds.length === 0) {
-      PD.ui.feedbackError(view, "no_targets", "No valid destination");
+      PD.anim.feedbackError(view, "no_targets", "No valid destination");
       t.active = false;
       view.mode = "browse";
       return null;
@@ -4537,7 +4608,7 @@ PD.ui.step = function (state, view, actions) {
       if (nDiscarded <= 0) {
         return { kind: "applyCmd", cmd: { kind: "cancelPrompt" } };
       }
-      PD.ui.feedbackError(view, "prompt_forced", "Must discard");
+      PD.anim.feedbackError(view, "prompt_forced", "Must discard");
       return null;
     }
 
@@ -4570,7 +4641,7 @@ PD.ui.step = function (state, view, actions) {
         PD.ui.targetingEnter(state, view, "bank", true, uidGrab, selGrab.loc);
         return null;
       }
-      PD.ui.feedbackError(view, "hold_noop", "Can't do that");
+      PD.anim.feedbackError(view, "hold_noop", "Can't do that");
       return null;
     }
   }
@@ -4605,7 +4676,7 @@ PD.ui.step = function (state, view, actions) {
       if (sel.disabled) {
         var msg = "Not available";
         if (sel.id === "endTurn" && state.activeP !== 0) msg = "Opponent turn";
-        PD.ui.feedbackError(view, "disabled_btn", msg);
+        PD.anim.feedbackError(view, "disabled_btn", msg);
 
         // Move selection to next available center button (prefer Step).
         var pickNext =
@@ -4641,7 +4712,7 @@ PD.ui.step = function (state, view, actions) {
       if (view.menu.items && view.menu.items.length > 0) {
         view.mode = "menu";
       } else {
-        PD.ui.feedbackError(view, "no_actions", "No actions");
+        PD.anim.feedbackError(view, "no_actions", "No actions");
       }
     }
   }
@@ -4649,6 +4720,342 @@ PD.ui.step = function (state, view, actions) {
   // If hold targeting is active and A is no longer held, auto-confirm is handled in targeting mode.
 
   return null;
+};
+
+// ---- src/13_anim.js ----
+PD.anim = PD.anim || {};
+
+// Phase 05c: animation plumbing extracted from PD.ui.
+// This module owns view.anim queue/steps, but still manipulates UI view state
+// (mode/menu/targeting) because animations are a UI-owned “watch” moment.
+
+PD.anim.ensure = function (view) {
+  if (!view) return null;
+  if (!view.anim) {
+    view.anim = { q: [], active: null, lock: false, hiddenByP: [{}, {}] };
+  }
+  if (!view.anim.q) view.anim.q = [];
+  if (!view.anim.hiddenByP) view.anim.hiddenByP = [{}, {}];
+  if (!view.anim.hiddenByP[0]) view.anim.hiddenByP[0] = {};
+  if (!view.anim.hiddenByP[1]) view.anim.hiddenByP[1] = {};
+  return view.anim;
+};
+
+PD.anim.onEvents = function (state, view, events) {
+  if (!state || !view || !events || events.length === 0) return;
+  var anim = PD.anim.ensure(view);
+  if (!anim) return;
+
+  // Clear overlays: animations are a read-only “watch” moment.
+  if (view.mode !== "prompt") view.mode = "browse";
+  if (view.menu) view.menu.items = [];
+  if (view.targeting) view.targeting.active = false;
+
+  var uiCfg = (PD.config && PD.config.ui) ? PD.config.ui : {};
+  var dealFrames = Math.floor(Number(uiCfg.dealFramesPerCard != null ? uiCfg.dealFramesPerCard : 10));
+  var dealGap = Math.floor(Number(uiCfg.dealGapFrames != null ? uiCfg.dealGapFrames : 2));
+  var shuffleFrames = Math.floor(Number(uiCfg.shuffleAnimFrames != null ? uiCfg.shuffleAnimFrames : 30));
+  var shuffleToastFrames = Math.floor(Number(uiCfg.shuffleToastFrames != null ? uiCfg.shuffleToastFrames : 30));
+  if (!isFinite(dealFrames) || dealFrames < 1) dealFrames = 1;
+  if (!isFinite(dealGap) || dealGap < 0) dealGap = 0;
+  if (!isFinite(shuffleFrames) || shuffleFrames < 1) shuffleFrames = 1;
+  if (!isFinite(shuffleToastFrames) || shuffleToastFrames < 1) shuffleToastFrames = 1;
+  if (shuffleFrames < shuffleToastFrames) shuffleFrames = shuffleToastFrames;
+
+  var i;
+  for (i = 0; i < events.length; i++) {
+    var ev = events[i];
+    if (!ev || !ev.kind) continue;
+
+    if (ev.kind === "reshuffle") {
+      // Toast + simple deck animation; input locked until finished.
+      PD.ui.toastPush(view, { id: "deck_shuffle", kind: "info", text: "Deck ran out. Shuffling", frames: shuffleToastFrames });
+      anim.q.push({
+        kind: "shuffle",
+        t: 0,
+        frames: shuffleFrames,
+        // Visual masking: during shuffle, show deck as empty and discard as empty.
+        // Conceptually the discard has already been consumed into the deck; we only animate the deck.
+        deckNVis: 0,
+        discardNVis: 0
+      });
+      continue;
+    }
+
+    if (ev.kind === "draw") {
+      var p = Math.floor(Number(ev.p));
+      if (!isFinite(p) || p < 0 || p > 1) continue;
+      var uids = ev.uids || [];
+      if (!uids || uids.length === 0) continue;
+
+      // Find the hand indices for these drawn uids (engine already moved them into hand).
+      var hand = (state.players && state.players[p] && state.players[p].hand) ? state.players[p].hand : [];
+      var handIs = [];
+      var j;
+      for (j = 0; j < uids.length; j++) {
+        var uid = uids[j] | 0;
+        var k;
+        var found = -1;
+        for (k = 0; k < hand.length; k++) {
+          if ((hand[k] | 0) === (uid | 0)) found = k;
+        }
+        handIs.push(found);
+        if (found >= 0) anim.hiddenByP[p][uid] = true;
+      }
+
+      anim.q.push({
+        kind: "deal",
+        p: p,
+        uids: uids.slice(),
+        handIs: handIs,
+        dealFrames: dealFrames,
+        gapFrames: dealGap,
+        i: 0,
+        phase: "move",
+        t: 0
+      });
+    }
+  }
+
+  anim.lock = !!(anim.active || (anim.q && anim.q.length));
+};
+
+PD.anim.tick = function (state, view) {
+  if (!view) return;
+  var anim = PD.anim.ensure(view);
+  if (!anim) return;
+
+  // Start next step if idle.
+  if (!anim.active && anim.q && anim.q.length > 0) {
+    anim.active = anim.q.shift();
+  }
+
+  var a = anim.active;
+  if (!a) {
+    anim.lock = false;
+    return;
+  }
+
+  if (a.kind === "shuffle") {
+    a.t = (a.t | 0) + 1;
+    if ((a.t | 0) >= (a.frames | 0)) anim.active = null;
+    anim.lock = !!(anim.active || (anim.q && anim.q.length));
+    return;
+  }
+
+  if (a.kind === "deal") {
+    var p = a.p | 0;
+    var uids = a.uids || [];
+    if (!uids || uids.length === 0) { anim.active = null; anim.lock = !!(anim.q && anim.q.length); return; }
+
+    if ((a.i | 0) >= (uids.length | 0)) { anim.active = null; anim.lock = !!(anim.q && anim.q.length); return; }
+
+    a.t = (a.t | 0) + 1;
+    if (a.phase === "move") {
+      if ((a.t | 0) >= (a.dealFrames | 0)) {
+        // Reveal current card.
+        var uid = uids[a.i] | 0;
+        if (anim.hiddenByP && anim.hiddenByP[p]) delete anim.hiddenByP[p][uid];
+        a.i = (a.i | 0) + 1;
+        a.t = 0;
+        if ((a.i | 0) >= (uids.length | 0)) {
+          anim.active = null;
+        } else {
+          a.phase = "gap";
+        }
+      }
+    } else {
+      // gap
+      if ((a.t | 0) >= (a.gapFrames | 0)) {
+        a.phase = "move";
+        a.t = 0;
+      }
+    }
+
+    anim.lock = !!(anim.active || (anim.q && anim.q.length));
+    return;
+  }
+
+  // Unknown anim kind: drop it.
+  anim.active = null;
+  anim.lock = !!(anim.q && anim.q.length);
+};
+
+// Phase 05c+: treat cursor-flash feedback as an animation/fx owned here.
+PD.anim.feedbackError = function (view, code, msg) {
+  if (!view || !view.feedback) return;
+  code = String(code || "error");
+  msg = String(msg || "");
+
+  var fb = view.feedback;
+  var attempts = fb.attemptsByCode[code] || 0;
+  attempts += 1;
+  fb.attemptsByCode[code] = attempts;
+
+  // Always blink; only show message on repeated attempts.
+  fb.blinkFrames = 18;
+  fb.blinkPhase = 0;
+
+  if (attempts >= 2 && msg) {
+    // Toast UI lives in PD.ui; this just triggers it as part of the feedback FX.
+    PD.ui.toastPush(view, { id: "err:" + code, kind: "error", text: msg, frames: 90 });
+  }
+};
+
+PD.anim.feedbackTick = function (view) {
+  if (!view || !view.feedback) return;
+  var fb = view.feedback;
+
+  var blinkFrames = Number(fb.blinkFrames || 0);
+  if (!isFinite(blinkFrames)) blinkFrames = 0;
+  if (blinkFrames > 0) {
+    blinkFrames = blinkFrames - 1;
+    fb.blinkFrames = blinkFrames;
+    // 2 blinks: toggle every 3 frames.
+    fb.blinkPhase = Math.floor(blinkFrames / 3);
+  } else {
+    fb.blinkFrames = 0;
+    fb.blinkPhase = 0;
+  }
+};
+
+// Phase 05c: presentation (render-facing view of state/models).
+// Renderer should not depend on `view.anim`; instead, UI calls this after building models.
+PD.anim.present = function (state, view, computed) {
+  if (!state || !view || !computed || !computed.models) return computed;
+  var anim = view.anim;
+  var a = anim ? anim.active : null;
+
+  // Reset any prior overlay presentation (computed is rebuilt each call, but be explicit).
+  computed.animOverlay = null;
+
+  // Provide highlight color for render (cursor flash on disallowed actions).
+  // Default highlight color lives in render config.
+  var colDefault = PD.config.render.style.colHighlight;
+  var hl = colDefault;
+  if (view.feedback && (view.feedback.blinkFrames | 0) > 0) {
+    if (((view.feedback.blinkPhase | 0) % 2) === 0) hl = PD.Pal.Red;
+  }
+  computed.highlightCol = hl;
+
+  // Phase 05c: hide in-flight dealt cards until revealed (presentation-only).
+  if (anim && anim.hiddenByP) {
+    var rowPH = PD.render.ROW_P_HAND | 0;
+    var rowOH = PD.render.ROW_OP_HAND | 0;
+    var rows = [rowOH, rowPH];
+    var ri;
+    for (ri = 0; ri < rows.length; ri++) {
+      var row = rows[ri];
+      var rm = computed.models[row];
+      if (!rm || !rm.items) continue;
+      var p = (row === rowPH) ? 0 : 1;
+      var hidden = anim.hiddenByP[p];
+      if (!hidden) continue;
+      var out = [];
+      var i;
+      for (i = 0; i < rm.items.length; i++) {
+        var it0 = rm.items[i];
+        if (!it0 || it0.kind !== "hand") { out.push(it0); continue; }
+        var uid0 = it0.uid | 0;
+        if (hidden[uid0]) continue;
+        out.push(it0);
+      }
+      rm.items = out;
+    }
+  }
+
+  if (!a || !a.kind) return computed;
+
+  var rowCenter = PD.render.ROW_CENTER | 0;
+  var rmC = computed.models[rowCenter];
+
+  if (a.kind === "shuffle") {
+    // Drive deck/discard pile presentation via model item hints.
+    if (rmC && rmC.items) {
+      var i;
+      for (i = 0; i < rmC.items.length; i++) {
+        var it = rmC.items[i];
+        if (!it || !it.kind) continue;
+        if (it.kind === "deck") {
+          it.nVis = (a.deckNVis != null) ? (a.deckNVis | 0) : null;
+          // Cycle 0/1/2 underlayers to suggest shuffling.
+          var phase = (a.t | 0) % 12;
+          var layers = 0;
+          if (phase >= 4 && phase < 8) layers = 1;
+          else if (phase >= 8) layers = 2;
+          it.pileLayers = layers;
+        } else if (it.kind === "discard") {
+          // Discard is conceptually consumed at reshuffle time.
+          it.nVis = 0;
+          it.topUidVis = 0;
+        }
+      }
+    }
+    return computed;
+  }
+
+  if (a.kind === "deal") {
+    if (a.phase !== "move") return computed;
+    var p = a.p | 0;
+    var uids = a.uids || [];
+    var handIs = a.handIs || [];
+    var iCard = a.i | 0;
+    if (iCard < 0 || iCard >= uids.length) return computed;
+
+    var frames = (a.dealFrames | 0);
+    if (frames < 1) frames = 1;
+    var t = (a.t | 0);
+    if (t < 0) t = 0;
+    if (t > frames) t = frames;
+    var u = t / frames;
+
+    // Find deck position from computed center-row model.
+    var deckX = null, deckY = null;
+    if (rmC && rmC.items) {
+      var j;
+      for (j = 0; j < rmC.items.length; j++) {
+        var it2 = rmC.items[j];
+        if (it2 && it2.kind === "deck") { deckX = it2.x; deckY = it2.y; break; }
+      }
+    }
+    if (deckX == null || deckY == null) return computed;
+
+    var rowHand = (p === 0) ? (PD.render.ROW_P_HAND | 0) : (PD.render.ROW_OP_HAND | 0);
+
+    var camCenter = (view.camX && view.camX[rowCenter] != null) ? view.camX[rowCenter] : 0;
+    var camH = (view.camX && view.camX[rowHand] != null) ? view.camX[rowHand] : 0;
+
+    var L = (PD.config && PD.config.render && PD.config.render.layout) ? PD.config.render.layout : null;
+    if (!L) return computed;
+    var padX = L.rowPadX;
+    var xHandStart = (p === 0) ? padX : (L.screenW - padX - L.faceW);
+    var handStep = (p === 0) ? L.handStrideX : (-L.handStrideX);
+    var handI = (handIs && handIs[iCard] != null) ? (handIs[iCard] | 0) : -1;
+    if (handI < 0) return computed;
+
+    var xToW = xHandStart + handI * handStep;
+    var yToW = (L.rowY && L.rowY[rowHand] != null) ? (L.rowY[rowHand] + 1) : 0;
+
+    // Screen-space endpoints (camera-adjusted).
+    var xFromS = (deckX - camCenter);
+    var yFromS = deckY;
+    var xToS = (xToW - camH);
+    var yToS = yToW;
+
+    var x = Math.floor(xFromS + (xToS - xFromS) * u);
+    var y = Math.floor(yFromS + (yToS - yFromS) * u);
+
+    computed.animOverlay = {
+      kind: "dealCard",
+      x: x,
+      y: y,
+      p: p,
+      uid: uids[iCard] | 0
+    };
+    return computed;
+  }
+
+  return computed;
 };
 
 // ---- src/99_main.js ----

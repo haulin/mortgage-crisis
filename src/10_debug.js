@@ -22,8 +22,8 @@ PD.debugReset = function () {
   } else {
     d.state = PD.newGame({ seedU32: seedU32 >>> 0, scenarioId: scenarioId });
   }
-  d.view = (PD.ui && typeof PD.ui.newView === "function") ? PD.ui.newView() : null;
-  d.ctrl = (PD.controls && typeof PD.controls.newState === "function") ? PD.controls.newState() : null;
+  d.view = PD.ui.newView();
+  d.ctrl = PD.controls.newState();
   d.lastCmd = "";
   d.lastEvents = [];
   d.lastRaw = null;
@@ -234,10 +234,10 @@ PD.mainTick = function () {
   // Render mode
   if (!PD.debug || !PD.debug.state) PD.debugReset();
   var d = PD.debug;
-  if (!d.view && PD.ui && typeof PD.ui.newView === "function") d.view = PD.ui.newView();
-  if (!d.ctrl && PD.controls && typeof PD.controls.newState === "function") d.ctrl = PD.controls.newState();
+  if (!d.view) d.view = PD.ui.newView();
+  if (!d.ctrl) d.ctrl = PD.controls.newState();
 
-  if (PD.controls && PD.ui && PD.render && typeof PD.render.drawFrame === "function") {
+  {
     function summarizeUiIntent(intent) {
       if (!intent || !intent.kind) return "(none)";
       if (intent.kind === "applyCmd" && intent.cmd && intent.cmd.kind) return "applyCmd:" + String(intent.cmd.kind);
@@ -257,6 +257,7 @@ PD.mainTick = function () {
         var res = PD.applyCommand(d.state, intent.cmd);
         d.lastCmd = intent.cmd.kind;
         d.lastEvents = (res && res.events) ? res.events : [];
+        PD.anim.onEvents(d.state, d.view, d.lastEvents);
       } catch (err) {
         d.lastCmd = intent.cmd.kind + "(!)";
         d.lastEvents = [];
@@ -270,10 +271,13 @@ PD.mainTick = function () {
         else if (code === "set_color_mismatch") msg = "Wrong set color";
         else if (code === "wild_color_illegal") msg = "Wild color illegal";
         else if (code === "no_targets") msg = "No valid destination";
-        if (PD.ui && typeof PD.ui.feedbackError === "function") PD.ui.feedbackError(d.view, code, msg);
+        PD.anim.feedbackError(d.view, code, msg);
       }
     } else if (intent && intent.kind === "debug") {
-      if (intent.action === "step") PD.debugStep();
+      if (intent.action === "step") {
+        PD.debugStep();
+        PD.anim.onEvents(d.state, d.view, d.lastEvents);
+      }
       else if (intent.action === "reset") PD.debugReset();
       else if (intent.action === "nextScenario") PD.debugNextScenario();
     }
@@ -284,9 +288,6 @@ PD.mainTick = function () {
     computed = PD.ui.computeRowModels(d.state, d.view);
 
     PD.render.drawFrame({ state: d.state, view: d.view, computed: computed });
-  } else {
-    cls(0);
-    print("Render not loaded", 6, 6, 12);
   }
 };
 

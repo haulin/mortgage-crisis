@@ -99,6 +99,22 @@ When banking is previewed into the bank stack, the preview should not overlap th
 
 - the existing bank stack shifts left by one stack stride so the preview can occupy the “new top” slot.
 
+## Draw + reshuffle visibility (animations)
+
+Draws are staged so they’re readable:
+
+- When you draw multiple cards, they are **dealt one-by-one** instead of instantly appearing.
+- If the deck runs out and the game reshuffles discard into deck, you’ll see a short **“Deck ran out. Shuffling”** toast plus a simple deck animation.
+- While shuffle/deal animations run, **input is temporarily locked** so you don’t miss it.
+  - During the shuffle, the discard pile is shown **empty** (it has already been consumed) and the deck count is temporarily shown as **empty** until the shuffle finishes.
+
+## Disallowed action feedback
+
+When you try to do something illegal or currently unavailable:
+
+- The selection highlight **flashes red** briefly.
+- If you repeat the same mistake, you’ll also get a short toast explaining why (e.g. “Not available”).
+
 ## Debug harness (for testers/dev)
 
 The project includes a built-in harness to make testing faster.

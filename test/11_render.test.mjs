@@ -62,6 +62,30 @@ test("render: highlight is drawn last for selected card", async () => {
   assert.ok(lastHighlightIdx > lastHandFaceIdx, "expected highlight to be drawn after hand cards");
 });
 
+test("render: feedback blink turns highlight red", async () => {
+  const rec = makeRecorder();
+  const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
+
+  ctx.PD.debugReset();
+  const s = ctx.PD.debug.state;
+  const v = ctx.PD.debug.view;
+  s.activeP = 0;
+  v.cursor.row = ctx.PD.render.ROW_P_HAND;
+  v.cursor.i = 0;
+
+  // Force blink-on phase.
+  v.feedback.blinkFrames = 1;
+  v.feedback.blinkPhase = 0;
+
+  drawFrame(ctx, s, v);
+
+  const highlightCalls = rec.calls.filter((c) => c.kind === "rectb" && c.args[2] === 19 && c.args[3] === 27);
+  assert.ok(highlightCalls.length > 0, "expected highlight rectb call(s) with 19x27");
+
+  const last = highlightCalls.at(-1);
+  assert.equal(last.args[4], ctx.PD.Pal.Red, "expected highlight to be red while feedback blink is active");
+});
+
 test("render: stack uses stride=8 and shadow at xFace-1", async () => {
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
@@ -554,6 +578,135 @@ test("render: End button shows green recommendation when out of plays", async ()
       c.args[4] === ctx.PD.Pal.Green
   );
   assert.ok(greenBorder, "expected End button border to be green when out of plays");
+});
+
+test("render: shuffle masking shows discard empty while deck shuffles", async () => {
+  const rec = makeRecorder();
+  const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
+
+  const s = ctx.PD.newGame({ seedU32: 1 });
+  // Minimal state: no cards drawn on-screen except piles.
+  s.players[0].hand = [];
+  s.players[1].hand = [];
+  s.players[0].bank = [];
+  s.players[1].bank = [];
+  s.players[0].sets = [];
+  s.players[1].sets = [];
+
+  // Post-reshuffle state: deck has 3 cards, discard is empty.
+  const keep = [s.deck.pop(), s.deck.pop(), s.deck.pop()];
+  s.deck = keep;
+  s.discard = [];
+
+  const view = newView(ctx);
+  view.cursor.row = ctx.PD.render.ROW_CENTER;
+  view.cursor.i = 0; // deck
+  // During shuffle animation we mask pile visuals: deck shows 0, discard shows 0.
+  view.anim = {
+    q: [],
+    lock: true,
+    hiddenByP: [{}, {}],
+    // t=9 ensures the renderer is in the "2 underlayers" shuffle phase.
+    active: { kind: "shuffle", t: 9, frames: 42, deckNVis: 0, discardNVis: 0 }
+  };
+
+  function expectedDigitSprXY(xFace, yFace) {
+    const L = ctx.PD.config.render.layout;
+    const S = ctx.PD.config.render.style;
+    const xEnd = L.faceW - 1 - S.digitGlyphW + S.pileCountDx;
+    const yTL = L.faceH - 1 - S.digitGlyphH + S.pileCountDy;
+    return {
+      x: xFace + xEnd - S.glyphInsetX,
+      y: yFace + yTL - S.glyphInsetY
+    };
+  }
+
+  const L = ctx.PD.config.render.layout;
+  const rowCenter = ctx.PD.render.ROW_CENTER;
+  const yPile = L.rowY[rowCenter] + L.centerTopInsetY;
+  const xDeck = L.centerDeckX;
+  const xDisc = L.centerDeckX + L.faceW + L.centerPileGapX;
+
+  const deckDigitPos = expectedDigitSprXY(xDeck, yPile);
+  const discDigitPos = expectedDigitSprXY(xDisc, yPile);
+  const digit0 = ctx.PD.config.render.spr.digit0;
+
+  // Frame 1 (shuffle active): deck shows 0, discard shows 0.
+  drawFrame(ctx, s, view);
+
+  const sprDeck0 = rec.calls.find(
+    (c) => c.kind === "spr" && c.args[0] === (digit0 + 0) && c.args[1] === deckDigitPos.x && c.args[2] === deckDigitPos.y
+  );
+  const sprDeck3 = rec.calls.find(
+    (c) => c.kind === "spr" && c.args[0] === (digit0 + 3) && c.args[1] === deckDigitPos.x && c.args[2] === deckDigitPos.y
+  );
+  const sprDisc0 = rec.calls.find(
+    (c) => c.kind === "spr" && c.args[0] === (digit0 + 0) && c.args[1] === discDigitPos.x && c.args[2] === discDigitPos.y
+  );
+  assert.ok(sprDeck0, "expected deck count to be masked to 0 during shuffle");
+  assert.ok(!sprDeck3, "expected deck count not to show actual value during shuffle");
+  assert.ok(sprDisc0, "expected discard to be shown as empty during shuffle");
+
+  // Ensure discard underlayer outlines are NOT drawn (discard is empty).
+  const discUnderlayerRectbIdxs = [];
+  const dx1 = L.pileUnderDx1;
+  const dy1 = L.pileUnderDy1;
+  const dx2 = L.pileUnderDx2;
+  const dy2 = L.pileUnderDy2;
+  for (let i = 0; i < rec.calls.length; i++) {
+    const c = rec.calls[i];
+    if (!c || c.kind !== "rectb") continue;
+    if (c.args[2] !== L.faceW || c.args[3] !== L.faceH) continue;
+    const x = c.args[0], y = c.args[1];
+    const isDx1 = (x === (xDisc + dx1 - 1) && y === (yPile + dy1 - 1)) || (x === (xDisc + dx1) && y === (yPile + dy1));
+    const isDx2 = (x === (xDisc + dx2 - 1) && y === (yPile + dy2 - 1)) || (x === (xDisc + dx2) && y === (yPile + dy2));
+    if (isDx1 || isDx2) discUnderlayerRectbIdxs.push(i);
+  }
+  assert.equal(discUnderlayerRectbIdxs.length, 0, "expected no discard underlayer outlines during shuffle");
+
+  // Also assert shuffle underlayers are drawn BEFORE the deck's top card back,
+  // so the underlayer "shadows" never render on top of the card.
+  const cardBackTL = ctx.PD.config.render.spr.cardBackTL;
+  const deckCardBackSprIdx = rec.calls.findIndex(
+    (c) =>
+      c.kind === "spr" &&
+      c.args[0] === cardBackTL &&
+      c.args[1] === (xDeck + 1) &&
+      c.args[2] === (yPile + 1)
+  );
+  assert.ok(deckCardBackSprIdx >= 0, "expected to find deck card-back sprite draw");
+
+  const underlayerRectbIdxs = [];
+  for (let i = 0; i < rec.calls.length; i++) {
+    const c = rec.calls[i];
+    if (!c || c.kind !== "rectb") continue;
+    if (c.args[2] !== L.faceW || c.args[3] !== L.faceH) continue;
+    const x = c.args[0], y = c.args[1];
+    const isDx1 = (x === (xDeck + dx1 - 1) && y === (yPile + dy1 - 1)) || (x === (xDeck + dx1) && y === (yPile + dy1));
+    const isDx2 = (x === (xDeck + dx2 - 1) && y === (yPile + dy2 - 1)) || (x === (xDeck + dx2) && y === (yPile + dy2));
+    if (isDx1 || isDx2) underlayerRectbIdxs.push(i);
+  }
+  assert.ok(underlayerRectbIdxs.length >= 4, "expected shuffle to draw two underlayer outlines (4 rectb calls)");
+  const maxUnderlayerIdx = Math.max(...underlayerRectbIdxs);
+  assert.ok(
+    deckCardBackSprIdx > maxUnderlayerIdx,
+    "expected deck top card back to be drawn after shuffle underlayers"
+  );
+
+  // Frame 2 (shuffle finished): deck shows 3, discard shows 0.
+  rec.calls.length = 0;
+  view.anim.active = null;
+  view.anim.lock = false;
+  drawFrame(ctx, s, view);
+
+  const sprDeck3After = rec.calls.find(
+    (c) => c.kind === "spr" && c.args[0] === (digit0 + 3) && c.args[1] === deckDigitPos.x && c.args[2] === deckDigitPos.y
+  );
+  const sprDisc0After = rec.calls.find(
+    (c) => c.kind === "spr" && c.args[0] === (digit0 + 0) && c.args[1] === discDigitPos.x && c.args[2] === discDigitPos.y
+  );
+  assert.ok(sprDeck3After, "expected deck count to show actual value after shuffle");
+  assert.ok(sprDisc0After, "expected discard count to show 0 after shuffle");
 });
 
 test("render: bank targeting draws preview in bank stack", async () => {

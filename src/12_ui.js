@@ -40,6 +40,15 @@ PD.ui.newView = function () {
     // Each toast: { id?, kind?, text, frames?, persistent? }
     toasts: [],
 
+    // Animations (Phase 05c+): shuffle + staged dealing. Purely view-owned.
+    anim: {
+      q: [],
+      active: null,
+      lock: false,
+      // hiddenByP[p][uid] = true means uid is in-hand but not yet revealed.
+      hiddenByP: [{}, {}]
+    },
+
     // Feedback: blink + message, plus attempt counts.
     feedback: {
       blinkFrames: 0,
@@ -53,44 +62,6 @@ PD.ui.newView = function () {
       lastPlaysLeft: null
     }
   };
-};
-
-PD.ui.feedbackError = function (view, code, msg) {
-  if (!view || !view.feedback) return;
-  code = String(code || "error");
-  msg = String(msg || "");
-
-  var fb = view.feedback;
-  var attempts = fb.attemptsByCode[code] || 0;
-  attempts += 1;
-  fb.attemptsByCode[code] = attempts;
-
-  // Always blink; only show message on repeated attempts.
-  fb.blinkFrames = 18;
-  fb.blinkPhase = 0;
-
-  if (attempts >= 2 && msg) {
-    if (PD.ui && typeof PD.ui.toastPush === "function") {
-      PD.ui.toastPush(view, { id: "err:" + code, kind: "error", text: msg, frames: 90 });
-    }
-  }
-};
-
-PD.ui.feedbackTick = function (view) {
-  if (!view || !view.feedback) return;
-  var fb = view.feedback;
-
-  var blinkFrames = Number(fb.blinkFrames || 0);
-  if (!isFinite(blinkFrames)) blinkFrames = 0;
-  if (blinkFrames > 0) {
-    blinkFrames = blinkFrames - 1;
-    fb.blinkFrames = blinkFrames;
-    // 2 blinks: toggle every 3 frames.
-    fb.blinkPhase = Math.floor(blinkFrames / 3);
-  } else {
-    fb.blinkFrames = 0;
-    fb.blinkPhase = 0;
-  }
 };
 
 PD.ui.toastPush = function (view, toast) {
@@ -453,7 +424,8 @@ PD.ui.buildRowItems = function (state, view, row) {
     var xHandStart = isOp ? (L.screenW - padX - L.faceW) : padX;
     var handStep = isOp ? (-L.handStrideX) : L.handStrideX;
     for (i = 0; i < nHand; i++) {
-      pushHandRowItem("hand", hand[i], xHandStart + i * handStep, i, 0);
+      var uidH = hand[i];
+      pushHandRowItem("hand", uidH, xHandStart + i * handStep, i, 0);
     }
 
     // Bank zone (overlapped stack), opposite side.
@@ -710,7 +682,7 @@ PD.ui.computeRowModels = function (state, view) {
     var srcX = null, srcY = null, srcRow = null;
     if (t.card && t.card.loc && t.card.loc.zone === "hand") {
       var srcLoc = t.card.loc;
-      var rowHand = (PD.render && PD.render.ROW_P_HAND != null) ? PD.render.ROW_P_HAND : 4;
+      var rowHand = PD.render.ROW_P_HAND;
       var rmHand = models[rowHand];
       if (rmHand && rmHand.items) {
         var hi;
@@ -989,7 +961,9 @@ PD.ui.computeRowModels = function (state, view) {
     }
   }
 
-  return { models: models, selected: sel, ghosts: ghosts, preview: preview };
+  var computed = { models: models, selected: sel, ghosts: ghosts, preview: preview };
+  computed = PD.anim.present(state, view, computed) || computed;
+  return computed;
 };
 
 PD.ui.ensureCamForSelection = function (rowModel, row, selItem, camArr) {
@@ -1299,9 +1273,10 @@ PD.ui.step = function (state, view, actions) {
   actions = actions || {};
 
   // Tick feedback timers.
-  PD.ui.feedbackTick(view);
+  PD.anim.feedbackTick(view);
   PD.ui.toastsTick(view);
   PD.ui.syncPromptToast(state, view);
+  PD.anim.tick(state, view);
 
   // Prompt mode sync (Phase 05b+): prompts are rules-owned, UI adopts a dedicated mode.
   var pr = state.prompt;
@@ -1322,6 +1297,13 @@ PD.ui.step = function (state, view, actions) {
   // Compute models for navigation helpers.
   var computed = PD.ui.computeRowModels(state, view);
   PD.ui.updateCameras(state, view, computed);
+
+  // While animating (shuffle/deal), lock input and just keep the view stable.
+  if (view.anim && view.anim.lock) {
+    computed = PD.ui.computeRowModels(state, view);
+    PD.ui.updateCameras(state, view, computed);
+    return null;
+  }
 
   // One-shot nudge: when P0 runs out of plays, snap selection to End (browse-only).
   // This makes "A to end turn" frictionless while still allowing players to wander away.
@@ -1363,7 +1345,7 @@ PD.ui.step = function (state, view, actions) {
   function promptPickHandItemIndices() {
     var out = [];
     if (!computed || !computed.models) return out;
-    var rowHand = (PD.render && PD.render.ROW_P_HAND != null) ? PD.render.ROW_P_HAND : 4;
+    var rowHand = PD.render.ROW_P_HAND;
     var rm = computed.models[rowHand];
     if (!rm || !rm.items) return out;
     var i;
@@ -1378,7 +1360,7 @@ PD.ui.step = function (state, view, actions) {
   }
 
   function promptSnapCursorToHand(handItemIs) {
-    var rowHand = (PD.render && PD.render.ROW_P_HAND != null) ? PD.render.ROW_P_HAND : 4;
+    var rowHand = PD.render.ROW_P_HAND;
     view.cursor.row = rowHand;
     if (!handItemIs || handItemIs.length === 0) { view.cursor.i = 0; return; }
     // If current cursor isn't on a hand card, snap to the first hand card.
@@ -1521,7 +1503,7 @@ PD.ui.step = function (state, view, actions) {
     }
 
     if (!t.cmds || t.cmds.length === 0) {
-      PD.ui.feedbackError(view, "no_targets", "No valid destination");
+      PD.anim.feedbackError(view, "no_targets", "No valid destination");
       t.active = false;
       view.mode = "browse";
       return null;
@@ -1568,7 +1550,7 @@ PD.ui.step = function (state, view, actions) {
       if (nDiscarded <= 0) {
         return { kind: "applyCmd", cmd: { kind: "cancelPrompt" } };
       }
-      PD.ui.feedbackError(view, "prompt_forced", "Must discard");
+      PD.anim.feedbackError(view, "prompt_forced", "Must discard");
       return null;
     }
 
@@ -1601,7 +1583,7 @@ PD.ui.step = function (state, view, actions) {
         PD.ui.targetingEnter(state, view, "bank", true, uidGrab, selGrab.loc);
         return null;
       }
-      PD.ui.feedbackError(view, "hold_noop", "Can't do that");
+      PD.anim.feedbackError(view, "hold_noop", "Can't do that");
       return null;
     }
   }
@@ -1636,7 +1618,7 @@ PD.ui.step = function (state, view, actions) {
       if (sel.disabled) {
         var msg = "Not available";
         if (sel.id === "endTurn" && state.activeP !== 0) msg = "Opponent turn";
-        PD.ui.feedbackError(view, "disabled_btn", msg);
+        PD.anim.feedbackError(view, "disabled_btn", msg);
 
         // Move selection to next available center button (prefer Step).
         var pickNext =
@@ -1672,7 +1654,7 @@ PD.ui.step = function (state, view, actions) {
       if (view.menu.items && view.menu.items.length > 0) {
         view.mode = "menu";
       } else {
-        PD.ui.feedbackError(view, "no_actions", "No actions");
+        PD.anim.feedbackError(view, "no_actions", "No actions");
       }
     }
   }

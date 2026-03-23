@@ -442,21 +442,26 @@ PD.render = PD.render || {};
       rectbSafe(xFace + dx, yFace + dy, cfg.faceW, cfg.faceH, colMain);
     }
 
-    function drawDeckAt(xFace, yFace) {
-      var n = s.deck.length;
-      if (n > 2) {
-        drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx2, cfg.pileUnderDy2);
-        drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
-      } else if (n > 1) {
-        drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
+    function drawDeckAt(xFace, yFace, nVis, layersOverride) {
+      var n = (nVis != null) ? (nVis | 0) : (s.deck.length | 0);
+      var layers = (layersOverride != null) ? (layersOverride | 0) : -1;
+      if (layers < 0) {
+        // Default: derive visible pile depth from actual count.
+        if (n > 2) layers = 2;
+        else if (n > 1) layers = 1;
+        else layers = 0;
       }
+
+      // Underlayers first (so the top card is always on top).
+      if (layers >= 2) drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx2, cfg.pileUnderDy2);
+      if (layers >= 1) drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
       drawShadowBar(xFace, yFace);
       drawCardBack(xFace, yFace, false);
       drawCountDigits(n, xFace, yFace);
     }
 
-    function drawDiscardAt(xFace, yFace) {
-      var n = s.discard.length;
+    function drawDiscardAt(xFace, yFace, nVis, topUidVis) {
+      var n = (nVis != null) ? (nVis | 0) : (s.discard.length | 0);
       if (n > 2) {
         drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx2, cfg.pileUnderDy2);
         drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
@@ -471,21 +476,25 @@ PD.render = PD.render || {};
         return;
       }
 
-      var topUid = s.discard[n - 1];
+      var topUid = (topUidVis != null) ? (topUidVis | 0) : (s.discard[n - 1] | 0);
       drawShadowBar(xFace, yFace);
-      drawMiniCard(s, topUid, xFace, yFace, false);
+      if (topUid) drawMiniCard(s, topUid, xFace, yFace, false);
+      else {
+        // Masked-top fallback (used during shuffle animation): show an empty pile face with count.
+        rectbSafe(xFace, yFace, cfg.faceW, cfg.faceH, cfg.colText);
+      }
       drawCountDigits(n, xFace, yFace);
     }
 
-    // Center row items (deck/discard/buttons).
+    // Center row items (deck/discard/buttons). Presentation hints come from computed models.
     var rowM = computed.models ? computed.models[row] : null;
     var i;
     if (rowM && rowM.items) {
       for (i = 0; i < rowM.items.length; i++) {
         var it = rowM.items[i];
         if (!it) continue;
-        if (it.kind === "deck") drawDeckAt(it.x, it.y);
-        else if (it.kind === "discard") drawDiscardAt(it.x, it.y);
+        if (it.kind === "deck") drawDeckAt(it.x, it.y, it.nVis, it.pileLayers);
+        else if (it.kind === "discard") drawDiscardAt(it.x, it.y, it.nVis, it.topUidVis);
         else if (it.kind === "btn") {
           // Flat UI button: dark fill + white text; selected uses highlight fill + black text.
           // Note: debug gating and overlay hiding is handled in PD.ui.computeRowModels.
@@ -634,7 +643,7 @@ PD.render = PD.render || {};
         var v = valueForDef(def);
         var vLine = (v != null && v > 0) ? ("Value: $" + String(v)) : "";
         var usedAs = "";
-        if (def && PD.isWildDef && typeof PD.isWildDef === "function" && PD.isWildDef(def)) {
+        if (def && PD.isWildDef(def)) {
           var c = Math.floor(Number(selColor));
           if (isFinite(c) && c !== PD.NO_COLOR && def.wildColors && (c === def.wildColors[0] || c === def.wildColors[1])) {
             usedAs = "Currently used as: " + colorName(c);
@@ -1113,7 +1122,7 @@ PD.render = PD.render || {};
   R.debug.selectedLines = function (debug) {
     if (!debug || !debug.state) return ["Sel:(none)", ""];
     var it = null;
-    if (debug.view && PD.ui && typeof PD.ui.computeRowModels === "function") {
+    if (debug.view) {
       var computed = PD.ui.computeRowModels(debug.state, debug.view);
       it = computed ? computed.selected : null;
     }
@@ -1160,16 +1169,6 @@ PD.render = PD.render || {};
     return ["Sel:" + String(it.kind || "?"), ""];
   };
 
-  function highlightColFromView(view) {
-    var cfg = R.cfg;
-    if (!view || !view.feedback) return cfg.colHighlight;
-    var fb = view.feedback;
-    if (fb.blinkFrames <= 0) return cfg.colHighlight;
-    // Blink red on alternating phases.
-    if ((fb.blinkPhase % 2) === 0) return PD.Pal.Red;
-    return cfg.colHighlight;
-  }
-
   function drawGhostOutlines(ghosts, camX) {
     if (!ghosts || ghosts.length === 0) return;
     var L = R.cfg;
@@ -1196,6 +1195,23 @@ PD.render = PD.render || {};
     drawHighlight(x, y, highlightCol);
   }
 
+  // Phase 05c: shuffle + deal animations (render-only visuals).
+  // Renderer is oblivious to `view.anim`; UI/anim modules provide presentation in `computed`.
+  function drawAnimOverlay(state, view, computed) {
+    if (!state || !view || !computed) return;
+    var ov = computed.animOverlay;
+    if (!ov || !ov.kind) return;
+    if (ov.kind === "dealCard") {
+      var x = ov.x | 0;
+      var y = ov.y | 0;
+      var p = ov.p | 0;
+      var uid = ov.uid | 0;
+      drawShadowBar(x, y);
+      if (p === 1) drawCardBack(x, y, true);
+      else drawMiniCard(state, uid, x, y, false);
+    }
+  }
+
   function selectedFromModels(view, models) {
     if (!view || !view.cursor || !models) return null;
     var row = Math.floor(Number(view.cursor.row || 0));
@@ -1218,16 +1234,14 @@ PD.render = PD.render || {};
     if (!state || !view) return;
 
     var computed = args.computed;
-    if (!computed && PD.ui && typeof PD.ui.computeRowModels === "function") {
-      computed = PD.ui.computeRowModels(state, view);
-    }
+    if (!computed) computed = PD.ui.computeRowModels(state, view);
     if (!computed || !computed.models) return;
 
     var models = computed.models;
     var sel = selectedFromModels(view, models);
 
     var cfg = R.cfg;
-    var hlCol = highlightColFromView(view);
+    var hlCol = (computed.highlightCol != null) ? (computed.highlightCol | 0) : cfg.colHighlight;
 
     // Clear background.
     cls(cfg.colBg);
@@ -1287,6 +1301,9 @@ PD.render = PD.render || {};
 
     // Center panel last (so text overlays are readable).
     drawCenter({ state: state, view: view, computed: computed, selected: sel, highlightCol: hlCol });
+
+    // Phase 05c: animations on top of scene (but under toasts).
+    drawAnimOverlay(state, view, computed);
 
     // Highlight center widgets if selected.
     if (view.cursor.row === R.ROW_CENTER && sel) {

@@ -69,6 +69,7 @@ We work in small increments:
 - Update `docs/plan.md` → **Current progress** (mark the phase ✅)
 - Update [`docs/user-manual.md`](docs/user-manual.md) when player/tester-visible behavior changes (controls, prompts, targeting, debug)
 - Update this `README.md` if the developer workflow changes
+- **Avoid defensive `PD.*` existence checks** in cartridge code; prefer defining required namespaces/stubs in `src/00_prelude.js` and asserting module/config availability in tests (so missing wiring fails fast).
 
 ## Key Constraints
 
