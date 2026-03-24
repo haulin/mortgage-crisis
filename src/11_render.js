@@ -688,17 +688,22 @@ PD.render = PD.render || {};
     function drawMenuOverlay() {
       var src = view.menu && view.menu.src ? view.menu.src : null;
       if (src && src.uid) drawMiniCard(s, src.uid, xPrev, yPrev, false);
-      printSafe("Menu", xTitle, yTitle, cfg.colText);
+      printSafe("Menu", xTitle, yTitle - 1, cfg.colText);
       var items = (view.menu && view.menu.items) ? view.menu.items : [];
       var selI = (view.menu && view.menu.i != null) ? Math.floor(Number(view.menu.i)) : 0;
       if (!isFinite(selI)) selI = 0;
       var j;
-      var y = yDesc;
+      var y = yDesc - 1;
       // Backing box so the menu is unmistakable.
       var boxX = xDesc - 2;
       var boxY = y - 2;
       var boxW = cfg.screenW - boxX - cfg.rowPadX;
-      var boxH = (items.length * 7 + 12);
+      // Menu height is clamped so the border never overlaps the control hints line.
+      var hintY = y1 - 7; // smallfont
+      var boxH = (items.length * 7 + 10);
+      // Let the box sit 1px closer to the hint band to fit 3 items cleanly.
+      var maxH = (hintY - 2) - boxY;
+      if (isFinite(maxH) && maxH > 0 && boxH > maxH) boxH = maxH;
       if (boxH < 16) boxH = 16;
       rectSafe(boxX, boxY, boxW, boxH, PD.Pal.Black);
       rectbSafe(boxX, boxY, boxW, boxH, cfg.colCenterPanelBorder);
@@ -713,7 +718,7 @@ PD.render = PD.render || {};
           printSafe(label, xDesc, yy, cfg.colText);
         }
       }
-      printSafe("A:Select  B:Back", xDesc, y1 - 8, cfg.colText);
+      printExSafe("A:Select  B:Back", xDesc, hintY, cfg.colText, false, 1, true);
     }
 
     function drawTargetingOverlay() {
@@ -721,12 +726,25 @@ PD.render = PD.render || {};
       if (!t || !t.active) return;
       if (t.card && t.card.uid) drawMiniCard(s, t.card.uid, xPrev, yPrev, false, (t.wildColor !== PD.NO_COLOR) ? t.wildColor : null);
 
-      var title = (t.kind === "build") ? "Build" : ((t.kind === "place") ? "Place" : "Bank");
-      printSafe(title, xTitle, yTitle, cfg.colText);
+      function titleForCmd(cmd) {
+        if (!cmd || !cmd.kind) return (t && t.kind === "quick") ? "Action" : "Target";
+        if (cmd.kind === "playRent") return "Rent";
+        if (cmd.kind === "playHouse") return "Build";
+        if (cmd.kind === "bank") return "Bank";
+        if (cmd.kind === "playProp") return "Place";
+        if (cmd.kind === "source") return "Source";
+        return "Target";
+      }
 
       var cmdI = Math.floor(Number(t.cmdI || 0));
       if (!isFinite(cmdI)) cmdI = 0;
       var cmd = (t.cmds && t.cmds.length) ? t.cmds[cmdI % t.cmds.length] : null;
+
+      var title = (t.kind === "build") ? "Build" :
+        ((t.kind === "place") ? "Place" :
+          ((t.kind === "rent") ? "Rent" :
+            ((t.kind === "quick") ? titleForCmd(cmd) : "Bank")));
+      printSafe(title, xTitle, yTitle, cfg.colText);
       var destLine = "";
       if (cmd && cmd.kind === "playProp") {
         if (cmd.dest && cmd.dest.newSet) destLine = "Dest: New set";
@@ -742,6 +760,12 @@ PD.render = PD.render || {};
         var set2 = isFinite(setI2) ? s.players[0].sets[setI2] : null;
         var col2 = set2 ? PD.getSetColor(set2.props) : PD.NO_COLOR;
         destLine = "Dest: " + colorName(col2) + " set";
+      } else if (cmd && cmd.kind === "playRent") {
+        var setIR = Math.floor(Number(cmd.setI));
+        var setR = isFinite(setIR) ? s.players[0].sets[setIR] : null;
+        var colR = setR ? PD.getSetColor(setR.props) : PD.NO_COLOR;
+        var amt = PD.rentAmountForSet ? (PD.rentAmountForSet(s, 0, setIR) | 0) : 0;
+        destLine = "From: " + colorName(colR) + " set\nAmt: $" + amt;
       } else if (cmd && cmd.kind === "bank") {
         destLine = "Dest: Bank";
       } else if (cmd && cmd.kind === "source") {
@@ -759,7 +783,7 @@ PD.render = PD.render || {};
 
       printExSafe(destLine, xDesc, yDesc, cfg.colText, false, 1, false);
 
-      var help = "L/R: Dest";
+      var help = (t.kind === "quick") ? "L/R: Option" : ((t.kind === "rent") ? "L/R: Set" : "L/R: Dest");
       if (t.card && t.card.def && PD.isWildDef(t.card.def)) help += "  U/D: Color";
       help += t.hold ? "\nRelease A: Drop  B:Cancel" : "\nA:Confirm  B:Cancel";
       printExSafe(help, xDesc, y1 - 18, cfg.colText, false, 1, true);
@@ -1025,18 +1049,32 @@ PD.render = PD.render || {};
     var byKeyH = groupedH.byKey;
     var keysH = groupedH.keys;
 
-    // Hide the grabbed source card during hold-targeting so it only appears as a preview.
-    var hideHand = null;
-    if (
-      view &&
-      view.mode === "targeting" &&
-      view.targeting &&
-      view.targeting.active &&
-      view.targeting.card &&
-      view.targeting.card.loc &&
-      view.targeting.card.loc.zone === "hand"
-    ) {
-      hideHand = { uid: view.targeting.card.uid | 0, loc: view.targeting.card.loc };
+    // Hide the source card when a preview is re-drawing that same uid elsewhere.
+    // This avoids showing the same card in both its origin slot and its destination preview.
+    var hideSrc = null;
+    if (view && computed && computed.preview && computed.preview.uid) {
+      if (
+        view.mode === "targeting" &&
+        view.targeting &&
+        view.targeting.active &&
+        view.targeting.card &&
+        view.targeting.card.uid &&
+        view.targeting.card.loc &&
+        ((computed.preview.uid | 0) === (view.targeting.card.uid | 0))
+      ) {
+        var z0 = view.targeting.card.loc.zone;
+        if (z0 === "hand" || z0 === "recvProps") hideSrc = { uid: view.targeting.card.uid | 0, loc: view.targeting.card.loc };
+      } else if (
+        view.mode === "menu" &&
+        view.menu &&
+        view.menu.src &&
+        view.menu.src.uid &&
+        view.menu.src.loc &&
+        ((computed.preview.uid | 0) === (view.menu.src.uid | 0))
+      ) {
+        var z1 = view.menu.src.loc.zone;
+        if (z1 === "hand" || z1 === "recvProps") hideSrc = { uid: view.menu.src.uid | 0, loc: view.menu.src.loc };
+      }
     }
 
     // Draw non-bank hand items in x-order first.
@@ -1044,8 +1082,8 @@ PD.render = PD.render || {};
       var it = rowModel.items[i];
       if (!it || it.stackKey) continue;
       if (selected && it === selected) continue;
-      if (hideHand && row === R.ROW_P_HAND && it.loc && it.loc.zone === "hand") {
-        if ((it.uid | 0) === (hideHand.uid | 0) && (it.loc.p | 0) === (hideHand.loc.p | 0) && (it.loc.i | 0) === (hideHand.loc.i | 0)) {
+      if (hideSrc && row === R.ROW_P_HAND && it.loc && (it.loc.zone === "hand" || it.loc.zone === "recvProps")) {
+        if ((it.uid | 0) === (hideSrc.uid | 0) && (it.loc.p | 0) === (hideSrc.loc.p | 0) && String(it.loc.zone) === String(hideSrc.loc.zone) && (it.loc.i | 0) === (hideSrc.loc.i | 0)) {
           continue;
         }
       }
@@ -1083,8 +1121,8 @@ PD.render = PD.render || {};
 
     // Skip drawing the source selection highlight during hold-targeting; preview handles the feedback.
     var sel = selected;
-    if (hideHand && row === R.ROW_P_HAND && sel && sel.loc && sel.loc.zone === "hand") {
-      if ((sel.uid | 0) === (hideHand.uid | 0) && (sel.loc.p | 0) === (hideHand.loc.p | 0) && (sel.loc.i | 0) === (hideHand.loc.i | 0)) {
+    if (hideSrc && row === R.ROW_P_HAND && sel && sel.loc && (sel.loc.zone === "hand" || sel.loc.zone === "recvProps")) {
+      if ((sel.uid | 0) === (hideSrc.uid | 0) && (sel.loc.p | 0) === (hideSrc.loc.p | 0) && String(sel.loc.zone) === String(hideSrc.loc.zone) && (sel.loc.i | 0) === (hideSrc.loc.i | 0)) {
         sel = null;
       }
     }

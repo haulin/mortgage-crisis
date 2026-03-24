@@ -20,6 +20,7 @@ Documentation convention (for future phases):
 - **Phase 05 ✅**: Inspect overlay becomes a real panel (config-driven, small-font desc) + improved card copy + rule-note gating + pile count digit offset. See `docs/phase05.md`.
 - **Phase 05b ✅**: turn loop framing + discard-down-to-7 prompt + deterministic reshuffle + toast/prompt foundation polish. See `docs/phase05b.md`.
 - **Phase 05c ✅**: draw + reshuffle visibility (staged dealing + shuffle toast/animation), plus renderer‑oblivious animation presentation via `PD.anim.present`. See `docs/phase05c.md`.
+- **Phase 06 ✅**: debt/payment prompt + recipient “faux-turn placement” for received properties (incl. Wild color choice), using prompt actor `prompt.p` (not `activeP`). See `docs/phase06.md`.
 
 ## Goals + Constraints
 
@@ -367,46 +368,61 @@ Quality-of-life (still UX-level; no new rules commands):
 - Refactor: centralize animation + feedback presentation in `PD.anim` so the renderer stays display-only:
   - renderer consumes `computed` presentation (`nVis/pileLayers`, `computed.animOverlay`, `computed.highlightCol`) and is oblivious to `view.anim` / `view.feedback`
 
-### Phase 06 — Debt/payment + “faux-turn placement”
+### Phase 06 **✅** — Debt/payment + “faux-turn placement”
 
-- Implement debt context:
-  - payer selects from bank/properties
-  - enforce House-pay-first rule
-  - transfer to recipient (bank/properties)
-- Implement recipient placement step for each received property, including Wild assignment
+- Implement prompt-owned debt context:
+  - prompt actor is `prompt.p` (prompt can target a non-`activeP` player)
+  - payer selects cards from **bank + properties + houses-in-sets**
+  - enforce **House-pay-first** (engine + UI redirect)
+  - selected cards live in a prompt-owned buffer until finalized (auto-finalize)
+  - transfer bankables to recipient **bank**; transfer properties to recipient **placement prompt**
+- Implement recipient placement (“faux-turn placement”):
+  - received properties appear as a faux-hand at the left of the real hand row
+  - `A` on a received property enters targeting (choose existing/new set; Wild chooses color)
+  - received props are the only actionable cards during that prompt (real hand remains visible)
+- Debug harness polish:
+  - DebugText shows `Prompt:` stage line (e.g. `payDebt rem:$N buf:N`, `placeRecv n:N`, `discardDown to:N left:N`)
+
+See `docs/phase06.md` for exact shipped behavior.
+
+Content expansion readiness:
+
+- Keep the debt/payment UX generic so Phase 11 can add “pay/select/transfer” actions (e.g. Forced Purchase) without inventing new interaction patterns
+
+### Phase 07 — AI (random legal) + narrated pacing
+
+- Implement AI as:
+  - `legalMoves(state)` → choose random → enqueue commands
+- Show narrated messages with fixed delay between steps
+
+Content expansion readiness:
+
+- Create a system that will allow future phases to integrate easily
 
 Issues:
 - When player is out of moves and they attempt to place a card, the only valid destination is source. They no longer get negative feedback about no action possible. If only source is a valid destination then action should be disallowed.
 - still lots of |0 coercions in code that does not directly call TIC APIs.
 - scrolling in the last scenario is not good
+- the project was renamed to Mortgage Crisis, so we should update all references
+- action menu should maybe get rendered as a bigger overlay, similar to inspect and not cover buttons
 
-Content expansion readiness (post‑MVP):
-
-- Keep the debt/payment UX generic so Phase 11 can add “pay/select/transfer” actions (e.g. Forced Purchase) without inventing new interaction patterns
-
-### Phase 07 — Actions + responses
+### Phase 08 — Actions + responses
 
 - Implement Rent + JSN response window
 - Implement Sly Deal + JSN response window + legality (not from complete set)
 
-Content expansion readiness (post‑MVP):
+Content expansion readiness:
 
 - Keep the response window + targeting UX generic so Phase 11 can add additional action card types without bespoke UI
 
-### Phase 08 — Wild replace-window
+### Phase 09 — Wild replace-window
 
 - Detect replace-window eligibility after property plays
 - Offer optional prompt to move exactly 1 Wild if legal (source remains complete)
 
-Content expansion readiness (post‑MVP):
+Content expansion readiness:
 
 - Keep replace-window prompts generic so Phase 11 can add more Wild/board-state manipulation cards that reuse this workflow
-
-### Phase 09 — AI (random legal) + narrated pacing
-
-- Implement AI as:
-  - `legalMoves(state)` → choose random → enqueue commands
-- Show narrated messages in center panel with fixed delay between steps
 
 ### Phase 10 — Scenarios + dev boot
 

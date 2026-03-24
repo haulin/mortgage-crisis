@@ -60,10 +60,30 @@ PD.applyScenario = function (state, scenarioId) {
 };
 
 // Scenario registry (single source of truth).
-PD.SCENARIO_IDS = ["placeFixed", "placeWild", "houseOnComplete", "winCheck", "bankScrollShuffle"];
+PD.SCENARIO_IDS = [
+  "placeBasic",
+  "wildBasic",
+  "houseBasic",
+  "winCheck",
+  "bankScrollShuffle",
+  // Phase 06
+  "debtHouseFirst",
+  "placeReceived"
+];
+
+// Optional metadata for debug UI / docs.
+PD.SCENARIO_INFO = {
+  placeBasic: { title: "Place (basic)", desc: "Fixed property placement + Rent play-test (opponent has a small bank payable)." },
+  wildBasic: { title: "Wild (basic)", desc: "Wild property placement + discard depth demo." },
+  houseBasic: { title: "House (basic)", desc: "Build House on complete set only." },
+  winCheck: { title: "Win check", desc: "Already-winning board state (game over)." },
+  bankScrollShuffle: { title: "Bank+shuffle stress", desc: "Huge bank + reshuffle-on-draw stress case." },
+  debtHouseFirst: { title: "Debt: house-first", desc: "Debt prompt where House must be paid before set properties." },
+  placeReceived: { title: "Place received", desc: "Faux-turn placement buffer (includes Wild color choice)." },
+};
 
 PD._scenarioApplyById = {
-  placeFixed: function (state) {
+  placeBasic: function (state) {
     // P0 has 2 orange properties + $1. P0 also has an existing Orange set with 1 property.
     var setO = PD.newEmptySet();
     PD.setAddPropByDefId(state, setO, "prop_orange", PD.NO_COLOR);
@@ -72,9 +92,14 @@ PD._scenarioApplyById = {
     state.players[0].hand.push(PD.takeUid(state, "prop_orange"));
     state.players[0].hand.push(PD.takeUid(state, "prop_orange"));
     state.players[0].hand.push(PD.takeUid(state, "money_1"));
+    // Add a rent card that matches Orange (Magenta/Orange rent).
+    state.players[0].hand.push(PD.takeUid(state, "rent_mo"));
+
+    // Ensure opponent has something payable so Rent triggers payDebt.
+    state.players[1].bank.push(PD.takeUid(state, "money_1"));
   },
 
-  placeWild: function (state) {
+  wildBasic: function (state) {
     // P0 has Wild(M/O) and $1.
     state.players[0].hand.push(PD.takeUid(state, "wild_mo"));
     state.players[0].hand.push(PD.takeUid(state, "money_1"));
@@ -85,7 +110,7 @@ PD._scenarioApplyById = {
     state.discard.push(PD.takeUid(state, "rent_cb"));
   },
 
-  houseOnComplete: function (state) {
+  houseBasic: function (state) {
     // P0 has two Houses in hand.
     state.players[0].hand.push(PD.takeUid(state, "house"));
     state.players[0].hand.push(PD.takeUid(state, "house"));
@@ -180,6 +205,44 @@ PD._scenarioApplyById = {
     state.activeP = 0;
     state.playsLeft = 0;
     state.winnerP = PD.NO_WINNER;
-  }
+  },
+
+  // Phase 06: prompt-driven debt payment where House must be paid first.
+  // Goal: exercise prompt actor separation + house-first redirect + overpay allowed.
+  debtHouseFirst: function (state) {
+    // P0: complete Cyan set with a House.
+    var setC = PD.newEmptySet();
+    PD.setAddPropByDefId(state, setC, "prop_cyan", PD.NO_COLOR);
+    PD.setAddPropByDefId(state, setC, "prop_cyan", PD.NO_COLOR);
+    setC.houseUid = PD.takeUid(state, "house");
+    state.players[0].sets.push(setC);
+
+    // Keep bank empty so the only payable is the House (forces the rule).
+    state.players[0].bank = [];
+
+    // Add a little hand so the UI isn't empty.
+    state.players[0].hand.push(PD.takeUid(state, "rent_cb"));
+
+    // Pay a small debt to P1; paying the House overpays and resolves immediately.
+    PD.setPrompt(state, { kind: "payDebt", p: 0, toP: 1, rem: 1, buf: [] });
+  },
+
+  // Phase 06: recipient faux-turn placement buffer (received properties).
+  placeReceived: function (state) {
+    // P0 has an existing Orange set to allow placing into existing sets.
+    var setO = PD.newEmptySet();
+    PD.setAddPropByDefId(state, setO, "prop_orange", PD.NO_COLOR);
+    state.players[0].sets.push(setO);
+
+    // Prompt buffer: one fixed property + one Wild to place (wild assignment chosen during placement).
+    var recv = [];
+    recv.push(PD.takeUid(state, "prop_orange"));
+    recv.push(PD.takeUid(state, "wild_mo"));
+    PD.setPrompt(state, { kind: "placeReceived", p: 0, uids: recv });
+
+    // Keep normal hand visible for the “faux-hand + real hand” row layout.
+    state.players[0].hand.push(PD.takeUid(state, "money_1"));
+    state.players[0].hand.push(PD.takeUid(state, "rent_mo"));
+  },
 };
 

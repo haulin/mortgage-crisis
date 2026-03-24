@@ -7,6 +7,19 @@ PD.assertPromptShape = function (prompt) {
   if (typeof prompt !== "object") throw new Error("bad_prompt");
   if (!prompt.kind || typeof prompt.kind !== "string") throw new Error("bad_prompt");
   if (prompt.p == null) throw new Error("bad_prompt");
+
+  var k = String(prompt.kind);
+  if (k === "payDebt") {
+    if (prompt.toP == null) throw new Error("bad_prompt");
+    var rem = Number(prompt.rem);
+    if (!isFinite(rem)) throw new Error("bad_prompt");
+    if (prompt.buf != null && !Array.isArray(prompt.buf)) throw new Error("bad_prompt");
+    return;
+  }
+  if (k === "placeReceived") {
+    if (prompt.uids != null && !Array.isArray(prompt.uids)) throw new Error("bad_prompt");
+    return;
+  }
 };
 
 PD.clearPrompt = function (state) {
@@ -19,10 +32,72 @@ PD.setPrompt = function (state, prompt) {
     state.prompt = null;
     return;
   }
-  state.prompt = {
-    kind: String(prompt.kind),
-    p: prompt.p | 0
-  };
+  var k = String(prompt.kind);
+  var p = prompt.p | 0;
+
+  if (k === "discardDown") {
+    state.prompt = {
+      kind: k,
+      p: p,
+      nDiscarded: (prompt.nDiscarded != null) ? (prompt.nDiscarded | 0) : 0
+    };
+    return;
+  }
+
+  if (k === "payDebt") {
+    var buf = prompt.buf;
+    if (!buf) buf = [];
+    state.prompt = {
+      kind: k,
+      p: p,
+      toP: prompt.toP | 0,
+      rem: Math.floor(Number(prompt.rem || 0)),
+      buf: buf.slice()
+    };
+    if (!isFinite(state.prompt.rem)) state.prompt.rem = 0;
+    return;
+  }
+
+  if (k === "placeReceived") {
+    var uids = prompt.uids;
+    if (!uids) uids = [];
+    state.prompt = {
+      kind: k,
+      p: p,
+      uids: uids.slice()
+    };
+    return;
+  }
+
+  // Unknown prompt kind: keep minimal shape.
+  state.prompt = { kind: k, p: p };
+};
+
+PD.hasAnyPayables = function (state, p) {
+  if (!state || !state.players) return false;
+  p = p | 0;
+  var pl = state.players[p];
+  if (!pl) return false;
+  if (pl.bank && pl.bank.length) return true;
+  var sets = pl.sets || [];
+  var si;
+  for (si = 0; si < sets.length; si++) {
+    var set = sets[si];
+    if (!set) continue;
+    if (set.houseUid) return true;
+    if (set.props && set.props.length) return true;
+  }
+  return false;
+};
+
+PD.beginDebt = function (state, fromP, toP, amount) {
+  if (!state) return;
+  fromP = fromP | 0;
+  toP = toP | 0;
+  amount = Math.floor(Number(amount || 0));
+  if (!isFinite(amount) || amount <= 0) return;
+  if (!PD.hasAnyPayables(state, fromP)) return;
+  PD.setPrompt(state, { kind: "payDebt", p: fromP, toP: toP, rem: amount, buf: [] });
 };
 
 PD.otherPlayer = function (p) {

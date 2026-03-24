@@ -65,7 +65,7 @@ test("ui: early hold-A grab does not move cursor selection", async () => {
   const ctx = await loadSrcIntoVm();
 
   // Build a deterministic hand with 2 known properties so we can detect drift.
-  const s = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
+  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
 
@@ -166,7 +166,7 @@ test("ui: findBestCursorTarget returns null when no match", async () => {
 test("ui: center buttons remain visible during Inspect", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
+  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   const view = ctx.PD.ui.newView();
   view.mode = "browse";
   view.inspectActive = true;
@@ -180,7 +180,7 @@ test("ui: center buttons remain visible during Inspect", async () => {
 test("ui: targeting defaults to existing set when available (Place)", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
+  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   const view = ctx.PD.ui.newView();
   view.cursor.row = ctx.PD.render.ROW_P_HAND;
   view.cursor.i = 0;
@@ -197,7 +197,7 @@ test("ui: targeting defaults to existing set when available (Place)", async () =
 test("ui: wild color toggles and updates cmd list", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ scenarioId: "placeWild", seedU32: 1 });
+  const s = ctx.PD.newGame({ scenarioId: "wildBasic", seedU32: 1 });
   const view = ctx.PD.ui.newView();
   view.cursor.row = ctx.PD.render.ROW_P_HAND;
   view.cursor.i = 0;
@@ -295,7 +295,7 @@ test("ui: browse directional nav - Left from End prefers center piles (not oppon
 test("ui: browse directional nav - global axis-wrap fallback triggers when no Up candidates", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
+  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   // Remove all opponent items so nothing exists above the center row.
   s.players[1].hand = [];
   s.players[1].bank = [];
@@ -317,7 +317,7 @@ test("ui: browse directional nav - global axis-wrap fallback triggers when no Up
 test("ui: out of plays snaps to End button (one-shot)", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
+  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
 
   const view = ctx.PD.ui.newView();
@@ -408,7 +408,7 @@ test("ui: discardDown prompt B after discarding gives negative feedback (no canc
 test("ui: menu Place auto-applies when only one destination exists", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
+  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
 
@@ -425,9 +425,10 @@ test("ui: menu Place auto-applies when only one destination exists", async () =>
   // Tap A to open menu, then tap A again to choose Place (only menu item).
   ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
   assert.equal(view.mode, "menu");
-  assert.equal(view.menu.items.length, 1);
+  assert.equal(view.menu.items.length, 2);
   assert.equal(view.menu.items[0].id, "place");
   assert.equal(view.menu.items[0].label, "Place -> New Set");
+  assert.equal(view.menu.items[1].id, "source");
 
   const intent = ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
   assert.ok(intent && intent.kind === "applyCmd", "expected applyCmd intent");
@@ -438,7 +439,7 @@ test("ui: menu Place auto-applies when only one destination exists", async () =>
 test("ui: hold-A targeting includes a Source destination (release-A cancels)", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
+  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
 
@@ -463,7 +464,7 @@ test("ui: hold-A targeting includes a Source destination (release-A cancels)", a
 test("ui: menu targeting includes a Source destination (tap-A cancels)", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ scenarioId: "placeFixed", seedU32: 1 });
+  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
 
@@ -597,8 +598,9 @@ test("ui: menu hover Bank produces a preview when unambiguous", async () => {
   // Open menu on the money card.
   ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
   assert.equal(view.mode, "menu");
-  assert.equal(view.menu.items.length, 1);
+  assert.equal(view.menu.items.length, 2);
   assert.equal(view.menu.items[0].id, "bank");
+  assert.equal(view.menu.items[1].id, "source");
 
   const c = ctx.PD.ui.computeRowModels(s, view);
   assert.ok(c.preview, "expected preview while hovering Bank in menu mode");
@@ -654,5 +656,313 @@ test("ui: onEvents stages dealing and hides drawn cards until revealed", async (
 
   // Ensure original hand cards are still present (sanity).
   for (const u of beforeHand) assert.ok(s.players[p].hand.includes(u), "expected original hand uid to remain");
+});
+
+test("ui: placeReceived prompt - A on real hand snaps back to faux-hand", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ scenarioId: "placeReceived", seedU32: 1 });
+  const view = ctx.PD.ui.newView();
+
+  // Enter prompt mode (sync happens inside step).
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  assert.equal(view.mode, "prompt");
+  assert.ok(s.prompt && s.prompt.kind === "placeReceived");
+
+  const computed = ctx.PD.ui.computeRowModels(s, view);
+  const rm = computed.models[ctx.PD.render.ROW_P_HAND];
+  const realHandI = rm.items.findIndex((it) => it && it.loc && it.loc.zone === "hand");
+  assert.ok(realHandI >= 0, "expected a real hand card item");
+
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = realHandI;
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+
+  assert.equal(view.cursor.row, ctx.PD.render.ROW_P_HAND);
+  assert.equal(view.cursor.i, 0);
+});
+
+test("ui: placeReceived prompt - A on faux-hand enters targeting", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ scenarioId: "placeReceived", seedU32: 1 });
+  const view = ctx.PD.ui.newView();
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  assert.equal(view.mode, "prompt");
+
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = 0; // first faux-hand card
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(view.mode, "targeting");
+  assert.ok(view.targeting && view.targeting.active);
+  assert.equal(view.targeting.kind, "place");
+});
+
+test("ui: placeReceived prompt - auto-focus snaps to a received property", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ scenarioId: "placeReceived", seedU32: 1 });
+  const view = ctx.PD.ui.newView();
+
+  // Start somewhere else (center row) then enter prompt.
+  view.cursor.row = 2;
+  view.cursor.i = 0;
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  assert.equal(view.mode, "prompt");
+
+  const c = ctx.PD.ui.computeRowModels(s, view);
+  const rm = c.models[ctx.PD.render.ROW_P_HAND];
+  const sel = rm.items[ctx.PD.ui.clampI(view.cursor.i, rm.items.length)];
+  assert.ok(sel && sel.loc && sel.loc.zone === "recvProps", "expected cursor snapped onto recvProps");
+});
+
+test("ui: placeReceived prompt - hold-A grabStart on received prop enters place targeting (hold=true)", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ scenarioId: "placeReceived", seedU32: 1 });
+  const view = ctx.PD.ui.newView();
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  assert.equal(view.mode, "prompt");
+
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = 0;
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
+  assert.equal(view.mode, "targeting");
+  assert.ok(view.targeting && view.targeting.active);
+  assert.equal(view.targeting.kind, "place");
+  assert.equal(view.targeting.hold, true);
+  assert.ok(view.targeting.card && view.targeting.card.loc && view.targeting.card.loc.zone === "recvProps");
+  assert.ok(view.targeting.cmds.some((c) => c && c.kind === "source"), "expected Source option for recvProps targeting");
+});
+
+test("ui: placeReceived prompt - A on End is disallowed and snaps back to received properties", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ scenarioId: "placeReceived", seedU32: 1 });
+  const view = ctx.PD.ui.newView();
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  assert.equal(view.mode, "prompt");
+
+  // Move cursor to End button.
+  const c = ctx.PD.ui.computeRowModels(s, view);
+  const rmC = c.models[2];
+  const endI = rmC.items.findIndex((it) => it && it.kind === "btn" && it.id === "endTurn");
+  assert.ok(endI >= 0, "expected endTurn button");
+  view.cursor.row = 2;
+  view.cursor.i = endI;
+
+  const intent = ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(intent, null);
+
+  const c2 = ctx.PD.ui.computeRowModels(s, view);
+  const rmH = c2.models[ctx.PD.render.ROW_P_HAND];
+  const sel = rmH.items[ctx.PD.ui.clampI(view.cursor.i, rmH.items.length)];
+  assert.ok(sel && sel.loc && sel.loc.zone === "recvProps", "expected snap back to recvProps");
+});
+
+test("ui: placeReceived prompt - A on Step is allowed (debug action)", async () => {
+  const ctx = await loadSrcIntoVm();
+  ctx.PD.config.debug.enabled = true;
+  const s = ctx.PD.newGame({ scenarioId: "placeReceived", seedU32: 1 });
+  const view = ctx.PD.ui.newView();
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  assert.equal(view.mode, "prompt");
+
+  const c = ctx.PD.ui.computeRowModels(s, view);
+  const rmC = c.models[2];
+  const stepI = rmC.items.findIndex((it) => it && it.kind === "btn" && it.id === "step");
+  assert.ok(stepI >= 0, "expected Step button");
+  view.cursor.row = 2;
+  view.cursor.i = stepI;
+
+  const intent = ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.ok(intent && intent.kind === "debug");
+  assert.equal(intent.action, "step");
+});
+
+test("ui: payDebt prompt - A on housed setProp redirects to setHouse; second A emits payDebt", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
+  const view = ctx.PD.ui.newView();
+
+  // Enter prompt mode.
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  assert.equal(view.mode, "prompt");
+  assert.ok(s.prompt && s.prompt.kind === "payDebt");
+
+  // Select a property in the housed set.
+  let c = ctx.PD.ui.computeRowModels(s, view);
+  const rmT = c.models[ctx.PD.render.ROW_P_TABLE];
+  const propI = rmT.items.findIndex((it) => it && it.kind === "setProp" && it.loc && it.loc.zone === "setProps");
+  assert.ok(propI >= 0, "expected a setProp item");
+
+  view.cursor.row = ctx.PD.render.ROW_P_TABLE;
+  view.cursor.i = propI;
+
+  // First A: should redirect selection to the House, no intent.
+  const intent1 = ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(intent1, null);
+
+  c = ctx.PD.ui.computeRowModels(s, view);
+  assert.equal(c.selected.row, ctx.PD.render.ROW_P_TABLE);
+  assert.equal(c.selected.kind, "setHouse");
+
+  // Second A: should emit a payDebt command for the House.
+  const intent2 = ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.ok(intent2 && intent2.kind === "applyCmd");
+  assert.equal(intent2.cmd.kind, "payDebt");
+  assert.equal(intent2.cmd.card.loc.zone, "setHouse");
+});
+
+test("ui: payDebt prompt - Step button returns debug intent and debugStep pays debt", async () => {
+  const ctx = await loadSrcIntoVm();
+  ctx.PD.config.debug.enabled = true;
+  const s = ctx.PD.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
+  const view = ctx.PD.ui.newView();
+
+  // Enter prompt mode.
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  assert.equal(view.mode, "prompt");
+  assert.ok(s.prompt && s.prompt.kind === "payDebt");
+
+  // Move cursor to Step button.
+  const c = ctx.PD.ui.computeRowModels(s, view);
+  const rmC = c.models[2];
+  const stepI = rmC.items.findIndex((it) => it && it.kind === "btn" && it.id === "step");
+  assert.ok(stepI >= 0, "expected Step button");
+  view.cursor.row = 2;
+  view.cursor.i = stepI;
+
+  const intent = ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.ok(intent && intent.kind === "debug");
+  assert.equal(intent.action, "step");
+
+  // Simulate Render-mode debug handling: debugStep applies a legal move.
+  ctx.PD.debug = ctx.PD.debug || {};
+  ctx.PD.debug.state = s;
+  ctx.PD.debugStep();
+  assert.ok(!s.prompt || s.prompt.kind !== "payDebt", "expected debt prompt to progress/resolve after step");
+});
+
+test("ui: rent card menu shows Rent (not just Bank) when a matching set exists", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  // Find rent_mo in hand and set cursor to it.
+  const uid = s.players[0].hand.find((u) => ctx.PD.defByUid(s, u).id === "rent_mo");
+  assert.ok(uid, "expected rent_mo in hand");
+  const i = s.players[0].hand.indexOf(uid);
+  assert.ok(i >= 0);
+
+  const view = ctx.PD.ui.newView();
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = i;
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(view.mode, "menu");
+  assert.ok(view.menu.items.some((it) => it && it.id === "rent"), "expected Rent menu item");
+  assert.ok(view.menu.items.some((it) => it && it.id === "bank"), "expected Bank menu item");
+  assert.ok(view.menu.items.some((it) => it && it.id === "source"), "expected Cancel/Source menu item");
+});
+
+test("ui: hold-A on rent card enters quick targeting and defaults to playRent", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const uid = s.players[0].hand.find((u) => ctx.PD.defByUid(s, u).id === "rent_mo");
+  assert.ok(uid, "expected rent_mo in hand");
+  const i = s.players[0].hand.indexOf(uid);
+  assert.ok(i >= 0);
+
+  const view = ctx.PD.ui.newView();
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = i;
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
+
+  assert.equal(view.mode, "targeting");
+  assert.ok(view.targeting && view.targeting.active);
+  assert.equal(view.targeting.kind, "quick");
+  assert.ok(view.targeting.cmds && view.targeting.cmds.length > 0);
+  assert.equal(view.targeting.cmds[0].kind, "playRent");
+});
+
+test("ui: hold-A quick targeting on rent card can cycle to bank option", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const uid = s.players[0].hand.find((u) => ctx.PD.defByUid(s, u).id === "rent_mo");
+  assert.ok(uid);
+  const i = s.players[0].hand.indexOf(uid);
+
+  const view = ctx.PD.ui.newView();
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = i;
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
+  assert.equal(view.mode, "targeting");
+  assert.equal(view.targeting.kind, "quick");
+
+  const bankI = view.targeting.cmds.findIndex((c) => c && c.kind === "bank");
+  assert.ok(bankI >= 0, "expected bank option in quick cmds");
+
+  // Cycle right until we reach bank.
+  for (let step = 0; step < bankI; step++) {
+    ctx.PD.ui.step(s, view, { nav: { right: true }, a: {}, b: {}, x: {} });
+  }
+
+  const sel = view.targeting.cmds[view.targeting.cmdI];
+  assert.ok(sel);
+  assert.equal(sel.kind, "bank");
+});
+
+test("ui: hold-A on House enters quick targeting and defaults to playHouse when Build is legal", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ scenarioId: "houseBasic", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const uid = s.players[0].hand.find((u) => ctx.PD.defByUid(s, u).id === "house");
+  assert.ok(uid, "expected house in hand");
+  const i = s.players[0].hand.indexOf(uid);
+  assert.ok(i >= 0);
+
+  const view = ctx.PD.ui.newView();
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = i;
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
+  assert.equal(view.mode, "targeting");
+  assert.equal(view.targeting.kind, "quick");
+  assert.ok(view.targeting.cmds && view.targeting.cmds.length > 0);
+  assert.equal(view.targeting.cmds[0].kind, "playHouse");
+});
+
+test("ui: menu includes Cancel/Source as last item", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const uid = s.players[0].hand[0];
+  assert.ok(uid, "expected at least 1 hand card");
+
+  const view = ctx.PD.ui.newView();
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = 0;
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(view.mode, "menu");
+  assert.ok(view.menu.items.length > 0);
+  assert.equal(view.menu.items[view.menu.items.length - 1].id, "source");
 });
 

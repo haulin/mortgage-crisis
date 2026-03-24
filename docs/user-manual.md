@@ -49,6 +49,41 @@ If you end your turn with more than 7 cards, you enter a forced prompt:
 - **A** discards the highlighted hand card
 - **B** cancels only **before the first discard** in that prompt instance; after you discard once, it’s forced
 
+### Paying a debt (pay-debt prompt)
+
+Some effects can force a “pay a debt” prompt (Phase 06 foundation).
+
+- A banner/toast shows **“Pay debt: $N left”**
+- **D-pad**: navigate to a payable card (bank cards, properties, or a House on a set)
+- **A**: pay the highlighted card (it’s removed immediately)
+- **House-pay-first**: if a set has a House, you can’t pay properties from that set until the House is paid
+  - pressing **A** on a property in that set redirects selection to the House (it does **not** pay automatically)
+  - press **A** again on the House to pay it
+- The prompt **auto-finishes** when the debt is covered or you run out of payables (overpay is allowed; no change is returned)
+
+### Placing received properties (faux-turn placement prompt)
+
+When you receive properties as payment, you place them explicitly:
+
+- A banner/toast shows **“Place received properties: N”**
+- Row 4 shows a **faux-hand** of received properties on the **left**, plus your real hand/bank to the right
+- Only the faux-hand cards are actionable
+- **A** on a received property enters targeting to choose its destination (existing set or new set)
+  - For Wild properties: **Up/Down** toggles the chosen color during targeting
+- **B** is not a general cancel during this prompt (you must place the received properties)
+
+### Playing a Rent card (Phase 06 vertical slice)
+
+If you have a Rent card and at least one eligible set, it can be played (not just banked):
+
+- Cursor the Rent card in hand, then **tap A** to open the menu
+- Choose **Rent**
+- If there are multiple eligible sets, you enter a Rent picker:
+  - **Left/Right**: cycle which of your sets you’re charging rent from
+  - the overlay shows the chosen set and the amount
+  - **A** confirms, **B** cancels (or cycle to **Source** and confirm)
+- After confirming, the opponent pays (currently auto-resolved in the dev harness; full AI/response UX comes later)
+
 ## Inspect (hold X)
 
 Inspect shows the selected card’s details. Notes:
@@ -82,9 +117,17 @@ There are two ways to enter targeting:
 
 While targeting:
 
-- **Left/Right**: cycle destinations
-- **Up/Down**: toggle Wild color (when targeting a Wild property)
+- **Left/Right**: cycle destinations (or **options** when using hold‑A quick targeting)
+- **Up/Down**: toggle Wild color (only when targeting a Wild property placement)
 - **B**: cancel targeting and return to browse
+
+### Hold‑A “quick targeting” (action cycling)
+
+When you **hold A** on certain hand cards (currently **Rent** and **House**), the UI enters a quick targeting mode:
+
+- **Left/Right** cycles a flat list of options, such as: **Rent**, **Build**, **Bank**, **Source**
+- Default choice prefers **Rent (highest amount)** when available
+- Confirm by **releasing A**
 
 ### Source destination (cancel-by-dropping-back)
 
@@ -133,6 +176,15 @@ DebugText mode uses the simplest possible bindings:
 - **B**: next scenario
 - **X**: reset scenario
 - **Y**: toggle DebugText ↔ Render
+
+### DebugText prompt stage line
+
+The DebugText screen’s **left column** includes a `Prompt:` line to show which rules prompt is active (useful for tracking the Rent/debt cycle):
+
+- `Prompt:(none)`
+- `Prompt:payDebt rem:$<n> buf:<n>` (selecting payment)
+- `Prompt:placeRecv n:<n>` (placing received properties)
+- `Prompt:discardDown to:<n> left:<n>` (discarding down to 7)
 
 ### DebugText “UI snapshot” column legend
 

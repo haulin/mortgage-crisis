@@ -116,6 +116,42 @@ PD.debugTick = function () {
     return sum;
   }
 
+  function promptLine(state) {
+    if (!state) return "Prompt:(none)";
+    var pr = state.prompt;
+    if (!pr || !pr.kind) return "Prompt:(none)";
+    var k = String(pr.kind);
+
+    if (k === "payDebt") {
+      var rem = Math.floor(Number(pr.rem || 0));
+      if (!isFinite(rem)) rem = 0;
+      var bufN = (pr.buf && pr.buf.length) ? (pr.buf.length | 0) : 0;
+      return "Prompt:payDebt rem:$" + rem + " buf:" + bufN;
+    }
+
+    if (k === "placeReceived") {
+      var uN = (pr.uids && pr.uids.length) ? (pr.uids.length | 0) : 0;
+      return "Prompt:placeRecv n:" + uN;
+    }
+
+    if (k === "discardDown") {
+      var p = pr.p | 0;
+      var hand = (state.players && state.players[p] && state.players[p].hand) ? state.players[p].hand : [];
+      var handLen = hand.length | 0;
+      var nDiscarded = Math.floor(Number(pr.nDiscarded || 0));
+      if (!isFinite(nDiscarded)) nDiscarded = 0;
+      if (nDiscarded < 0) nDiscarded = 0;
+      // Stable target count: initialHand - HAND_MAX.
+      var nToDiscard = (handLen + nDiscarded) - (PD.HAND_MAX | 0);
+      if (nToDiscard < 0) nToDiscard = 0;
+      var left = handLen - (PD.HAND_MAX | 0);
+      if (left < 0) left = 0;
+      return "Prompt:discardDown to:" + nToDiscard + " left:" + left;
+    }
+
+    return "Prompt:" + k;
+  }
+
   cls(0);
   var x = 6;
   var y = 6;
@@ -123,7 +159,11 @@ PD.debugTick = function () {
   var xR = 120;
 
   printSmall("Phase 02 Debug", x, y, 12); y += step;
-  printSmall("Scenario:" + d.scenarios[d.scenarioI], x, y, 12); y += step;
+  var sid = d.scenarios[d.scenarioI];
+  var info = (PD.SCENARIO_INFO && sid) ? PD.SCENARIO_INFO[String(sid)] : null;
+  var title = (info && info.title) ? String(info.title) : String(sid);
+  printSmall("Scenario:" + title, x, y, 12); y += step;
+  var pendingDesc = (info && info.desc) ? String(info.desc) : "";
   printSmall("Seed:" + (PD.computeSeed() >>> 0), x, y, 12); y += step;
 
   if (PD.render && PD.render.debug && typeof PD.render.debug.selectedLines === "function") {
@@ -135,6 +175,7 @@ PD.debugTick = function () {
   }
 
   printSmall("Active:P" + s.activeP + " Plays:" + s.playsLeft, x, y, 12); y += step;
+  printSmall(promptLine(s), x, y, 12); y += step;
   var w = s.winnerP;
   if (w !== PD.NO_WINNER) { printSmall("Winner:P" + w, x, y, 11); y += step; }
 
@@ -153,7 +194,9 @@ PD.debugTick = function () {
   var moves = PD.legalMoves(s);
   printSmall("Legal:" + moves.length, x, y, 12); y += step;
   printSmall("LastCmd:" + (d.lastCmd || "(none)"), x, y, 12); y += step;
-  printSmall("Events:" + PD.debugEventsToLine(d.lastEvents), x, y, 12);
+  printSmall("Events:" + PD.debugEventsToLine(d.lastEvents), x, y, 12); y += step;
+  // Render scenario description after Events so it doesn't overlap the right UI column.
+  if (pendingDesc) { printSmall(pendingDesc, x, y, 13); y += step; }
 
   // Right column: UI snapshot (from last Render-mode tick).
   var v = d.view;
@@ -258,6 +301,26 @@ PD.mainTick = function () {
         d.lastCmd = intent.cmd.kind;
         d.lastEvents = (res && res.events) ? res.events : [];
         PD.anim.onEvents(d.state, d.view, d.lastEvents);
+
+        // Phase 06 (Rent vertical slice): temporarily auto-resolve opponent debt prompts so
+        // Rent can be play-tested end-to-end before full AI/hotseat/JSN UX exists.
+        // Deterministic: uses the same seeded RNG in GameState.
+        var guard = 0;
+        while (d.state.prompt && d.state.prompt.kind === "payDebt" && (d.state.prompt.p | 0) === 1) {
+          guard++;
+          if (guard > 50) break;
+          var movesAuto = PD.legalMoves(d.state);
+          if (!movesAuto || movesAuto.length === 0) break;
+          var idx = PD.rngNextInt(d.state, movesAuto.length);
+          var mv = movesAuto[idx];
+          if (!mv || mv.kind !== "payDebt") break;
+          var res2 = PD.applyCommand(d.state, mv);
+          var ev2 = (res2 && res2.events) ? res2.events : [];
+          // Merge events for debug display; keep lastCmd the last auto step.
+          d.lastCmd = "auto:" + mv.kind;
+          d.lastEvents = d.lastEvents.concat(ev2);
+          PD.anim.onEvents(d.state, d.view, ev2);
+        }
       } catch (err) {
         d.lastCmd = intent.cmd.kind + "(!)";
         d.lastEvents = [];
@@ -271,6 +334,7 @@ PD.mainTick = function () {
         else if (code === "set_color_mismatch") msg = "Wrong set color";
         else if (code === "wild_color_illegal") msg = "Wild color illegal";
         else if (code === "no_targets") msg = "No valid destination";
+        else if (code === "house_pay_first") msg = "House must be paid first";
         PD.anim.feedbackError(d.view, code, msg);
       }
     } else if (intent && intent.kind === "debug") {

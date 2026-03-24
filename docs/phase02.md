@@ -16,7 +16,7 @@ This phase is intentionally UI-light. It focuses on **state**, **legality**, **c
 - **Illegal commands**: throw before mutating state (fail-fast).
 - **Turn loop (minimal)**: `endTurn` swaps active player, draws 2, resets `playsLeft=3`.
 - **House**: playable only on a completed set; **max 1 House per set** (MVP1).
-- **Scenarios**: minimal mechanism plus 4 scenarios: `placeFixed`, `placeWild`, `houseOnComplete`, `winCheck`.
+- **Scenarios**: minimal mechanism plus 4 scenarios: `placeBasic`, `wildBasic`, `houseBasic`, `winCheck`.
 - **Tests**: prefer invariants + determinism checks (avoid brittle shuffled-order snapshots).
 
 ## Naming conventions

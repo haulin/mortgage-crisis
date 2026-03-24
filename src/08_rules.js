@@ -25,6 +25,31 @@ PD.locEqZone = function (loc, zone) {
   return !!loc && loc.zone === zone;
 };
 
+PD.rentAmountForSet = function (state, p, setI) {
+  if (!state || !state.players || !state.players[p]) return 0;
+  p = p | 0;
+  setI = setI | 0;
+  var sets = state.players[p].sets;
+  if (!sets || setI < 0 || setI >= sets.length) return 0;
+  var set = sets[setI];
+  if (!set || !set.props || set.props.length <= 0) return 0;
+
+  var color = PD.getSetColor(set.props);
+  if (color === PD.NO_COLOR) return 0;
+  var rules = PD.SET_RULES[color];
+  if (!rules || !rules.rent || rules.rent.length <= 0) return 0;
+
+  var req = rules.requiredSize | 0;
+  var n = set.props.length | 0;
+  if (req > 0 && n > req) n = req;
+  if (n <= 0) return 0;
+
+  var base = rules.rent[(n - 1) | 0] | 0;
+  var bonus = 0;
+  if (set.houseUid && req > 0 && (set.props.length | 0) >= (req | 0)) bonus = PD.HOUSE_RENT_BONUS | 0;
+  return (base + bonus) | 0;
+};
+
 PD.removeHandAtLoc = function (state, card) {
   var loc = card.loc;
   var p = loc.p | 0;
@@ -40,9 +65,9 @@ PD.applyCommand = function (state, cmd) {
   if (!cmd || !cmd.kind) throw new Error("bad_cmd");
 
   var events = [];
-  var p = state.activeP;
-  var handP = state.players[p].hand;
   var prompt = state.prompt;
+  var p = prompt ? (prompt.p | 0) : (state.activeP | 0);
+  var handP = state.players[p].hand;
 
   function decPlays() {
     state.playsLeft -= 1;
@@ -87,7 +112,6 @@ PD.applyCommand = function (state, cmd) {
 
   // Prompt gating: only allow prompt-appropriate commands.
   if (prompt) {
-    if ((prompt.p | 0) !== (p | 0)) throw new Error("prompt_wrong_player");
     if (prompt.kind === "discardDown") {
       if (cmd.kind === "discard") {
         applyDiscard(cmd);
@@ -100,6 +124,189 @@ PD.applyCommand = function (state, cmd) {
         PD.clearPrompt(state);
         return { events: events };
       }
+      throw new Error("prompt_active");
+    }
+
+    function payValueForUid(uid) {
+      uid = uid | 0;
+      var def = PD.defByUid(state, uid);
+      if (!def) return 0;
+      if (def.kind === PD.CardKind.Property) return def.propertyPayValue != null ? (def.propertyPayValue | 0) : 0;
+      return def.bankValue != null ? (def.bankValue | 0) : 0;
+    }
+
+    function cleanupEmptySetsForPlayer(pp) {
+      pp = pp | 0;
+      var sets = state.players[pp].sets;
+      var i;
+      for (i = sets.length - 1; i >= 0; i--) {
+        var set = sets[i];
+        if (!set) { sets.splice(i, 1); continue; }
+        var nProps = set.props ? set.props.length : 0;
+        var hasHouse = !!(set.houseUid | 0);
+        if (nProps === 0 && !hasHouse) sets.splice(i, 1);
+      }
+    }
+
+    function hasAnyPayables(pp) {
+      pp = pp | 0;
+      var pl = state.players[pp];
+      if (!pl) return false;
+      if (pl.bank && pl.bank.length) return true;
+      var sets = pl.sets || [];
+      var si;
+      for (si = 0; si < sets.length; si++) {
+        var set = sets[si];
+        if (!set) continue;
+        if (set.houseUid) return true;
+        if (set.props && set.props.length) return true;
+      }
+      return false;
+    }
+
+    function applyPayDebt(cmdPay) {
+      var card = cmdPay.card;
+      if (!card || !card.loc) throw new Error("bad_cmd");
+      var loc = card.loc;
+      if ((loc.p | 0) !== (p | 0)) throw new Error("not_your_card");
+
+      var uid = card.uid | 0;
+      var buf = prompt.buf;
+      if (!buf) { buf = []; prompt.buf = buf; }
+
+      if (loc.zone === "bank") {
+        var bi = loc.i | 0;
+        var bank = state.players[p].bank;
+        if (!bank || bank[bi] !== uid) throw new Error("bad_loc");
+        bank.splice(bi, 1);
+      } else if (loc.zone === "setHouse") {
+        var hsI = loc.setI | 0;
+        var setsH = state.players[p].sets;
+        if (hsI < 0 || hsI >= setsH.length) throw new Error("bad_set");
+        var setH = setsH[hsI];
+        if (!setH || (setH.houseUid | 0) !== (uid | 0)) throw new Error("bad_loc");
+        setH.houseUid = 0;
+      } else if (loc.zone === "setProps") {
+        var psI = loc.setI | 0;
+        var pi = loc.i | 0;
+        var setsP = state.players[p].sets;
+        if (psI < 0 || psI >= setsP.length) throw new Error("bad_set");
+        var setP = setsP[psI];
+        if (!setP || !setP.props) throw new Error("bad_loc");
+        if (setP.houseUid) throw new Error("house_pay_first");
+        if (!setP.props[pi] || (setP.props[pi][0] | 0) !== (uid | 0)) throw new Error("bad_loc");
+        setP.props.splice(pi, 1);
+      } else {
+        throw new Error("bad_loc");
+      }
+
+      buf.push(uid);
+      var rem = Number(prompt.rem || 0);
+      if (!isFinite(rem)) rem = 0;
+      rem = Math.floor(rem) - payValueForUid(uid);
+      prompt.rem = rem;
+
+      events.push({ kind: "payDebt", p: p, uid: uid, rem: rem, toP: prompt.toP | 0 });
+
+      cleanupEmptySetsForPlayer(p);
+
+      // Auto-finalize when covered or out of payables.
+      if ((prompt.rem | 0) > 0 && hasAnyPayables(p)) return;
+
+      var toP = prompt.toP | 0;
+      var recv = [];
+      var i;
+      for (i = 0; i < buf.length; i++) {
+        var uidT = buf[i] | 0;
+        var defT = PD.defByUid(state, uidT);
+        if (defT && defT.kind === PD.CardKind.Property) {
+          recv.push(uidT);
+        } else {
+          state.players[toP].bank.push(uidT);
+          events.push({
+            kind: "move",
+            uid: uidT,
+            from: { p: p, zone: "promptBuf", i: i },
+            to: { p: toP, zone: "bank", i: state.players[toP].bank.length - 1 }
+          });
+        }
+      }
+
+      if (recv.length > 0) {
+        PD.setPrompt(state, { kind: "placeReceived", p: toP, uids: recv });
+      } else {
+        PD.clearPrompt(state);
+      }
+    }
+
+    function applyPlaceReceived(cmdProp) {
+      var card = cmdProp.card;
+      var dest = cmdProp.dest;
+      if (!card || !card.loc || !dest) throw new Error("bad_cmd");
+      if ((card.loc.p | 0) !== (p | 0)) throw new Error("not_your_card");
+      if (!PD.locEqZone(card.loc, "recvProps")) throw new Error("bad_loc");
+
+      var ri = card.loc.i | 0;
+      var uids = prompt.uids || [];
+      var uid = card.uid | 0;
+      if (!uids[ri] || (uids[ri] | 0) !== (uid | 0)) throw new Error("bad_loc");
+
+      var def = PD.defByUid(state, uid);
+      if (!def || def.kind !== PD.CardKind.Property) throw new Error("not_property");
+
+      var placedColor = PD.NO_COLOR;
+      if (PD.isWildDef(def)) {
+        placedColor = cmdProp.color | 0;
+        if (!PD.wildAllowsColor(def, placedColor)) throw new Error("wild_color_illegal");
+      } else {
+        placedColor = def.propertyColor;
+      }
+
+      // Remove from received buffer.
+      uids.splice(ri, 1);
+      prompt.uids = uids;
+
+      var sets = state.players[p].sets;
+      var setI;
+      if (dest.newSet) {
+        var newSet = PD.newEmptySet();
+        setI = sets.length;
+        sets.push(newSet);
+        events.push({ kind: "createSet", p: p, setI: setI, color: placedColor });
+      } else {
+        setI = dest.setI | 0;
+        if (setI < 0 || setI >= sets.length) throw new Error("bad_set");
+        var setExisting = sets[setI];
+        var setColor = PD.getSetColor(setExisting.props);
+        if (setColor === PD.NO_COLOR) throw new Error("empty_set");
+        if (setColor !== placedColor) throw new Error("set_color_mismatch");
+      }
+
+      var setT = sets[setI];
+      setT.props.push([uid, placedColor]);
+
+      events.push({
+        kind: "move",
+        uid: uid,
+        from: card.loc,
+        to: { p: p, zone: "setProps", setI: setI, i: setT.props.length - 1 }
+      });
+
+      if (!prompt.uids || prompt.uids.length === 0) PD.clearPrompt(state);
+
+      var winner = PD.evaluateWin(state);
+      if (winner !== PD.NO_WINNER) {
+        state.winnerP = winner;
+        events.push({ kind: "win", winnerP: winner });
+      }
+    }
+
+    if (prompt.kind === "payDebt") {
+      if (cmd.kind === "payDebt") { applyPayDebt(cmd); return { events: events }; }
+      throw new Error("prompt_active");
+    }
+    if (prompt.kind === "placeReceived") {
+      if (cmd.kind === "playProp") { applyPlaceReceived(cmd); return { events: events }; }
       throw new Error("prompt_active");
     }
     throw new Error("prompt_active");
@@ -215,6 +422,53 @@ PD.applyCommand = function (state, cmd) {
     decPlays();
   }
 
+  function applyPlayRent(cmdRent) {
+    var card = cmdRent.card;
+    if (!card || !card.loc) throw new Error("bad_cmd");
+    if (!PD.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if ((card.loc.p | 0) !== (p | 0)) throw new Error("not_your_card");
+
+    var uid = card.uid | 0;
+    var def = PD.defByUid(state, uid);
+    if (!def || def.kind !== PD.CardKind.Action || def.actionKind !== PD.ActionKind.Rent) throw new Error("not_rent");
+
+    var setI = cmdRent.setI | 0;
+    var sets = state.players[p].sets;
+    if (!sets || setI < 0 || setI >= sets.length) throw new Error("bad_set");
+    var set = sets[setI];
+    if (!set || !set.props || set.props.length <= 0) throw new Error("empty_set");
+
+    var color = PD.getSetColor(set.props);
+    if (color === PD.NO_COLOR) throw new Error("empty_set");
+
+    var allowed = def.rentAllowedColors;
+    if (allowed && allowed.length) {
+      var ok = false;
+      var ai;
+      for (ai = 0; ai < allowed.length; ai++) if ((allowed[ai] | 0) === (color | 0)) ok = true;
+      if (!ok) throw new Error("rent_color_illegal");
+    }
+
+    var amount = PD.rentAmountForSet(state, p, setI) | 0;
+    if (amount <= 0) throw new Error("rent_zero");
+
+    // Discard the rent card.
+    PD.removeHandAtLoc(state, card);
+    state.discard.push(uid);
+    events.push({
+      kind: "move",
+      uid: uid,
+      from: card.loc,
+      to: { zone: "discard", i: state.discard.length - 1 }
+    });
+    decPlays();
+
+    // Trigger debt prompt for the opponent (if they have payables).
+    var payer = PD.otherPlayer(p) | 0;
+    PD.beginDebt(state, payer, p, amount);
+    events.push({ kind: "rent", p: p, setI: setI, color: color, amount: amount });
+  }
+
   if (cmd.kind === "endTurn") {
     if ((handP.length | 0) > (PD.HAND_MAX | 0)) {
       PD.setPrompt(state, { kind: "discardDown", p: p });
@@ -230,6 +484,7 @@ PD.applyCommand = function (state, cmd) {
   if (cmd.kind === "bank") applyBank(cmd);
   else if (cmd.kind === "playProp") applyPlayProp(cmd);
   else if (cmd.kind === "playHouse") applyPlayHouse(cmd);
+  else if (cmd.kind === "playRent") applyPlayRent(cmd);
   else throw new Error("unknown_cmd:" + cmd.kind);
 
   return { events: events };
@@ -253,6 +508,76 @@ PD.legalMoves = function (state) {
         movesP.push({ kind: "discard", card: { uid: uidP, loc: { p: pp, zone: "hand", i: iP } } });
       }
       return movesP;
+    }
+    if (pr.kind === "payDebt") {
+      var pPay = pr.p | 0;
+      var out = [];
+      var bank = state.players[pPay].bank || [];
+      var i;
+      for (i = 0; i < bank.length; i++) {
+        out.push({ kind: "payDebt", card: { uid: bank[i] | 0, loc: { p: pPay, zone: "bank", i: i } } });
+      }
+      var sets = state.players[pPay].sets || [];
+      var si;
+      for (si = 0; si < sets.length; si++) {
+        var set = sets[si];
+        if (!set) continue;
+        if (set.houseUid) out.push({ kind: "payDebt", card: { uid: set.houseUid | 0, loc: { p: pPay, zone: "setHouse", setI: si } } });
+        if (set.houseUid) continue;
+        var props = set.props || [];
+        var pi;
+        for (pi = 0; pi < props.length; pi++) {
+          out.push({ kind: "payDebt", card: { uid: props[pi][0] | 0, loc: { p: pPay, zone: "setProps", setI: si, i: pi } } });
+        }
+      }
+      return out;
+    }
+    if (pr.kind === "placeReceived") {
+      var pR = pr.p | 0;
+      var uids = pr.uids || [];
+      var setsR = state.players[pR].sets || [];
+      var outR = [];
+
+      function pushMovesForUid(uid, loc) {
+        uid = uid | 0;
+        var def = PD.defByUid(state, uid);
+        if (!def || def.kind !== PD.CardKind.Property) return;
+        var cardRef = { uid: uid, loc: loc };
+        if (PD.isWildDef(def)) {
+          // New set for each allowed color.
+          outR.push({ kind: "playProp", card: cardRef, dest: { p: pR, newSet: true }, color: def.wildColors[0] });
+          outR.push({ kind: "playProp", card: cardRef, dest: { p: pR, newSet: true }, color: def.wildColors[1] });
+          // Existing sets that match allowed colors.
+          var si;
+          for (si = 0; si < setsR.length; si++) {
+            var set = setsR[si];
+            var setColor = PD.getSetColor(set.props);
+            if (setColor === PD.NO_COLOR) continue;
+            if (PD.wildAllowsColor(def, setColor)) {
+              outR.push({ kind: "playProp", card: cardRef, dest: { p: pR, setI: si }, color: setColor });
+            }
+          }
+        } else {
+          var c = def.propertyColor;
+          outR.push({ kind: "playProp", card: cardRef, dest: { p: pR, newSet: true } });
+          var sj;
+          for (sj = 0; sj < setsR.length; sj++) {
+            var setJ = setsR[sj];
+            var setColorJ = PD.getSetColor(setJ.props);
+            if (setColorJ === PD.NO_COLOR) continue;
+            if (setColorJ === c) {
+              outR.push({ kind: "playProp", card: cardRef, dest: { p: pR, setI: sj } });
+            }
+          }
+        }
+      }
+
+      var iR;
+      for (iR = 0; iR < uids.length; iR++) {
+        var uidR = uids[iR] | 0;
+        pushMovesForUid(uidR, { p: pR, zone: "recvProps", i: iR });
+      }
+      return outR;
     }
     return [];
   }
@@ -320,6 +645,25 @@ PD.legalMoves = function (state) {
         if (setH.props.length >= req) {
           moves.push({ kind: "playHouse", card: cardRef, dest: { p: p, setI: sh } });
         }
+      }
+    } else if (def.kind === PD.CardKind.Action && def.actionKind === PD.ActionKind.Rent) {
+      // Rent: one move per eligible set.
+      var allowed = def.rentAllowedColors;
+      var siR;
+      for (siR = 0; siR < sets.length; siR++) {
+        var setR = sets[siR];
+        if (!setR || !setR.props || setR.props.length <= 0) continue;
+        var colR = PD.getSetColor(setR.props);
+        if (colR === PD.NO_COLOR) continue;
+        if (allowed && allowed.length) {
+          var ok = false;
+          var ai;
+          for (ai = 0; ai < allowed.length; ai++) if ((allowed[ai] | 0) === (colR | 0)) ok = true;
+          if (!ok) continue;
+        }
+        var amt = PD.rentAmountForSet(state, p, siR) | 0;
+        if (amt <= 0) continue;
+        moves.push({ kind: "playRent", card: cardRef, setI: siR });
       }
     }
   }

@@ -15,6 +15,10 @@ function collectAllUids(state) {
 
   pushAll(state.deck);
   pushAll(state.discard);
+  if (state.prompt) {
+    if (Array.isArray(state.prompt.buf)) pushAll(state.prompt.buf);
+    if (Array.isArray(state.prompt.uids)) pushAll(state.prompt.uids);
+  }
   for (const pl of state.players) {
     pushAll(pl.hand);
     pushAll(pl.bank);

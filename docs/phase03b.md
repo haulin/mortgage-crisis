@@ -57,8 +57,8 @@ Debug-only reveal behavior (gated by config):
 
 - Card defs now include a `desc` string for all cards (used by the preview).
 - Scenarios seed discard to make discard rendering easy to verify:
-  - `placeWild`: discard has **3** cards (depth demo)
-  - `houseOnComplete`: discard has **1** card (no-depth demo)
+  - `wildBasic`: discard has **3** cards (depth demo)
+  - `houseBasic`: discard has **1** card (no-depth demo)
 
 ## Tweak points (single source of truth)
 
