@@ -29,7 +29,7 @@ This avoids “2–5 cards appear instantly” and makes draw timing readable.
 ## Where it lives
 
 - `src/00_prelude.js`
-  - defines `PD.anim.*` stubs early so cartridge code can call animation APIs without defensive existence checks
+  - creates the `PD.anim` namespace (module namespaces are initialized once in the prelude)
 - `src/07_state.js`
   - `PD.drawToHand()` emits `{ kind: "reshuffle", ... }` when it consumes discard into deck
 - `src/13_anim.js`
@@ -38,7 +38,7 @@ This avoids “2–5 cards appear instantly” and makes draw timing readable.
   - `PD.anim.present(state, view, computed)` applies animation **presentation** to row models (pile masking, shuffle underlayers, deal overlay, and hiding in‑flight dealt cards)
   - `PD.anim.feedbackTick/feedbackError` owns the “flash red on disallowed action” feedback effect
 - `src/12_ui.js`
-  - `view.anim` holds queued/active animation steps + hidden dealt cards
+  - `view.anim` holds queued/active animation steps + hidden dealt cards (canonicalized by `PD.ui.newView()` and enforced in tests)
   - `PD.ui.step()` locks input while animations are active (via `view.anim.lock`)
   - `PD.ui.computeRowModels()` calls `PD.anim.present(...)` before returning so render consumes a fully “presented” model
 - `src/11_render.js`

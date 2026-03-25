@@ -2,99 +2,66 @@ PD.NO_COLOR = -1;
 PD.NO_WINNER = -1;
 PD.HAND_MAX = 7;
 
-PD.assertPromptShape = function (prompt) {
-  if (prompt == null) return;
-  if (typeof prompt !== "object") throw new Error("bad_prompt");
-  if (!prompt.kind || typeof prompt.kind !== "string") throw new Error("bad_prompt");
-  if (prompt.p == null) throw new Error("bad_prompt");
-
-  var k = String(prompt.kind);
-  if (k === "payDebt") {
-    if (prompt.toP == null) throw new Error("bad_prompt");
-    var rem = Number(prompt.rem);
-    if (!isFinite(rem)) throw new Error("bad_prompt");
-    if (prompt.buf != null && !Array.isArray(prompt.buf)) throw new Error("bad_prompt");
-    return;
-  }
-  if (k === "placeReceived") {
-    if (prompt.uids != null && !Array.isArray(prompt.uids)) throw new Error("bad_prompt");
-    return;
-  }
-};
-
 PD.clearPrompt = function (state) {
   state.prompt = null;
 };
 
 PD.setPrompt = function (state, prompt) {
-  PD.assertPromptShape(prompt);
   if (prompt == null) {
     state.prompt = null;
     return;
   }
   var k = String(prompt.kind);
-  var p = prompt.p | 0;
+  var p = prompt.p;
 
   if (k === "discardDown") {
+    var nDiscarded = (prompt.nDiscarded != null) ? prompt.nDiscarded : 0;
     state.prompt = {
       kind: k,
       p: p,
-      nDiscarded: (prompt.nDiscarded != null) ? (prompt.nDiscarded | 0) : 0
+      nDiscarded: nDiscarded
     };
     return;
   }
 
   if (k === "payDebt") {
-    var buf = prompt.buf;
-    if (!buf) buf = [];
     state.prompt = {
       kind: k,
       p: p,
-      toP: prompt.toP | 0,
-      rem: Math.floor(Number(prompt.rem || 0)),
-      buf: buf.slice()
+      toP: prompt.toP,
+      rem: Math.floor(prompt.rem),
+      buf: prompt.buf.slice()
     };
-    if (!isFinite(state.prompt.rem)) state.prompt.rem = 0;
     return;
   }
 
   if (k === "placeReceived") {
-    var uids = prompt.uids;
-    if (!uids) uids = [];
     state.prompt = {
       kind: k,
       p: p,
-      uids: uids.slice()
+      uids: prompt.uids.slice()
     };
     return;
   }
 
-  // Unknown prompt kind: keep minimal shape.
-  state.prompt = { kind: k, p: p };
+  throw new Error("unknown_prompt_kind:" + k);
 };
 
 PD.hasAnyPayables = function (state, p) {
-  if (!state || !state.players) return false;
-  p = p | 0;
   var pl = state.players[p];
-  if (!pl) return false;
-  if (pl.bank && pl.bank.length) return true;
-  var sets = pl.sets || [];
+  if (pl.bank.length) return true;
+  var sets = pl.sets;
   var si;
   for (si = 0; si < sets.length; si++) {
     var set = sets[si];
-    if (!set) continue;
     if (set.houseUid) return true;
-    if (set.props && set.props.length) return true;
+    if (set.props.length) return true;
   }
   return false;
 };
 
 PD.beginDebt = function (state, fromP, toP, amount) {
-  if (!state) return;
-  fromP = fromP | 0;
-  toP = toP | 0;
-  amount = Math.floor(Number(amount || 0));
+  amount = Math.floor(Number(amount));
   if (!isFinite(amount) || amount <= 0) return;
   if (!PD.hasAnyPayables(state, fromP)) return;
   PD.setPrompt(state, { kind: "payDebt", p: fromP, toP: toP, rem: amount, buf: [] });
@@ -120,19 +87,11 @@ PD.isWildDef = function (def) {
 
 PD.wildAllowsColor = function (def, color) {
   if (!PD.isWildDef(def)) return false;
-  color = color | 0;
   return def.wildColors[0] === color || def.wildColors[1] === color;
 };
 
 PD.shuffleUidsInPlace = function (state, arr) {
-  var i;
-  for (i = arr.length - 1; i > 0; i--) {
-    var j = PD.rngNextInt(state, i + 1);
-    var tmp = arr[i];
-    arr[i] = arr[j];
-    arr[j] = tmp;
-  }
-  return arr;
+  return PD.shuffleByNextInt(arr, function (n) { return PD.rngNextInt(state, n); });
 };
 
 PD.buildAllUids = function (state) {
@@ -153,7 +112,6 @@ PD.buildAllUids = function (state) {
 };
 
 PD.defByUid = function (state, uid) {
-  uid = uid | 0;
   var di = state.uidToDefI[uid];
   return PD.CARD_DEFS[di];
 };
@@ -168,25 +126,23 @@ PD.newEmptySet = function () {
 };
 
 PD.drawToHand = function (state, p, n, events) {
-  p = p | 0;
-  n = n | 0;
   if (n <= 0) return;
   if (!state.deck) state.deck = [];
   if (!state.discard) state.discard = [];
 
   var uids = [];
   while (n > 0) {
-    var nAvail = state.deck.length | 0;
+    var nAvail = state.deck.length;
     if (nAvail <= 0) {
-      var nDisc = state.discard.length | 0;
+      var nDisc = state.discard.length;
       if (nDisc <= 0) break;
       // Reshuffle discard into deck (deterministic).
       var i;
-      for (i = 0; i < nDisc; i++) state.deck.push(state.discard[i] | 0);
+      for (i = 0; i < nDisc; i++) state.deck.push(state.discard[i]);
       state.discard = [];
       PD.shuffleUidsInPlace(state, state.deck);
       if (events) events.push({ kind: "reshuffle", from: "discard", to: "deck", n: nDisc });
-      nAvail = state.deck.length | 0;
+      nAvail = state.deck.length;
       if (nAvail <= 0) break;
     }
 
@@ -201,21 +157,20 @@ PD.drawToHand = function (state, p, n, events) {
     n -= take;
   }
 
-  if (events && (uids.length | 0) > 0) events.push({ kind: "draw", p: p, uids: uids });
+  if (events && uids.length > 0) events.push({ kind: "draw", p: p, uids: uids });
 };
 
 PD.startTurn = function (state, events) {
   state.playsLeft = 3;
   PD.clearPrompt(state);
-  var p = state.activeP | 0;
+  var p = state.activeP;
   var nDraw = 2;
-  if ((state.players[p].hand.length | 0) === 0) nDraw = 5;
+  if (state.players[p].hand.length === 0) nDraw = 5;
   PD.drawToHand(state, p, nDraw, events);
   if (events) events.push({ kind: "plays", p: state.activeP, playsLeft: state.playsLeft });
 };
 
 PD.newGame = function (opts) {
-  opts = opts || {};
   var seedU32 = opts.seedU32 == null ? PD.computeSeed() : (opts.seedU32 >>> 0);
   if (!seedU32) seedU32 = 1;
 

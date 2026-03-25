@@ -103,19 +103,6 @@ PD.debugTick = function () {
 
   function bool01(v) { return v ? 1 : 0; }
 
-  function bankValueTotal(state, p) {
-    if (!state || !state.players || !state.players[p]) return 0;
-    var bank = state.players[p].bank;
-    var sum = 0;
-    var i;
-    for (i = 0; i < bank.length; i++) {
-      var uid = bank[i];
-      var def = PD.defByUid(state, uid);
-      if (def && def.bankValue) sum += def.bankValue;
-    }
-    return sum;
-  }
-
   function promptLine(state) {
     if (!state) return "Prompt:(none)";
     var pr = state.prompt;
@@ -125,26 +112,26 @@ PD.debugTick = function () {
     if (k === "payDebt") {
       var rem = Math.floor(Number(pr.rem || 0));
       if (!isFinite(rem)) rem = 0;
-      var bufN = (pr.buf && pr.buf.length) ? (pr.buf.length | 0) : 0;
+      var bufN = (pr.buf && pr.buf.length) ? pr.buf.length : 0;
       return "Prompt:payDebt rem:$" + rem + " buf:" + bufN;
     }
 
     if (k === "placeReceived") {
-      var uN = (pr.uids && pr.uids.length) ? (pr.uids.length | 0) : 0;
+      var uN = (pr.uids && pr.uids.length) ? pr.uids.length : 0;
       return "Prompt:placeRecv n:" + uN;
     }
 
     if (k === "discardDown") {
-      var p = pr.p | 0;
+      var p = pr.p;
       var hand = (state.players && state.players[p] && state.players[p].hand) ? state.players[p].hand : [];
-      var handLen = hand.length | 0;
+      var handLen = hand.length;
       var nDiscarded = Math.floor(Number(pr.nDiscarded || 0));
       if (!isFinite(nDiscarded)) nDiscarded = 0;
       if (nDiscarded < 0) nDiscarded = 0;
       // Stable target count: initialHand - HAND_MAX.
-      var nToDiscard = (handLen + nDiscarded) - (PD.HAND_MAX | 0);
+      var nToDiscard = (handLen + nDiscarded) - PD.HAND_MAX;
       if (nToDiscard < 0) nToDiscard = 0;
-      var left = handLen - (PD.HAND_MAX | 0);
+      var left = handLen - PD.HAND_MAX;
       if (left < 0) left = 0;
       return "Prompt:discardDown to:" + nToDiscard + " left:" + left;
     }
@@ -183,8 +170,8 @@ PD.debugTick = function () {
   printSmall("Hand0/1:" + s.players[0].hand.length + "/" + s.players[1].hand.length, x, y, 12); y += step;
   printSmall(
     "Bank0/1:" +
-    s.players[0].bank.length + "($" + bankValueTotal(s, 0) + ")/" +
-    s.players[1].bank.length + "($" + bankValueTotal(s, 1) + ")",
+    s.players[0].bank.length + "($" + PD.bankValueTotal(s, 0) + ")/" +
+    s.players[1].bank.length + "($" + PD.bankValueTotal(s, 1) + ")",
     x,
     y,
     12
@@ -204,11 +191,11 @@ PD.debugTick = function () {
   if (v) {
     var isDragging = !!(v.mode === "targeting" && v.targeting && v.targeting.active && v.targeting.hold);
     printSmall("UI:" + String(v.mode || "?") + " I:" + bool01(v.inspectActive) + " Drag:" + bool01(isDragging), xR, yR, 12); yR += step;
-    if (v.cursor) printSmall("Cur:r" + (v.cursor.row | 0) + " i" + (v.cursor.i | 0), xR, yR, 12);
+    if (v.cursor) printSmall("Cur:r" + v.cursor.row + " i" + v.cursor.i, xR, yR, 12);
     yR += step;
 
     if (v.mode === "menu" && v.menu && v.menu.items) {
-      var nM = v.menu.items.length | 0;
+      var nM = v.menu.items.length;
       var mi = (nM > 0) ? PD.ui.clampI(Math.floor(Number(v.menu.i || 0)), nM) : 0;
       var it = (nM > 0) ? v.menu.items[mi] : null;
       var id = it ? String(it.id || "?") : "(none)";
@@ -217,7 +204,7 @@ PD.debugTick = function () {
 
     if (v.mode === "targeting" && v.targeting && v.targeting.active) {
       var t = v.targeting;
-      var nC = (t.cmds && t.cmds.length) ? (t.cmds.length | 0) : 0;
+      var nC = (t.cmds && t.cmds.length) ? t.cmds.length : 0;
       var ci = (nC > 0) ? PD.ui.clampI(Math.floor(Number(t.cmdI || 0)), nC) : 0;
       printSmall("Tgt:" + String(t.kind || "?") + " " + ci + "/" + nC + " h:" + bool01(t.hold), xR, yR, 12); yR += step;
     }
@@ -247,8 +234,8 @@ PD.debugTick = function () {
   var st = d.ctrl;
   if (st && st.held) {
     var held = st.held;
-    var heldA = (held[4] | 0);
-    var heldX = (held[6] | 0);
+    var heldA = held[4];
+    var heldX = held[6];
     printSmall(
       "Held:A" + heldA + " X" + heldX + " Grab:" + bool01(st.aGrabActive) + " XLatch:" + bool01(st.xInspectActive),
       xR,
@@ -306,7 +293,7 @@ PD.mainTick = function () {
         // Rent can be play-tested end-to-end before full AI/hotseat/JSN UX exists.
         // Deterministic: uses the same seeded RNG in GameState.
         var guard = 0;
-        while (d.state.prompt && d.state.prompt.kind === "payDebt" && (d.state.prompt.p | 0) === 1) {
+        while (d.state.prompt && d.state.prompt.kind === "payDebt" && d.state.prompt.p === 1) {
           guard++;
           if (guard > 50) break;
           var movesAuto = PD.legalMoves(d.state);

@@ -69,7 +69,14 @@ We work in small increments:
 - Update `docs/plan.md` → **Current progress** (mark the phase ✅)
 - Update [`docs/user-manual.md`](docs/user-manual.md) when player/tester-visible behavior changes (controls, prompts, targeting, debug)
 - Update this `README.md` if the developer workflow changes
-- **Avoid defensive `PD.*` existence checks** in cartridge code; prefer defining required namespaces/stubs in `src/00_prelude.js` and asserting module/config availability in tests (so missing wiring fails fast).
+
+### Engineering guardrails (cartridge hygiene)
+
+- **No runtime fallbacks**: avoid `x = x || {}`, `|| []`, “should never happen” defaults in runtime code. Prefer canonical constructors/canonicalizers plus tests.
+- **No runtime shape asserts**: don’t ship “assert shape” helpers in `game.js`; enforce invariants in unit tests.
+- **Numeric coercion**: keep `|0` / `>>>0` localized to TIC-80 draw-call boundary wrappers (e.g. `rectSafe`, `sprSafe`) and deterministic engine/RNG hot spots.
+- **Namespaces**: `src/00_prelude.js` creates `PD` and module namespaces once; don’t repeat `PD.ui = PD.ui || {}` in modules.
+- **Build artifact rule**: after any change in `src/` or `scripts/build.mjs`, run `npm test` and `npm run build` so committed `game.js` stays in sync.
 
 ## Key Constraints
 

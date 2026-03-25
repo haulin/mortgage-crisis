@@ -1,5 +1,3 @@
-PD.render = PD.render || {};
-
 (function initRenderModule() {
   var R = PD.render;
 
@@ -9,7 +7,7 @@ PD.render = PD.render || {};
   R.ROW_P_TABLE = 3;
   R.ROW_P_HAND = 4;
 
-  var renderCfg = PD.config && PD.config.render;
+  var renderCfg = PD.config.render;
   // Keep internal `cfg` for readability, but source-of-truth config is split
   // into `render.layout` and `render.style`.
   var layout = renderCfg.layout;
@@ -136,6 +134,13 @@ PD.render = PD.render || {};
     var items = stackItems.slice();
     items.sort(function (a, b) { return a.depth - b.depth; });
 
+    function drawGhostAt(xFace, yFace) {
+      var shadowCol = PD.Pal.Black;
+      var col = PD.Pal.Green;
+      rectbSafe(xFace - 1, yFace - 1, R.cfg.faceW, R.cfg.faceH, shadowCol);
+      rectbSafe(xFace, yFace, R.cfg.faceW, R.cfg.faceH, col);
+    }
+
     var i;
     if (!onlySelected) {
       for (i = 0; i < items.length; i++) {
@@ -143,6 +148,17 @@ PD.render = PD.render || {};
         if (selectedItem && it === selectedItem) continue;
         var xFace = it.x - camX;
         var yFace = it.y;
+        if (it.kind === "ghost") {
+          drawGhostAt(xFace, yFace);
+          continue;
+        }
+        if (it.kind === "preview") {
+          if (!it.uid) continue;
+          drawFannedShadowBar(xFace, yFace, fanDir);
+          drawMiniCard(state, it.uid, xFace, yFace, flip180, it.color);
+          drawHighlight(xFace, yFace, highlightCol);
+          continue;
+        }
         drawFannedShadowBar(xFace, yFace, fanDir);
         drawMiniCard(state, it.uid, xFace, yFace, flip180, it.color);
       }
@@ -383,19 +399,6 @@ PD.render = PD.render || {};
     rectSafe(p2.x, p2.y, p2.w, p2.h, 12);
   }
 
-  function bankTotal(state, p) {
-    if (!state || !state.players || !state.players[p]) return 0;
-    var bank = state.players[p].bank;
-    var sum = 0;
-    var i;
-    for (i = 0; i < bank.length; i++) {
-      var uid = bank[i];
-      var def = PD.defByUid(state, uid);
-      if (def && def.bankValue) sum += def.bankValue;
-    }
-    return sum;
-  }
-
   // Phase 04: renderer no longer computes row models/navigation/cameras.
   // UI owns selection + cameras via PD.ui, and passes computed models in.
 
@@ -413,7 +416,7 @@ PD.render = PD.render || {};
     rectSafe(0, y0, 239, y1 - y0 + 1, cfg.colCenterPanel);
     rectbSafe(0, y0, 239, y1 - y0 + 1, cfg.colCenterPanelBorder);
 
-    var dbgEnabled = !!(PD.config && PD.config.debug && PD.config.debug.enabled);
+    var dbgEnabled = !!PD.config.debug.enabled;
     var hlCol = (opts.highlightCol != null) ? opts.highlightCol : cfg.colHighlight;
 
     // Header: removed (Phase 04). Plays indicator is drawn in screen-space.
@@ -443,8 +446,8 @@ PD.render = PD.render || {};
     }
 
     function drawDeckAt(xFace, yFace, nVis, layersOverride) {
-      var n = (nVis != null) ? (nVis | 0) : (s.deck.length | 0);
-      var layers = (layersOverride != null) ? (layersOverride | 0) : -1;
+      var n = (nVis != null) ? nVis : s.deck.length;
+      var layers = (layersOverride != null) ? layersOverride : -1;
       if (layers < 0) {
         // Default: derive visible pile depth from actual count.
         if (n > 2) layers = 2;
@@ -461,7 +464,7 @@ PD.render = PD.render || {};
     }
 
     function drawDiscardAt(xFace, yFace, nVis, topUidVis) {
-      var n = (nVis != null) ? (nVis | 0) : (s.discard.length | 0);
+      var n = (nVis != null) ? nVis : s.discard.length;
       if (n > 2) {
         drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx2, cfg.pileUnderDy2);
         drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
@@ -476,7 +479,7 @@ PD.render = PD.render || {};
         return;
       }
 
-      var topUid = (topUidVis != null) ? (topUidVis | 0) : (s.discard[n - 1] | 0);
+      var topUid = (topUidVis != null) ? topUidVis : s.discard[n - 1];
       drawShadowBar(xFace, yFace);
       if (topUid) drawMiniCard(s, topUid, xFace, yFace, false);
       else {
@@ -660,8 +663,8 @@ PD.render = PD.render || {};
       function appendRuleNotes(def, baseDesc) {
         baseDesc = baseDesc ? String(baseDesc) : "";
         if (!def || !def.ruleNotes || def.ruleNotes.length === 0) return baseDesc;
-        var enabled = (PD.config && PD.config.rules && PD.config.rules.enabledRuleNotes) ? PD.config.rules.enabledRuleNotes : [];
-        if (!enabled || enabled.length === 0) return baseDesc;
+        var enabled = PD.config.rules.enabledRuleNotes;
+        if (enabled.length === 0) return baseDesc;
 
         var out = baseDesc;
         var i;
@@ -669,9 +672,9 @@ PD.render = PD.render || {};
           var id = def.ruleNotes[i];
           var j;
           var on = false;
-          for (j = 0; j < enabled.length; j++) if ((enabled[j] | 0) === (id | 0)) { on = true; break; }
+          for (j = 0; j < enabled.length; j++) if (enabled[j] === id) { on = true; break; }
           if (!on) continue;
-          var txt = (PD.ruleNoteTextById && PD.ruleNoteTextById[id | 0]) ? String(PD.ruleNoteTextById[id | 0]) : "";
+          var txt = PD.ruleNoteTextById[id] ? String(PD.ruleNoteTextById[id]) : "";
           if (!txt) continue;
           if (out) out += "\n";
           out += txt;
@@ -764,7 +767,7 @@ PD.render = PD.render || {};
         var setIR = Math.floor(Number(cmd.setI));
         var setR = isFinite(setIR) ? s.players[0].sets[setIR] : null;
         var colR = setR ? PD.getSetColor(setR.props) : PD.NO_COLOR;
-        var amt = PD.rentAmountForSet ? (PD.rentAmountForSet(s, 0, setIR) | 0) : 0;
+        var amt = PD.rentAmountForSet(s, 0, setIR);
         destLine = "From: " + colorName(colR) + " set\nAmt: $" + amt;
       } else if (cmd && cmd.kind === "bank") {
         destLine = "Dest: Bank";
@@ -826,9 +829,10 @@ PD.render = PD.render || {};
   function drawModeHintNearButtons(view, computed) {
     var cfg = R.cfg;
     if (cfg.hudLineEnabled === false) return;
-    var dbgEnabled = !!(PD.config && PD.config.debug && PD.config.debug.enabled);
+    var dbgEnabled = !!PD.config.debug.enabled;
     if (!dbgEnabled) return;
-    if (!view || view.mode !== "browse" || view.inspectActive) return;
+    // Prompts don't overlap this hint, so keep it visible in prompt mode too.
+    if (!view || (view.mode !== "browse" && view.mode !== "prompt") || view.inspectActive) return;
     if (!computed || !computed.models) return;
     var rowM = computed.models[R.ROW_CENTER];
     if (!rowM || !rowM.items) return;
@@ -933,10 +937,10 @@ PD.render = PD.render || {};
         lines.push("Cards:" + s.discard.length);
       } else if (k === "bank0") {
         lines.push("Sel:B0");
-        lines.push("Total:" + bankTotal(s, 0));
+        lines.push("Total:" + PD.bankValueTotal(s, 0));
       } else if (k === "bank1") {
         lines.push("Sel:B1");
-        lines.push("Total:" + bankTotal(s, 1));
+        lines.push("Total:" + PD.bankValueTotal(s, 1));
       } else {
         lines.push("Sel:" + String(k || "?"));
         lines.push("");
@@ -1018,10 +1022,14 @@ PD.render = PD.render || {};
     var flipCards = isOpponentRow(row);
     var i;
 
+    var overlayItems = rowModel && rowModel.overlayItems ? rowModel.overlayItems : null;
+    var itemsForStacks = rowModel.items;
+    if (overlayItems && overlayItems.length) itemsForStacks = itemsForStacks.concat(overlayItems);
+
     if (row === R.ROW_OP_TABLE || row === R.ROW_P_TABLE) {
       // Table rows must be drawn by stack depth (bottom->top), not x-order,
       // otherwise fan-left stacks layer incorrectly.
-      var grouped = groupStacksByKey(rowModel.items, cam);
+      var grouped = groupStacksByKey(itemsForStacks, cam);
       var byKey = grouped.byKey;
       var keys = grouped.keys;
 
@@ -1045,37 +1053,12 @@ PD.render = PD.render || {};
     }
 
     // Hand rows (and opponent back row): simple x-order is fine for non-stack items.
-    var groupedH = groupStacksByKey(rowModel.items, cam);
+    var groupedH = groupStacksByKey(itemsForStacks, cam);
     var byKeyH = groupedH.byKey;
     var keysH = groupedH.keys;
 
-    // Hide the source card when a preview is re-drawing that same uid elsewhere.
-    // This avoids showing the same card in both its origin slot and its destination preview.
-    var hideSrc = null;
-    if (view && computed && computed.preview && computed.preview.uid) {
-      if (
-        view.mode === "targeting" &&
-        view.targeting &&
-        view.targeting.active &&
-        view.targeting.card &&
-        view.targeting.card.uid &&
-        view.targeting.card.loc &&
-        ((computed.preview.uid | 0) === (view.targeting.card.uid | 0))
-      ) {
-        var z0 = view.targeting.card.loc.zone;
-        if (z0 === "hand" || z0 === "recvProps") hideSrc = { uid: view.targeting.card.uid | 0, loc: view.targeting.card.loc };
-      } else if (
-        view.mode === "menu" &&
-        view.menu &&
-        view.menu.src &&
-        view.menu.src.uid &&
-        view.menu.src.loc &&
-        ((computed.preview.uid | 0) === (view.menu.src.uid | 0))
-      ) {
-        var z1 = view.menu.src.loc.zone;
-        if (z1 === "hand" || z1 === "recvProps") hideSrc = { uid: view.menu.src.uid | 0, loc: view.menu.src.loc };
-      }
-    }
+    // Hide the source card when UI wants to represent its slot as a ghost/preview.
+    var hideSrc = (computed && computed.meta && computed.meta.hideSrc) ? computed.meta.hideSrc : null;
 
     // Draw non-bank hand items in x-order first.
     for (i = 0; i < rowModel.items.length; i++) {
@@ -1083,7 +1066,7 @@ PD.render = PD.render || {};
       if (!it || it.stackKey) continue;
       if (selected && it === selected) continue;
       if (hideSrc && row === R.ROW_P_HAND && it.loc && (it.loc.zone === "hand" || it.loc.zone === "recvProps")) {
-        if ((it.uid | 0) === (hideSrc.uid | 0) && (it.loc.p | 0) === (hideSrc.loc.p | 0) && String(it.loc.zone) === String(hideSrc.loc.zone) && (it.loc.i | 0) === (hideSrc.loc.i | 0)) {
+        if (it.uid === hideSrc.uid && it.loc.p === hideSrc.loc.p && String(it.loc.zone) === String(hideSrc.loc.zone) && it.loc.i === hideSrc.loc.i) {
           continue;
         }
       }
@@ -1108,21 +1091,13 @@ PD.render = PD.render || {};
       var flipBank = (row === R.ROW_OP_HAND);
       var selInThis = (selected && selected.stackKey === k0) ? selected : null;
       var camForThis = cam;
-      // Banking preview: shift the existing bank stack left by one stride so the preview
-      // card can occupy the new top slot at the right edge.
-      var isBankStack = (k0.indexOf("bank:") === 0);
-      var isBankTargeting = !!(view && view.mode === "targeting" && view.targeting && view.targeting.active && view.targeting.kind === "bank");
-      var isBankMenuPreview = !!(computed && computed.preview && computed.preview.forCmdKind === "bank");
-      if (row === R.ROW_P_HAND && isBankStack && (isBankTargeting || isBankMenuPreview)) {
-        camForThis = camForThis + R.cfg.stackStrideX;
-      }
       drawFannedStack(stack0, { state: state, fanDir: fanDirB, flip180: !!flipBank, camX: camForThis, selectedItem: selInThis, drawSelected: false, highlightCol: highlightCol });
     }
 
     // Skip drawing the source selection highlight during hold-targeting; preview handles the feedback.
     var sel = selected;
     if (hideSrc && row === R.ROW_P_HAND && sel && sel.loc && (sel.loc.zone === "hand" || sel.loc.zone === "recvProps")) {
-      if ((sel.uid | 0) === (hideSrc.uid | 0) && (sel.loc.p | 0) === (hideSrc.loc.p | 0) && String(sel.loc.zone) === String(hideSrc.loc.zone) && (sel.loc.i | 0) === (hideSrc.loc.i | 0)) {
+      if (sel.uid === hideSrc.uid && sel.loc.p === hideSrc.loc.p && String(sel.loc.zone) === String(hideSrc.loc.zone) && sel.loc.i === hideSrc.loc.i) {
         sel = null;
       }
     }
@@ -1207,32 +1182,6 @@ PD.render = PD.render || {};
     return ["Sel:" + String(it.kind || "?"), ""];
   };
 
-  function drawGhostOutlines(ghosts, camX) {
-    if (!ghosts || ghosts.length === 0) return;
-    var L = R.cfg;
-    var col = PD.Pal.Green;
-    var shadowCol = PD.Pal.Black;
-    var i;
-    for (i = 0; i < ghosts.length; i++) {
-      var g = ghosts[i];
-      if (!g) continue;
-      var x = g.x - camX;
-      var y = g.y;
-      // Shadow outline up-left.
-      rectbSafe(x - 1, y - 1, L.faceW, L.faceH, shadowCol);
-      rectbSafe(x, y, L.faceW, L.faceH, col);
-    }
-  }
-
-  function drawPreviewOverlay(state, preview, camX, highlightCol) {
-    if (!preview || !preview.uid) return;
-    var x = preview.x - camX;
-    var y = preview.y;
-    drawFannedShadowBar(x, y, 1);
-    drawMiniCard(state, preview.uid, x, y, false, preview.color);
-    drawHighlight(x, y, highlightCol);
-  }
-
   // Phase 05c: shuffle + deal animations (render-only visuals).
   // Renderer is oblivious to `view.anim`; UI/anim modules provide presentation in `computed`.
   function drawAnimOverlay(state, view, computed) {
@@ -1240,10 +1189,10 @@ PD.render = PD.render || {};
     var ov = computed.animOverlay;
     if (!ov || !ov.kind) return;
     if (ov.kind === "dealCard") {
-      var x = ov.x | 0;
-      var y = ov.y | 0;
-      var p = ov.p | 0;
-      var uid = ov.uid | 0;
+      var x = ov.x;
+      var y = ov.y;
+      var p = ov.p;
+      var uid = ov.uid;
       drawShadowBar(x, y);
       if (p === 1) drawCardBack(x, y, true);
       else drawMiniCard(state, uid, x, y, false);
@@ -1279,7 +1228,7 @@ PD.render = PD.render || {};
     var sel = selectedFromModels(view, models);
 
     var cfg = R.cfg;
-    var hlCol = (computed.highlightCol != null) ? (computed.highlightCol | 0) : cfg.colHighlight;
+    var hlCol = (computed.highlightCol != null) ? computed.highlightCol : cfg.colHighlight;
 
     // Clear background.
     cls(cfg.colBg);
@@ -1293,48 +1242,6 @@ PD.render = PD.render || {};
       var cam = (view.camX && view.camX[row] != null) ? view.camX[row] : 0;
       var selected = (view.cursor.row === row) ? sel : null;
       drawRowCards(state, view, computed, rm, row, selected, cam, hlCol);
-    }
-
-    // Overlays (ghosts + preview): targeting always; menu may provide a preview too.
-    if (view.mode === "targeting" || (view.mode === "menu" && computed.preview)) {
-      var ghosts = args.ghosts || computed.ghosts || [];
-      // Skip the selected destination ghost: preview replaces it.
-      if (view.targeting && view.targeting.active) {
-        var filtered = [];
-        var gi;
-        for (gi = 0; gi < ghosts.length; gi++) {
-          var g = ghosts[gi];
-          if (!g) continue;
-          if (g.cmdI === view.targeting.cmdI) continue;
-          filtered.push(g);
-        }
-        ghosts = filtered;
-      }
-
-      // Draw ghosts using their row camera (future-proofing).
-      var gByRow = [[], [], [], [], []];
-      var gi2;
-      for (gi2 = 0; gi2 < ghosts.length; gi2++) {
-        var gg = ghosts[gi2];
-        if (!gg) continue;
-        var rr = (gg.row != null) ? gg.row : R.ROW_P_TABLE;
-        if (rr < 0 || rr > 4) rr = R.ROW_P_TABLE;
-        gByRow[rr].push(gg);
-      }
-      var rr2;
-      for (rr2 = 0; rr2 < 5; rr2++) {
-        if (!gByRow[rr2] || gByRow[rr2].length === 0) continue;
-        var camG = (view.camX && view.camX[rr2] != null) ? view.camX[rr2] : 0;
-        drawGhostOutlines(gByRow[rr2], camG);
-      }
-
-      var preview = args.preview || computed.preview;
-      if (preview) {
-        var prow = (preview.row != null) ? preview.row : R.ROW_P_TABLE;
-        if (prow < 0 || prow > 4) prow = R.ROW_P_TABLE;
-        var camP = (view.camX && view.camX[prow] != null) ? view.camX[prow] : 0;
-        drawPreviewOverlay(state, preview, camP, hlCol);
-      }
     }
 
     // Center panel last (so text overlays are readable).

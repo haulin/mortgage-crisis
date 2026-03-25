@@ -136,11 +136,12 @@ Targeting includes a special destination called **Source**:
 - Cycling to **Source** and confirming cancels the action (no command is applied).
 - While targeting, the grabbed source card is hidden in-hand so it doesn’t look like you have “two copies” on screen.
 
-## Banking preview behavior
+## Ghost/preview space reservation (no overlap)
 
-When banking is previewed into the bank stack, the preview should not overlap the current top bank card:
+When an action shows destination **ghosts** (outlines) or a **preview** card rendered “into” a stack, the UI reserves real space for that synthetic item:
 
-- the existing bank stack shifts left by one stack stride so the preview can occupy the “new top” slot.
+- Ghosts and previews **do not overlap** real cards (or each other in the same slot).
+- This includes banking: when a bank destination is ghosted/previewed, the visible bank stack shifts to make room for the synthetic “new top” slot.
 
 ## Draw + reshuffle visibility (animations)
 

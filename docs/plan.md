@@ -6,7 +6,7 @@ Documentation convention (for future phases):
 
 - `docs/phaseXX.md` should record **everything implemented** in that phase (detailed).
 - `docs/plan.md` should include **minimal Phase summary bullets** (scan-friendly; link to the phase doc).
-- Avoid retroactively rewriting older phase docs; capture deltas in the current/new phase doc instead.
+- Keep phase docs **current and non-contradictory**. It’s fine to edit older phase docs to correct factual statements when architecture/conventions change.
 
 ## Current progress
 
@@ -36,6 +36,14 @@ Documentation convention (for future phases):
 - **Namespaces / enums**: PascalCase objects (e.g. `PD.ActionKind`, `PD.CardKind`)
 - **Scalar constants**: ALL_CAPS (e.g. `PD.HOUSE_RENT_BONUS`)
 - **Functions**: camelCase (e.g. `PD.applyCommand`, `PD.legalMoves`)
+
+### Engineering guardrails (cartridge hygiene)
+
+- **No runtime fallbacks**: avoid `x = x || {}`, `|| []`, “should never happen” defaults in runtime code. Prefer canonical constructors/canonicalizers plus tests.
+- **No runtime shape asserts**: don’t ship “assert shape” helpers in `game.js`; enforce invariants in unit tests.
+- **Numeric coercion**: keep `|0` / `>>>0` localized to TIC-80 draw-call boundary wrappers (e.g. `rectSafe`, `sprSafe`) and deterministic engine/RNG hot spots.
+- **Namespaces**: `src/00_prelude.js` creates `PD` and module namespaces once; don’t repeat `PD.ui = PD.ui || {}` in modules.
+- **Build artifact rule**: after any change in `src/` or `scripts/build.mjs`, run `npm test` and `npm run build` so committed `game.js` stays in sync.
 
 ## Locked MVP1 Rules (Source of Truth)
 
@@ -401,10 +409,13 @@ Content expansion readiness:
 
 Issues:
 - When player is out of moves and they attempt to place a card, the only valid destination is source. They no longer get negative feedback about no action possible. If only source is a valid destination then action should be disallowed.
-- still lots of |0 coercions in code that does not directly call TIC APIs.
+- keep numeric coercion (`|0`, `>>>0`) localized to TIC-80 API boundary wrappers and determinism hot spots; prefer wrappers over ad-hoc coercion in UI/layout/render logic.
 - scrolling in the last scenario is not good
 - the project was renamed to Mortgage Crisis, so we should update all references
 - action menu should maybe get rendered as a bigger overlay, similar to inspect and not cover buttons
+- descriptions of some scenarios don't fit screen in Debug
+- press A when there is a default action such as Rent > Cyan set do not show the highlight of the set.
+- pay debt prompt triggerring can't pay with that should auto-focus on bank if available, on props if not.
 
 ### Phase 08 — Actions + responses
 

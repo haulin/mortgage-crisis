@@ -821,6 +821,84 @@ test("render: bank targeting shows green ghost for bank when Source is selected"
   assert.ok(ghostBank, `expected green ghost outline at Bank (${bankRightX},${yFace}) when Source selected`);
 });
 
+test("render: quick targeting bank ghost shifts existing bank stack left", async () => {
+  const rec = makeRecorder();
+  const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
+
+  const s = ctx.PD.newGame({ seedU32: 1 });
+  const rentUid = ctx.PD.takeUid(s, "rent_mo");
+  const propUid = ctx.PD.takeUid(s, "prop_orange");
+  const bankUid = ctx.PD.takeUid(s, "money_2");
+
+  // Remove uids from any zone they might already be in.
+  for (const uid of [rentUid, propUid, bankUid]) {
+    s.deck = s.deck.filter((u) => u !== uid);
+    s.discard = s.discard.filter((u) => u !== uid);
+    for (let p = 0; p < 2; p++) {
+      s.players[p].hand = s.players[p].hand.filter((u) => u !== uid);
+      s.players[p].bank = s.players[p].bank.filter((u) => u !== uid);
+      for (const set of (s.players[p].sets || [])) {
+        if (!set) continue;
+        if (set.props) set.props = set.props.filter(([u]) => u !== uid);
+        if (set.houseUid === uid) set.houseUid = 0;
+      }
+    }
+  }
+
+  // One eligible set so Rent has a legal destination.
+  const defProp = ctx.PD.defByUid(s, propUid);
+  const set = ctx.PD.newEmptySet();
+  set.props.push([propUid, defProp.propertyColor]);
+
+  s.players[0].hand = [rentUid];
+  s.players[0].bank = [bankUid];
+  s.players[0].sets = [set];
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const view = newView(ctx);
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = 0;
+
+  // Enter quick targeting via hold-A grab on the Rent card.
+  ctx.PD.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
+  assert.equal(view.mode, "targeting");
+  assert.equal(view.targeting.kind, "quick");
+
+  // Default quick targeting for Rent prefers playRent, so bank should be non-selected and ghosted.
+  const cmdSel = view.targeting.cmds[view.targeting.cmdI];
+  assert.ok(cmdSel && cmdSel.kind === "playRent", "expected quick targeting default selection to be playRent");
+
+  drawFrame(ctx, s, view);
+
+  const L = ctx.PD.config.render.layout;
+  const bankRightX = L.screenW - L.rowPadX - L.faceW;
+  const yFace = L.rowY[ctx.PD.render.ROW_P_HAND] + L.faceInsetY;
+
+  const ghostBank = rec.calls.find(
+    (c) =>
+      c.kind === "rectb" &&
+      c.args[0] === bankRightX &&
+      c.args[1] === yFace &&
+      c.args[2] === L.faceW &&
+      c.args[3] === L.faceH &&
+      c.args[4] === ctx.PD.Pal.Green
+  );
+  assert.ok(ghostBank, `expected green ghost outline at Bank (${bankRightX},${yFace}) during quick targeting`);
+
+  // Existing bank card border rect should be shifted left by one stride while the bank ghost is shown.
+  const shiftedX = bankRightX - L.stackStrideX;
+  const existingBorderShifted = rec.calls.find(
+    (c) => c.kind === "rect" && c.args[0] === shiftedX && c.args[1] === yFace && c.args[2] === L.faceW && c.args[3] === L.faceH
+  );
+  assert.ok(existingBorderShifted, `expected existing bank card border rect at (${shiftedX},${yFace}) during quick targeting`);
+
+  const existingBorderUnshifted = rec.calls.find(
+    (c) => c.kind === "rect" && c.args[0] === bankRightX && c.args[1] === yFace && c.args[2] === L.faceW && c.args[3] === L.faceH
+  );
+  assert.equal(!!existingBorderUnshifted, false, `expected existing bank card border rect not at (${bankRightX},${yFace}) during quick targeting`);
+});
+
 test("render: targeting draws ghost outlines and preview overlay", async () => {
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
@@ -831,7 +909,7 @@ test("render: targeting draws ghost outlines and preview overlay", async () => {
   // Select first card in player hand and enter targeting (hold-A grab).
   view.cursor.row = ctx.PD.render.ROW_P_HAND;
   view.cursor.i = 0;
-  ctx.PD.ui.step(s, view, { nav: {}, a: { grabStart: true } });
+  ctx.PD.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
   assert.equal(view.mode, "targeting");
 
   drawFrame(ctx, s, view);
@@ -847,8 +925,9 @@ test("render: targeting draws ghost outlines and preview overlay", async () => {
   );
   assert.ok(previewBorder, `expected preview card border rect at (${xPreview},${yFace})`);
 
-  // The other destination is New Set at x=4 + faceW(17) + gap(2) = 23.
-  const xGhost = (L.rowPadX + L.faceW + L.stackGapX) - cam;
+  // The other destination is New Set. While targeting previews a card onto the existing set,
+  // the table layout reserves one extra slot so New Set shifts right by one stride.
+  const xGhost = (L.rowPadX + L.faceW + L.stackStrideX + L.stackGapX) - cam;
   const ghostGreen = rec.calls.find(
     (c) => c.kind === "rectb" && c.args[0] === xGhost && c.args[1] === yFace && c.args[2] === L.faceW && c.args[3] === L.faceH && c.args[4] === ctx.PD.Pal.Green
   );

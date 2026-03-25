@@ -16,21 +16,21 @@ PD.resetForScenario = function (state) {
 };
 
 PD.setAddFixedProp = function (set, uid, color) {
-  set.props.push([uid | 0, color | 0]);
+  set.props.push([uid, color]);
 };
 
 PD.setAddPropByDefId = function (state, set, defId, forcedColor) {
-  var uid = PD.takeUid(state, defId) | 0;
+  var uid = PD.takeUid(state, defId);
   var def = PD.defByUid(state, uid);
   var color = PD.NO_COLOR;
   if (PD.isWildDef(def)) {
-    color = forcedColor | 0;
+    color = forcedColor;
     if (!PD.wildAllowsColor(def, color)) throw new Error("scenario_bad_color:" + defId);
   } else {
-    color = def.propertyColor | 0;
+    color = def.propertyColor;
   }
   PD.setAddFixedProp(set, uid, color);
-  return uid | 0;
+  return uid;
 };
 
 PD.fillDeckFromPool = function (state) {
@@ -39,9 +39,9 @@ PD.fillDeckFromPool = function (state) {
   for (i = 0; i < PD.CARD_DEFS.length; i++) {
     var defId = PD.CARD_DEFS[i].id;
     var a = state._pool[defId];
-    if (!a || (a.length | 0) === 0) continue;
+    if (!a || a.length === 0) continue;
     var k;
-    for (k = 0; k < (a.length | 0); k++) deck.push(a[k] | 0);
+    for (k = 0; k < a.length; k++) deck.push(a[k]);
     state._pool[defId] = [];
   }
   state.deck = deck;
@@ -174,12 +174,12 @@ PD._scenarioApplyById = {
       if (!def || !def.id) continue;
       var defId = def.id;
       var a = state._pool[defId];
-      if (!a || (a.length | 0) === 0) continue;
+      if (!a || a.length === 0) continue;
 
       // NOTE: scenario pool contains only uids, so we inspect the def kind here.
       var bankable = PD.isBankableDef(def);
       while (a.length > 0) {
-        var uid = a.pop() | 0;
+        var uid = a.pop();
         if (bankable) state.players[0].bank.push(uid);
         else state.discard.push(uid);
       }
@@ -188,7 +188,7 @@ PD._scenarioApplyById = {
     // Put back one card into the pool so it becomes the (1-card) deck.
     // Prefer taking from discard so the discard->deck reshuffle still has plenty of cards.
     if (state.discard.length > 0) {
-      var keepUid = state.discard.pop() | 0;
+      var keepUid = state.discard.pop();
       var keepDef = PD.defByUid(state, keepUid);
       var keepId = keepDef && keepDef.id ? String(keepDef.id) : "";
       if (keepId) {

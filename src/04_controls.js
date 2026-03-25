@@ -1,5 +1,3 @@
-PD.controls = PD.controls || {};
-
 PD.controls.newState = function () {
   return {
     frame: 0,
@@ -39,29 +37,23 @@ PD.controls.pollGlobals = function () {
 
 PD.controls.actions = function (st, raw, cfg) {
   if (!st) st = PD.controls.newState();
-  raw = raw || { down: [], pressed: [] };
-  cfg = cfg || {};
+  // Contract: caller provides {down[8], pressed[8]} and cfg from PD.config.controls.
+  var down = raw.down;
+  var pressed = raw.pressed;
 
-  var down = raw.down || [];
-  var pressed = raw.pressed || [];
+  var repeatDelay = cfg.dpadRepeatDelayFrames;
+  var repeatPeriod = cfg.dpadRepeatPeriodFrames;
 
-  var repeatDelay = (cfg.dpadRepeatDelayFrames != null) ? (cfg.dpadRepeatDelayFrames | 0) : 12;
-  var repeatPeriod = (cfg.dpadRepeatPeriodFrames != null) ? (cfg.dpadRepeatPeriodFrames | 0) : 4;
-  if (repeatDelay < 0) repeatDelay = 0;
-  if (repeatPeriod < 1) repeatPeriod = 1;
+  var grabFallback = cfg.aHoldFallbackFrames;
 
-  var grabFallback = (cfg.aHoldFallbackFrames != null) ? (cfg.aHoldFallbackFrames | 0) : 18;
-  if (grabFallback < 0) grabFallback = 0;
+  var inspectDelay = cfg.xInspectDelayFrames;
 
-  var inspectDelay = (cfg.xInspectDelayFrames != null) ? (cfg.xInspectDelayFrames | 0) : 6;
-  if (inspectDelay < 0) inspectDelay = 0;
-
-  st.frame = (st.frame | 0) + 1;
+  st.frame += 1;
 
   var i;
   for (i = 0; i < 8; i++) {
     var isDown = !!down[i];
-    st.held[i] = isDown ? ((st.held[i] | 0) + 1) : 0;
+    st.held[i] = isDown ? (st.held[i] + 1) : 0;
   }
 
   // Edge detection from down states (used in case caller doesn't provide pressed[]).
@@ -70,17 +62,16 @@ PD.controls.actions = function (st, raw, cfg) {
 
   // D-pad repeat: synthesize nav pulses.
   function navPulse(btnId) {
-    btnId = btnId | 0;
     if (!down[btnId]) { st.dpadRepeat[btnId] = 0; return false; }
 
     // Prefer provided pressed[] as the initial pulse.
     if (pressed[btnId] || rose(btnId)) { st.dpadRepeat[btnId] = 0; return true; }
 
-    st.dpadRepeat[btnId] = (st.dpadRepeat[btnId] | 0) + 1;
-    if ((st.dpadRepeat[btnId] | 0) < (repeatDelay | 0)) return false;
+    st.dpadRepeat[btnId] += 1;
+    if (st.dpadRepeat[btnId] < repeatDelay) return false;
 
-    var t = (st.dpadRepeat[btnId] | 0) - (repeatDelay | 0);
-    return ((t % repeatPeriod) | 0) === 0;
+    var t = st.dpadRepeat[btnId] - repeatDelay;
+    return (t % repeatPeriod) === 0;
   }
 
   var up = navPulse(0);
@@ -106,13 +97,13 @@ PD.controls.actions = function (st, raw, cfg) {
   }
 
   var navAny = !!(up || downNav || left || right);
-  var aHeldFrames = st.held[4] | 0;
+  var aHeldFrames = st.held[4];
   var aGrabStartNow = false;
 
   if (aDown && !st.aGrabActive) {
     var shouldEnter = false;
     if (navAny && aHeldFrames > 0) shouldEnter = true;
-    else if (aHeldFrames >= (grabFallback | 0) && (grabFallback | 0) > 0) shouldEnter = true;
+    else if (aHeldFrames >= grabFallback && grabFallback > 0) shouldEnter = true;
     if (shouldEnter) {
       st.aGrabActive = true;
       st.aGrabEnteredThisPress = true;
@@ -135,8 +126,8 @@ PD.controls.actions = function (st, raw, cfg) {
   if (xPressed) st.xInspectActive = false;
   if (!xDown) st.xInspectActive = false;
   if (xDown && !st.xInspectActive) {
-    if ((st.held[6] | 0) >= (inspectDelay | 0) && (inspectDelay | 0) > 0) st.xInspectActive = true;
-    if ((inspectDelay | 0) === 0) st.xInspectActive = true;
+    if (st.held[6] >= inspectDelay && inspectDelay > 0) st.xInspectActive = true;
+    if (inspectDelay === 0) st.xInspectActive = true;
   }
   if (xReleased) st.xInspectActive = false;
 

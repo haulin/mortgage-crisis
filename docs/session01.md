@@ -6,7 +6,7 @@
 - Confirmed TIC-80 drawable area is 240x136 (256x144p, but UI padding is not drawable).
 
 ## Layout + Rendering (current)
-- Card art area: 17x25, with a 1px border (overall 19x27).
+- Card face: **17×25 including the 1px border** (inner art is 15×23).
 - Hand row and table row for both players (top = opponent, bottom = player).
 - Opponent rows are mirrored in order (left-to-right reads reversed).
 - Stacks show 7px interior peeks; top card is always drawn last.

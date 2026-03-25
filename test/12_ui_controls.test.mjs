@@ -194,6 +194,49 @@ test("ui: targeting defaults to existing set when available (Place)", async () =
   assert.ok(view.targeting.cmds[0].dest && view.targeting.cmds[0].dest.setI != null, "expected first option to be existing set");
 });
 
+test("ui: place preview reserves width so later sets shift (no overlap)", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  s.activeP = 0;
+
+  // Add a second set to the right so shifting is observable.
+  // Use a Cyan property so colors differ (set legality doesn't matter for shifting).
+  const uidC = s.deck.find((u) => ctx.PD.defByUid(s, u).id === "prop_cyan");
+  assert.ok(uidC, "expected prop_cyan uid in deck");
+  s.deck = s.deck.filter((u) => u !== uidC);
+  const set2 = ctx.PD.newEmptySet();
+  set2.props.push([uidC, ctx.PD.Color.Cyan]);
+  s.players[0].sets.push(set2);
+
+  const view = ctx.PD.ui.newView();
+  view.mode = "browse";
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = 0;
+
+  // Baseline layout (no targeting): record the second set's left edge.
+  const before = ctx.PD.ui.computeRowModels(s, view);
+  const rowT = before.models[ctx.PD.render.ROW_P_TABLE];
+  const xsBefore = rowT.items.filter((it) => it && it.setI === 1).map((it) => it.x);
+  assert.ok(xsBefore.length > 0, "expected items for setI=1");
+  const xMinBefore = Math.min(...xsBefore);
+
+  // Enter targeting and ensure we are previewing placement into an existing set (setI=0).
+  ctx.PD.ui.step(s, view, { nav: {}, a: { grabStart: true } });
+  assert.equal(view.mode, "targeting");
+  assert.equal(view.targeting.kind, "place");
+  assert.ok(view.targeting.cmds[0] && view.targeting.cmds[0].dest && view.targeting.cmds[0].dest.setI === 0);
+  view.targeting.cmdI = 0;
+
+  const after = ctx.PD.ui.computeRowModels(s, view);
+  const rowT2 = after.models[ctx.PD.render.ROW_P_TABLE];
+  const xsAfter = rowT2.items.filter((it) => it && it.setI === 1).map((it) => it.x);
+  assert.ok(xsAfter.length > 0, "expected items for setI=1 after targeting");
+  const xMinAfter = Math.min(...xsAfter);
+
+  assert.equal(xMinAfter - xMinBefore, ctx.PD.config.render.layout.stackStrideX);
+});
+
 test("ui: wild color toggles and updates cmd list", async () => {
   const ctx = await loadSrcIntoVm();
 
@@ -563,8 +606,8 @@ test("ui: bank targeting produces a preview in the bank stack row", async () => 
   assert.equal(view.targeting.kind, "bank");
 
   const c = ctx.PD.ui.computeRowModels(s, view);
-  assert.ok(c.preview, "expected preview for bank targeting");
-  assert.equal(c.preview.row, ctx.PD.render.ROW_P_HAND);
+  assert.ok(c.meta && c.meta.focus, "expected focus preview for bank targeting");
+  assert.equal(c.meta.focus.row, ctx.PD.render.ROW_P_HAND);
 });
 
 test("ui: menu hover Bank produces a preview when unambiguous", async () => {
@@ -603,9 +646,9 @@ test("ui: menu hover Bank produces a preview when unambiguous", async () => {
   assert.equal(view.menu.items[1].id, "source");
 
   const c = ctx.PD.ui.computeRowModels(s, view);
-  assert.ok(c.preview, "expected preview while hovering Bank in menu mode");
-  assert.equal(c.preview.row, ctx.PD.render.ROW_P_HAND);
-  assert.equal(c.preview.forCmdKind, "bank");
+  assert.ok(c.meta && c.meta.focus, "expected focus preview while hovering Bank in menu mode");
+  assert.equal(c.meta.focus.row, ctx.PD.render.ROW_P_HAND);
+  assert.equal(c.meta.focus.forCmdKind, "bank");
 });
 
 test("ui: onEvents stages dealing and hides drawn cards until revealed", async () => {

@@ -1,40 +1,22 @@
-PD.anim = PD.anim || {};
-
 // Phase 05c: animation plumbing extracted from PD.ui.
 // This module owns view.anim queue/steps, but still manipulates UI view state
 // (mode/menu/targeting) because animations are a UI-owned “watch” moment.
 
-PD.anim.ensure = function (view) {
-  if (!view) return null;
-  if (!view.anim) {
-    view.anim = { q: [], active: null, lock: false, hiddenByP: [{}, {}] };
-  }
-  if (!view.anim.q) view.anim.q = [];
-  if (!view.anim.hiddenByP) view.anim.hiddenByP = [{}, {}];
-  if (!view.anim.hiddenByP[0]) view.anim.hiddenByP[0] = {};
-  if (!view.anim.hiddenByP[1]) view.anim.hiddenByP[1] = {};
-  return view.anim;
-};
-
 PD.anim.onEvents = function (state, view, events) {
   if (!state || !view || !events || events.length === 0) return;
-  var anim = PD.anim.ensure(view);
-  if (!anim) return;
+  var anim = view.anim;
 
   // Clear overlays: animations are a read-only “watch” moment.
   if (view.mode !== "prompt") view.mode = "browse";
   if (view.menu) view.menu.items = [];
   if (view.targeting) view.targeting.active = false;
 
-  var uiCfg = (PD.config && PD.config.ui) ? PD.config.ui : {};
-  var dealFrames = Math.floor(Number(uiCfg.dealFramesPerCard != null ? uiCfg.dealFramesPerCard : 10));
-  var dealGap = Math.floor(Number(uiCfg.dealGapFrames != null ? uiCfg.dealGapFrames : 2));
-  var shuffleFrames = Math.floor(Number(uiCfg.shuffleAnimFrames != null ? uiCfg.shuffleAnimFrames : 30));
-  var shuffleToastFrames = Math.floor(Number(uiCfg.shuffleToastFrames != null ? uiCfg.shuffleToastFrames : 30));
-  if (!isFinite(dealFrames) || dealFrames < 1) dealFrames = 1;
-  if (!isFinite(dealGap) || dealGap < 0) dealGap = 0;
-  if (!isFinite(shuffleFrames) || shuffleFrames < 1) shuffleFrames = 1;
-  if (!isFinite(shuffleToastFrames) || shuffleToastFrames < 1) shuffleToastFrames = 1;
+  // Config knobs are validated in tests (avoid runtime fallbacks in the cartridge).
+  var uiCfg = PD.config.ui;
+  var dealFrames = Math.floor(uiCfg.dealFramesPerCard);
+  var dealGap = Math.floor(uiCfg.dealGapFrames);
+  var shuffleFrames = Math.floor(uiCfg.shuffleAnimFrames);
+  var shuffleToastFrames = Math.floor(uiCfg.shuffleToastFrames);
   if (shuffleFrames < shuffleToastFrames) shuffleFrames = shuffleToastFrames;
 
   var i;
@@ -60,19 +42,19 @@ PD.anim.onEvents = function (state, view, events) {
     if (ev.kind === "draw") {
       var p = Math.floor(Number(ev.p));
       if (!isFinite(p) || p < 0 || p > 1) continue;
-      var uids = ev.uids || [];
-      if (!uids || uids.length === 0) continue;
+      var uids = ev.uids;
+      if (uids.length === 0) continue;
 
       // Find the hand indices for these drawn uids (engine already moved them into hand).
-      var hand = (state.players && state.players[p] && state.players[p].hand) ? state.players[p].hand : [];
+      var hand = state.players[p].hand;
       var handIs = [];
       var j;
       for (j = 0; j < uids.length; j++) {
-        var uid = uids[j] | 0;
+        var uid = uids[j];
         var k;
         var found = -1;
         for (k = 0; k < hand.length; k++) {
-          if ((hand[k] | 0) === (uid | 0)) found = k;
+          if (hand[k] === uid) found = k;
         }
         handIs.push(found);
         if (found >= 0) anim.hiddenByP[p][uid] = true;
@@ -97,8 +79,7 @@ PD.anim.onEvents = function (state, view, events) {
 
 PD.anim.tick = function (state, view) {
   if (!view) return;
-  var anim = PD.anim.ensure(view);
-  if (!anim) return;
+  var anim = view.anim;
 
   // Start next step if idle.
   if (!anim.active && anim.q && anim.q.length > 0) {
@@ -112,28 +93,28 @@ PD.anim.tick = function (state, view) {
   }
 
   if (a.kind === "shuffle") {
-    a.t = (a.t | 0) + 1;
-    if ((a.t | 0) >= (a.frames | 0)) anim.active = null;
+    a.t += 1;
+    if (a.t >= a.frames) anim.active = null;
     anim.lock = !!(anim.active || (anim.q && anim.q.length));
     return;
   }
 
   if (a.kind === "deal") {
-    var p = a.p | 0;
-    var uids = a.uids || [];
-    if (!uids || uids.length === 0) { anim.active = null; anim.lock = !!(anim.q && anim.q.length); return; }
+    var p = a.p;
+    var uids = a.uids;
+    if (uids.length === 0) { anim.active = null; anim.lock = !!(anim.q && anim.q.length); return; }
 
-    if ((a.i | 0) >= (uids.length | 0)) { anim.active = null; anim.lock = !!(anim.q && anim.q.length); return; }
+    if (a.i >= uids.length) { anim.active = null; anim.lock = !!(anim.q && anim.q.length); return; }
 
-    a.t = (a.t | 0) + 1;
+    a.t += 1;
     if (a.phase === "move") {
-      if ((a.t | 0) >= (a.dealFrames | 0)) {
+      if (a.t >= a.dealFrames) {
         // Reveal current card.
-        var uid = uids[a.i] | 0;
-        if (anim.hiddenByP && anim.hiddenByP[p]) delete anim.hiddenByP[p][uid];
-        a.i = (a.i | 0) + 1;
+        var uid = uids[a.i];
+        delete anim.hiddenByP[p][uid];
+        a.i += 1;
         a.t = 0;
-        if ((a.i | 0) >= (uids.length | 0)) {
+        if (a.i >= uids.length) {
           anim.active = null;
         } else {
           a.phase = "gap";
@@ -141,7 +122,7 @@ PD.anim.tick = function (state, view) {
       }
     } else {
       // gap
-      if ((a.t | 0) >= (a.gapFrames | 0)) {
+      if (a.t >= a.gapFrames) {
         a.phase = "move";
         a.t = 0;
       }
@@ -181,8 +162,7 @@ PD.anim.feedbackTick = function (view) {
   if (!view || !view.feedback) return;
   var fb = view.feedback;
 
-  var blinkFrames = Number(fb.blinkFrames || 0);
-  if (!isFinite(blinkFrames)) blinkFrames = 0;
+  var blinkFrames = fb.blinkFrames;
   if (blinkFrames > 0) {
     blinkFrames = blinkFrames - 1;
     fb.blinkFrames = blinkFrames;
@@ -208,15 +188,15 @@ PD.anim.present = function (state, view, computed) {
   // Default highlight color lives in render config.
   var colDefault = PD.config.render.style.colHighlight;
   var hl = colDefault;
-  if (view.feedback && (view.feedback.blinkFrames | 0) > 0) {
-    if (((view.feedback.blinkPhase | 0) % 2) === 0) hl = PD.Pal.Red;
+  if (view.feedback && view.feedback.blinkFrames > 0) {
+    if ((view.feedback.blinkPhase % 2) === 0) hl = PD.Pal.Red;
   }
   computed.highlightCol = hl;
 
   // Phase 05c: hide in-flight dealt cards until revealed (presentation-only).
   if (anim && anim.hiddenByP) {
-    var rowPH = PD.render.ROW_P_HAND | 0;
-    var rowOH = PD.render.ROW_OP_HAND | 0;
+    var rowPH = PD.render.ROW_P_HAND;
+    var rowOH = PD.render.ROW_OP_HAND;
     var rows = [rowOH, rowPH];
     var ri;
     for (ri = 0; ri < rows.length; ri++) {
@@ -231,7 +211,7 @@ PD.anim.present = function (state, view, computed) {
       for (i = 0; i < rm.items.length; i++) {
         var it0 = rm.items[i];
         if (!it0 || it0.kind !== "hand") { out.push(it0); continue; }
-        var uid0 = it0.uid | 0;
+        var uid0 = it0.uid;
         if (hidden[uid0]) continue;
         out.push(it0);
       }
@@ -241,7 +221,7 @@ PD.anim.present = function (state, view, computed) {
 
   if (!a || !a.kind) return computed;
 
-  var rowCenter = PD.render.ROW_CENTER | 0;
+  var rowCenter = PD.render.ROW_CENTER;
   var rmC = computed.models[rowCenter];
 
   if (a.kind === "shuffle") {
@@ -252,9 +232,9 @@ PD.anim.present = function (state, view, computed) {
         var it = rmC.items[i];
         if (!it || !it.kind) continue;
         if (it.kind === "deck") {
-          it.nVis = (a.deckNVis != null) ? (a.deckNVis | 0) : null;
+          it.nVis = (a.deckNVis != null) ? a.deckNVis : null;
           // Cycle 0/1/2 underlayers to suggest shuffling.
-          var phase = (a.t | 0) % 12;
+          var phase = a.t % 12;
           var layers = 0;
           if (phase >= 4 && phase < 8) layers = 1;
           else if (phase >= 8) layers = 2;
@@ -271,15 +251,15 @@ PD.anim.present = function (state, view, computed) {
 
   if (a.kind === "deal") {
     if (a.phase !== "move") return computed;
-    var p = a.p | 0;
-    var uids = a.uids || [];
-    var handIs = a.handIs || [];
-    var iCard = a.i | 0;
+    var p = a.p;
+    var uids = a.uids;
+    var handIs = a.handIs;
+    var iCard = a.i;
     if (iCard < 0 || iCard >= uids.length) return computed;
 
-    var frames = (a.dealFrames | 0);
+    var frames = a.dealFrames;
     if (frames < 1) frames = 1;
-    var t = (a.t | 0);
+    var t = a.t;
     if (t < 0) t = 0;
     if (t > frames) t = frames;
     var u = t / frames;
@@ -295,21 +275,20 @@ PD.anim.present = function (state, view, computed) {
     }
     if (deckX == null || deckY == null) return computed;
 
-    var rowHand = (p === 0) ? (PD.render.ROW_P_HAND | 0) : (PD.render.ROW_OP_HAND | 0);
+    var rowHand = (p === 0) ? PD.render.ROW_P_HAND : PD.render.ROW_OP_HAND;
 
-    var camCenter = (view.camX && view.camX[rowCenter] != null) ? view.camX[rowCenter] : 0;
-    var camH = (view.camX && view.camX[rowHand] != null) ? view.camX[rowHand] : 0;
+    var camCenter = view.camX[rowCenter];
+    var camH = view.camX[rowHand];
 
-    var L = (PD.config && PD.config.render && PD.config.render.layout) ? PD.config.render.layout : null;
-    if (!L) return computed;
+    var L = PD.config.render.layout;
     var padX = L.rowPadX;
     var xHandStart = (p === 0) ? padX : (L.screenW - padX - L.faceW);
     var handStep = (p === 0) ? L.handStrideX : (-L.handStrideX);
-    var handI = (handIs && handIs[iCard] != null) ? (handIs[iCard] | 0) : -1;
+    var handI = handIs[iCard];
     if (handI < 0) return computed;
 
     var xToW = xHandStart + handI * handStep;
-    var yToW = (L.rowY && L.rowY[rowHand] != null) ? (L.rowY[rowHand] + 1) : 0;
+    var yToW = L.rowY[rowHand] + 1;
 
     // Screen-space endpoints (camera-adjusted).
     var xFromS = (deckX - camCenter);
@@ -325,7 +304,7 @@ PD.anim.present = function (state, view, computed) {
       x: x,
       y: y,
       p: p,
-      uid: uids[iCard] | 0
+      uid: uids[iCard]
     };
     return computed;
   }

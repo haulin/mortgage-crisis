@@ -52,7 +52,7 @@ This phase is still **debug-first** and remains **rules-driven**:
 
 To avoid adding more top-level `PD.*` symbols, Phase 03 code lives under:
 
-- `PD.render = PD.render || {}`
+- `PD.render` (namespace created once in `src/00_prelude.js`)
 
 The harness calls a small entry point (e.g. `PD.render.tick(state)` or `PD.renderTick()`), but most helpers/constants stay under `PD.render.*`.
 

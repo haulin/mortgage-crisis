@@ -19,7 +19,7 @@ PD.ActionKind = {
 };
 
 // Rule note display text (Phase 05+). These are appended in Inspect when enabled by config.
-PD.ruleNoteTextById = PD.ruleNoteTextById || [];
+PD.ruleNoteTextById = [];
 PD.ruleNoteTextById[PD.RuleNote.SlyDeal_NotFromFullSet] = "(Cannot be part of a full set)";
 PD.ruleNoteTextById[PD.RuleNote.House_StationsUtilities] = "(Except stations & utilities)";
 PD.ruleNoteTextById[PD.RuleNote.JSN_Chain] = "(You can say No to a No)";

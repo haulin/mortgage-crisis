@@ -41,7 +41,7 @@ Phase 00 is done when:
 
 ## Repository structure to create (Phase 00)
 
-Add these paths (files are intentionally tiny stubs for now):
+Add these paths (Phase 00 starts intentionally small; later phases fill these out):
 
 - `src/`
   - `00_prelude.js`
@@ -130,11 +130,11 @@ At the end, print:
 
 ## Minimal runtime stubs (what each `src/` file does)
 
-These stubs exist only to prove the pipeline works.
+These Phase 00 stubs exist only to prove the pipeline works; they are not a long-term pattern. As the project grows, we keep runtime code lean by avoiding defensive fallbacks and enforcing invariants in tests.
 
 - `src/00_prelude.js`
   - creates `PD`
-  - optionally `PD.clamp` helper
+  - creates module namespaces once (e.g. `PD.render`, `PD.ui`, `PD.anim`, `PD.controls`) so individual modules don’t need `PD.* = PD.* || {}` guards
 - `src/01_config.js`
   - `PD.config = { screenW: 240, screenH: 136, seed: 1001 }`
 - `src/02_boot.js`
@@ -202,5 +202,5 @@ This gives us a foundation for future rule-engine tests without requiring ESM ex
 Once Phase 00 is stable, Phase 01 starts by:
 
 - adding deterministic PRNG module under `src/` (still no exports)
-- moving the existing layout prototype into `src/render/*` (still called from `TIC()` through `PD.*`)
+- keeping the `src/` layout flat (we concatenate `src/*.js` in lexicographic order), adding new modules under `src/` as needed
 
