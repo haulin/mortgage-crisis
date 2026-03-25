@@ -40,8 +40,8 @@ PD.anim.onEvents = function (state, view, events) {
     }
 
     if (ev.kind === "draw") {
-      var p = Math.floor(Number(ev.p));
-      if (!isFinite(p) || p < 0 || p > 1) continue;
+      var p = ev.p;
+      if (!(p === 0 || p === 1)) continue;
       var uids = ev.uids;
       if (uids.length === 0) continue;
 

@@ -113,15 +113,15 @@ Center-row action widgets:
 
 ## Files changed / added
 
-- `src/01_config.js`: add `PD.config.controls` tunables
-- `src/04_controls.js` (new): `PD.controls` (injected input + gestures + repeat)
-- `src/10_debug.js`: Render mode rewired to `PD.controls` + `PD.ui` + display-only `PD.render`
-- `src/11_render.js`: renderer made display-only; add menu/targeting/inspect overlays; remove always-on preview
-- `src/12_ui.js`: full UI view state machine + row model computation + targeting overlays
+- `src/05_config.js`: add `PD.config.controls` tunables
+- `src/25_controls.js`: `PD.controls` (injected input + gestures + repeat)
+- `src/90_debug.js`: Render mode rewired to `PD.controls` + `PD.ui` + display-only `PD.render`
+- `src/60_render.js`: renderer made display-only; add menu/targeting/inspect overlays; remove always-on preview
+- `src/65_ui.js`: full UI view state machine + row model computation + targeting overlays
 
 Tests:
-- `test/11_render.test.mjs`: updated to use `view.cursor`/computed models; adds targeting overlay test
-- `test/12_ui_controls.test.mjs` (new): controls + UI unit tests
+- `test/60_render.test.mjs`: updated to use `view.cursor`/computed models; adds targeting overlay test
+- `test/65_ui_controls.test.mjs`: controls + UI unit tests
 
 ## Definition of Done
 

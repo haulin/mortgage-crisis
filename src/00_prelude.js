@@ -5,4 +5,8 @@ PD.controls = {};
 PD.render = {};
 PD.ui = {};
 PD.anim = {};
+PD.fmt = {};
+PD.layout = {};
+PD.moves = {};
+PD.ai = {};
 

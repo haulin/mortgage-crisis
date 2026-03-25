@@ -110,8 +110,7 @@ PD.debugTick = function () {
     var k = String(pr.kind);
 
     if (k === "payDebt") {
-      var rem = Math.floor(Number(pr.rem || 0));
-      if (!isFinite(rem)) rem = 0;
+      var rem = pr.rem;
       var bufN = (pr.buf && pr.buf.length) ? pr.buf.length : 0;
       return "Prompt:payDebt rem:$" + rem + " buf:" + bufN;
     }
@@ -125,9 +124,7 @@ PD.debugTick = function () {
       var p = pr.p;
       var hand = (state.players && state.players[p] && state.players[p].hand) ? state.players[p].hand : [];
       var handLen = hand.length;
-      var nDiscarded = Math.floor(Number(pr.nDiscarded || 0));
-      if (!isFinite(nDiscarded)) nDiscarded = 0;
-      if (nDiscarded < 0) nDiscarded = 0;
+      var nDiscarded = pr.nDiscarded;
       // Stable target count: initialHand - HAND_MAX.
       var nToDiscard = (handLen + nDiscarded) - PD.HAND_MAX;
       if (nToDiscard < 0) nToDiscard = 0;
@@ -196,7 +193,7 @@ PD.debugTick = function () {
 
     if (v.mode === "menu" && v.menu && v.menu.items) {
       var nM = v.menu.items.length;
-      var mi = (nM > 0) ? PD.ui.clampI(Math.floor(Number(v.menu.i || 0)), nM) : 0;
+      var mi = (nM > 0) ? PD.ui.clampI(v.menu.i, nM) : 0;
       var it = (nM > 0) ? v.menu.items[mi] : null;
       var id = it ? String(it.id || "?") : "(none)";
       printSmall("Menu:" + mi + "/" + nM + " " + id, xR, yR, 12); yR += step;
@@ -205,7 +202,7 @@ PD.debugTick = function () {
     if (v.mode === "targeting" && v.targeting && v.targeting.active) {
       var t = v.targeting;
       var nC = (t.cmds && t.cmds.length) ? t.cmds.length : 0;
-      var ci = (nC > 0) ? PD.ui.clampI(Math.floor(Number(t.cmdI || 0)), nC) : 0;
+      var ci = (nC > 0) ? PD.ui.clampI(t.cmdI, nC) : 0;
       printSmall("Tgt:" + String(t.kind || "?") + " " + ci + "/" + nC + " h:" + bool01(t.hold), xR, yR, 12); yR += step;
     }
 
@@ -266,6 +263,7 @@ PD.mainTick = function () {
   var d = PD.debug;
   if (!d.view) d.view = PD.ui.newView();
   if (!d.ctrl) d.ctrl = PD.controls.newState();
+  if (!d.ai) d.ai = { wait: 0 };
 
   {
     function summarizeUiIntent(intent) {
@@ -279,58 +277,64 @@ PD.mainTick = function () {
     d.lastRaw = raw;
     var actions = PD.controls.actions(d.ctrl, raw, PD.config.controls);
     d.lastUiActions = actions;
+
+    // Phase 07: AI acts for actor=1 (activeP or prompt.p). While AI is acting, suppress player input.
+    var actor = PD.ai.actor(d.state);
+    if (actor !== 0) actions = {};
+
     var intent = PD.ui.step(d.state, d.view, actions);
     d.lastUiIntentSummary = summarizeUiIntent(intent);
 
-    if (intent && intent.kind === "applyCmd" && intent.cmd) {
+    if (actor === 0 && intent && intent.kind === "applyCmd" && intent.cmd) {
       try {
         var res = PD.applyCommand(d.state, intent.cmd);
         d.lastCmd = intent.cmd.kind;
         d.lastEvents = (res && res.events) ? res.events : [];
         PD.anim.onEvents(d.state, d.view, d.lastEvents);
-
-        // Phase 06 (Rent vertical slice): temporarily auto-resolve opponent debt prompts so
-        // Rent can be play-tested end-to-end before full AI/hotseat/JSN UX exists.
-        // Deterministic: uses the same seeded RNG in GameState.
-        var guard = 0;
-        while (d.state.prompt && d.state.prompt.kind === "payDebt" && d.state.prompt.p === 1) {
-          guard++;
-          if (guard > 50) break;
-          var movesAuto = PD.legalMoves(d.state);
-          if (!movesAuto || movesAuto.length === 0) break;
-          var idx = PD.rngNextInt(d.state, movesAuto.length);
-          var mv = movesAuto[idx];
-          if (!mv || mv.kind !== "payDebt") break;
-          var res2 = PD.applyCommand(d.state, mv);
-          var ev2 = (res2 && res2.events) ? res2.events : [];
-          // Merge events for debug display; keep lastCmd the last auto step.
-          d.lastCmd = "auto:" + mv.kind;
-          d.lastEvents = d.lastEvents.concat(ev2);
-          PD.anim.onEvents(d.state, d.view, ev2);
-        }
       } catch (err) {
         d.lastCmd = intent.cmd.kind + "(!)";
         d.lastEvents = [];
         var code = (err && err.message) ? String(err.message) : "error";
-        // Friendly message is derived from code for now.
-        var msg = code;
-        if (code === "no_plays_left") msg = "No plays left";
-        else if (code === "hand_over_limit") msg = "Hand over limit";
-        else if (code === "not_bankable") msg = "Not bankable";
-        else if (code === "set_not_complete") msg = "Set not complete";
-        else if (code === "set_color_mismatch") msg = "Wrong set color";
-        else if (code === "wild_color_illegal") msg = "Wild color illegal";
-        else if (code === "no_targets") msg = "No valid destination";
-        else if (code === "house_pay_first") msg = "House must be paid first";
+        var msg = PD.fmt.errorMessage(code);
         PD.anim.feedbackError(d.view, code, msg);
       }
-    } else if (intent && intent.kind === "debug") {
+    } else if (actor === 0 && intent && intent.kind === "debug") {
       if (intent.action === "step") {
         PD.debugStep();
         PD.anim.onEvents(d.state, d.view, d.lastEvents);
       }
       else if (intent.action === "reset") PD.debugReset();
       else if (intent.action === "nextScenario") PD.debugNextScenario();
+    }
+
+    // Phase 07: AI pacing loop (one command per step, with fixed delay).
+    if (actor !== 0 && !(d.view && d.view.anim && d.view.anim.lock)) {
+      if (d.ai.wait > 0) {
+        d.ai.wait -= 1;
+      } else {
+        var cmdAi = PD.ai.pickRandomLegalMove(d.state);
+        if (cmdAi) {
+          var txt = PD.ai.describeCmd(d.state, cmdAi);
+          if (txt) {
+            PD.ui.toastPush(d.view, { id: "ai:narrate", kind: "ai", text: txt, frames: PD.config.ui.aiNarrateToastFrames });
+          }
+          try {
+            var resAi = PD.applyCommand(d.state, cmdAi);
+            d.lastCmd = "ai:" + cmdAi.kind;
+            d.lastEvents = (resAi && resAi.events) ? resAi.events : [];
+            PD.anim.onEvents(d.state, d.view, d.lastEvents);
+          } catch (errAi) {
+            d.lastCmd = "ai:" + cmdAi.kind + "(!)";
+            d.lastEvents = [];
+            var codeAi = (errAi && errAi.message) ? String(errAi.message) : "error";
+            var msgAi = PD.fmt.errorMessage(codeAi);
+            PD.anim.feedbackError(d.view, codeAi, msgAi);
+          }
+          d.ai.wait = PD.config.ui.aiStepDelayFrames;
+        } else {
+          d.ai.wait = PD.config.ui.aiStepDelayFrames;
+        }
+      }
     }
 
     var computed = PD.ui.computeRowModels(d.state, d.view);

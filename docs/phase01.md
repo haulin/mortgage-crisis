@@ -30,7 +30,7 @@ Phase 01 is done when:
 
 ## Scope (what we implement)
 
-### 1) RNG module (`src/03_rng.js`)
+### 1) RNG module (`src/15_rng.js`)
 
 Implement a tiny RNG with a 32-bit state:
 
@@ -68,7 +68,7 @@ Notes:
 - Bitwise ops in JS are 32-bit signed, but `>>> 0` coerces back to unsigned.
 - Modulo bias is acceptable for our use (shuffle + AI), given the tiny state and game requirements.
 
-### 2) Seed policy (`src/04_seed.js` or keep in `src/03_rng.js`)
+### 2) Seed policy (`src/20_seed.js` or keep in `src/15_rng.js`)
 
 Add helpers:
 
@@ -87,7 +87,7 @@ This gives deterministic, memorable sequences and reproducibility by sharing `se
 
 When we need “random-enough” seeds for playtesting/release, we can seed from `tstamp()` (seconds since epoch). Starting multiple new games within <1 second is not a realistic concern.
 
-### 3) Shuffle helper (`src/05_shuffle.js` or alongside RNG)
+### 3) Shuffle helper (`src/30_shuffle.js` or alongside RNG)
 
 Implement Fisher–Yates in-place shuffle:
 
@@ -96,7 +96,7 @@ Implement Fisher–Yates in-place shuffle:
 
 This will be used later for deck shuffling.
 
-### 4) Config changes (`src/01_config.js`)
+### 4) Config changes (`src/05_config.js`)
 
 Add config fields:
 
@@ -106,7 +106,7 @@ Keep existing:
 
 - screen dimensions
 
-### 5) Boot screen update (`src/02_boot.js`) (optional)
+### 5) Seed display in harness (`src/90_debug.js`) (optional)
 
 Phase 01 does not require any UI changes. Optionally, we can print the current seed on the boot screen while developing.
 
@@ -120,7 +120,7 @@ Reason:
 
 - stabilizes future `pmem()` usage across code edits (without relying on code hash)
 
-### 7) Tests (`test/rng.test.mjs`, `test/shuffle.test.mjs`)
+### 7) Tests (`test/15_rng.test.mjs`, `test/30_shuffle.test.mjs`)
 
 Add deterministic tests using Node `--test`:
 
@@ -138,13 +138,13 @@ Implementation detail:
 
 ## Suggested file list (expected changes)
 
-- `src/01_config.js` (add `seedBase`)
-- `src/02_boot.js` (optional: display seed)
-- `src/03_rng.js` (new)
-- `src/04_seed.js` (new; or fold into `03_rng.js`)
-- `src/05_shuffle.js` (new; or fold into seed/rng module)
+- `src/05_config.js` (add `seedBase`)
+- `src/90_debug.js` (optional: display seed)
+- `src/15_rng.js` (new)
+- `src/20_seed.js` (new; or fold into `15_rng.js`)
+- `src/30_shuffle.js` (new; or fold into seed/rng module)
 - `scripts/build.mjs` (inject `// saveid: PropertyDeal`)
-- `test/` (new tests: `rng.test.mjs`, `shuffle.test.mjs`)
+- `test/` (new tests: `15_rng.test.mjs`, `30_shuffle.test.mjs`)
 
 ## Notes / future hooks
 

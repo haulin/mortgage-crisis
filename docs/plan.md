@@ -21,6 +21,7 @@ Documentation convention (for future phases):
 - **Phase 05b ✅**: turn loop framing + discard-down-to-7 prompt + deterministic reshuffle + toast/prompt foundation polish. See `docs/phase05b.md`.
 - **Phase 05c ✅**: draw + reshuffle visibility (staged dealing + shuffle toast/animation), plus renderer‑oblivious animation presentation via `PD.anim.present`. See `docs/phase05c.md`.
 - **Phase 06 ✅**: debt/payment prompt + recipient “faux-turn placement” for received properties (incl. Wild color choice), using prompt actor `prompt.p` (not `activeP`). See `docs/phase06.md`.
+- **Phase 07 ✅**: AI (random legal) + narrated pacing. See `docs/phase07.md`.
 
 ## Goals + Constraints
 
@@ -482,10 +483,18 @@ Content expansion readiness:
 
 - `src/` (flat, numeric prefixes; deterministic concatenation order)
   - `00_prelude.js` (`PD` namespace)
-  - `01_config.js` (palette + render config)
-  - `03_rng.js`, `05_shuffle.js`, `06_defs.js`, `07_state.js`, `08_rules.js`, `09_scenarios.js`
-  - `10_debug.js` (debug harness)
-  - `11_render.js` (renderer; namespaced under `PD.render.`*)
+  - `05_config.js` (palette + render config + gameplay/UI knobs)
+  - `10_util.js`
+  - `15_rng.js`, `20_seed.js`, `30_shuffle.js`
+  - `35_defs.js`, `40_state.js`, `45_rules.js`, `50_scenarios.js`
+  - `52_moves.js` (command/move helpers; UI queries)
+  - `53_ai.js` (simple AI helpers for harness playtesting)
+  - `55_fmt.js` (shared formatting/labels)
+  - `56_layout.js` (shared geometry/row policy)
+  - `60_render.js` (renderer; namespaced under `PD.render.`*)
+  - `65_ui.js` (UI state machine + view models; namespaced under `PD.ui.`*)
+  - `70_anim.js` (renderer‑oblivious animation presentation)
+  - `90_debug.js` (debug harness + `PD.mainTick`)
   - `99_main.js` (single `TIC()` entry point)
 
 Module organization is enforced via namespaces (e.g. `PD.render`, future `PD.ui`) rather than subfolders, because the build/test tooling currently only includes top-level `src/*.js`.

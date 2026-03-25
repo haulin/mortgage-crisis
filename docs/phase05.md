@@ -51,15 +51,15 @@ All current `CARD_DEFS` entries have updated `name`/`desc` text with:
 
 ## Files changed
 
-- `src/01_config.js`: add inspect panel/layout knobs, button strip sizing knobs, pile count offsets, and rules enabled notes
-- `src/06_defs.js`: update `name/desc`, add `ruleNotes`, add `PD.ruleNoteTextById`
-- `src/11_render.js`: render Inspect as a panel, small-font desc, generated Value suffix, rule-note append, pile count offset applied
-- `src/12_ui.js`: keep center buttons visible during Inspect; read button strip sizing from config
+- `src/05_config.js`: add inspect panel/layout knobs, button strip sizing knobs, pile count offsets, and rules enabled notes
+- `src/35_defs.js`: update `name/desc`, add `ruleNotes`, add `PD.ruleNoteTextById`
+- `src/60_render.js`: render Inspect as a panel, small-font desc, generated Value suffix, rule-note append, pile count offset applied
+- `src/65_ui.js`: keep center buttons visible during Inspect; read button strip sizing from config
 
 Tests:
 
-- `test/01_config_sanity.test.mjs`: validate new required config knobs (including non-empty enabled rule notes)
-- `test/12_ui_controls.test.mjs`: regression test ensuring center buttons remain present during Inspect
+- `test/05_config_sanity.test.mjs`: validate new required config knobs (including non-empty enabled rule notes)
+- `test/65_ui_controls.test.mjs`: regression test ensuring center buttons remain present during Inspect
 
 ## Definition of Done
 

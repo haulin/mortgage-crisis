@@ -35,7 +35,7 @@ Phase 05 will implement the actual discard-down-to-7 prompt/UI (including the â€
 ### Render + debug HUD polish (dev-only)
 
 - Fix: opponent wild property orientation now keeps the **assigned** color on the **owner-facing** half (also when flipped for opponent).
-  - Regression test added in `test/11_render.test.mjs`.
+  - Regression test added in `test/60_render.test.mjs`.
 - Restore: DebugText selection line for Wilds shows current assignment:
   - e.g. `Wild:Cyan/Black As:Black`
 - Clarify: DebugText bank line shows both **count** and **value total**:
@@ -44,12 +44,12 @@ Phase 05 will implement the actual discard-down-to-7 prompt/UI (including the â€
 
 ## Files changed
 
-- `src/07_state.js`: start-of-turn draw (2 vs 5) + partial draw behavior
-- `src/08_rules.js`: end-turn hand cap enforcement
-- `src/10_debug.js`: move stepping (prefers stacking into existing sets) + clearer bank/debug lines
-- `src/11_render.js`: wild rendering orientation fix + debug selection details
-- `test/08_rules.test.mjs`: updated + new tests for the above
-- `test/11_render.test.mjs`: add opponent-wild regression test
+- `src/40_state.js`: start-of-turn draw (2 vs 5) + partial draw behavior
+- `src/45_rules.js`: end-turn hand cap enforcement
+- `src/90_debug.js`: move stepping (prefers stacking into existing sets) + clearer bank/debug lines
+- `src/60_render.js`: wild rendering orientation fix + debug selection details
+- `test/45_rules.test.mjs`: updated + new tests for the above
+- `test/60_render.test.mjs`: add opponent-wild regression test
 - `docs/plan.md`: spec updated to include the draw-5 rule and the end-turn cap
 
 ## Definition of Done

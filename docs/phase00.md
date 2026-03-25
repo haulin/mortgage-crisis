@@ -20,7 +20,7 @@ The end result is:
 - **Module ordering**: numeric prefixes, lexicographic concat (e.g. `00_`, `01_`, …, `99_`)
 - **Namespace**: a single global `PD` object (`var PD = PD || {};`)
 - **Generated artifact**: `game.js` is **committed**
-- **Phase 00 runtime**: shows a minimal **boot screen** (“Build OK”, seed, etc.)
+- **Phase 00 runtime**: keep a minimal runnable cartridge entry point (`function TIC() { PD.mainTick(); }`)
 - **Watcher**: no watch mode in Phase 00 (manual build only)
 - **No `import`/`export` in `src/`** (tests will load scripts via Node `vm` and call `PD.*`)
 - **Output debug separators** in `game.js`: yes
@@ -45,8 +45,8 @@ Add these paths (Phase 00 starts intentionally small; later phases fill these ou
 
 - `src/`
   - `00_prelude.js`
-  - `01_config.js`
-  - `02_boot.js`
+  - `05_config.js`
+  - `90_debug.js`
   - `99_main.js`
 - `scripts/`
   - `build.mjs`
@@ -62,7 +62,7 @@ Add these paths (Phase 00 starts intentionally small; later phases fill these ou
 - `src/00_prelude.js` defines `var PD = PD || {};`
 - All other files must attach to it:
   - `PD.config = {...}`
-  - `PD.bootTick = function() {...}`
+  - `PD.mainTick = function() {...}`
 
 Avoid defining globals like `state`, `ui`, etc. outside `PD`.
 
@@ -135,18 +135,14 @@ These Phase 00 stubs exist only to prove the pipeline works; they are not a long
 - `src/00_prelude.js`
   - creates `PD`
   - creates module namespaces once (e.g. `PD.render`, `PD.ui`, `PD.anim`, `PD.controls`) so individual modules don’t need `PD.* = PD.* || {}` guards
-- `src/01_config.js`
-  - `PD.config = { screenW: 240, screenH: 136, seed: 1001 }`
-- `src/02_boot.js`
-  - `PD.bootTick = function() { cls(0); print(...); }`
+- `src/05_config.js`
+  - defines `PD.config` (palette, render config, gameplay/UI knobs)
+- `src/90_debug.js`
+  - defines `PD.mainTick` (debug harness modes + render loop)
 - `src/99_main.js`
-  - defines `function TIC() { PD.bootTick(); }`
+  - defines `function TIC() { PD.mainTick(); }`
 
-The boot screen should show at minimum:
-
-- title (“Property Deal”)
-- build marker (“Build OK”)
-- seed value (e.g. `1001`)
+The cartridge should be runnable immediately after build (i.e. `TIC()` exists and calls into `PD.*`).
 
 ## `package.json` (Phase 00)
 
@@ -176,10 +172,12 @@ The test should:
 - Load every `src/*.js` (same ordering rule as build) into that context
 - Assert:
   - `PD` exists
-  - `PD.bootTick` exists and is a function
+  - `PD.mainTick` exists and is a function
   - `TIC` exists and is a function
 
 This gives us a foundation for future rule-engine tests without requiring ESM exports.
+
+Additionally, we keep a “compiled-style” test (`test/00_bundle_compiled.test.mjs`) that concatenates `src/*.js` into one big script (like `game.js`) and runs it in a single VM context to catch load-order / concatenation issues early.
 
 ## Git / committing
 

@@ -74,26 +74,8 @@
   function rowH(row) { return R.cfg.rowH[row]; }
   function rowY1(row) { return rowY0(row) + rowH(row) - 1; }
 
-  function faceYForRow(row) {
-    if (row === R.ROW_OP_HAND) {
-      // Bottom slice visible: cards extend upward off-screen.
-      return rowY0(row) + rowH(row) - R.cfg.faceH;
-    }
-    if (row === R.ROW_OP_TABLE || row === R.ROW_P_TABLE || row === R.ROW_P_HAND) {
-      return rowY0(row) + R.cfg.faceInsetY;
-    }
-    return rowY0(row);
-  }
-
-  function isOpponentRow(row) {
-    return row === R.ROW_OP_HAND || row === R.ROW_OP_TABLE;
-  }
-
-  function playerForRow(row) {
-    if (row === R.ROW_OP_HAND || row === R.ROW_OP_TABLE) return 1;
-    if (row === R.ROW_P_HAND || row === R.ROW_P_TABLE) return 0;
-    return -1;
-  }
+  // Row policy lives in PD.layout; renderer uses it for flip decisions.
+  function isOpponentRow(row) { return PD.layout.isOpponentRow(row); }
 
   function cardLocalRectToScreen(xFace, yFace, lx, ly, w, h, flip180) {
     if (!flip180) {
@@ -422,8 +404,6 @@
     // Header: removed (Phase 04). Plays indicator is drawn in screen-space.
 
     function drawCountDigits(n, xFace, yFace) {
-      n = Math.floor(Number(n || 0));
-      if (!isFinite(n) || n < 0) n = 0;
       var sN = String(n);
       if (sN.length > 2) sN = sN.slice(-2);
       var len = sN.length;
@@ -560,16 +540,6 @@
       yDesc = yTitle + descDy;
     }
 
-    function colorName(c) {
-      c = Math.floor(Number(c));
-      if (!isFinite(c)) c = 0;
-      if (c === PD.Color.Cyan) return "Cyan";
-      if (c === PD.Color.Magenta) return "Magenta";
-      if (c === PD.Color.Orange) return "Orange";
-      if (c === PD.Color.Black) return "Black";
-      return "c" + c;
-    }
-
     function drawInspectForSelection(sel) {
       if (!sel) return;
 
@@ -625,66 +595,9 @@
         return;
       }
 
-      function valueForDef(def) {
-        if (!def) return null;
-        if (def.kind === PD.CardKind.Property) {
-          if (def.propertyPayValue != null) return def.propertyPayValue;
-          return 0;
-        }
-        if (def.bankValue != null) return def.bankValue;
-        return null;
-      }
-
-      function inspectTitleForDef(def) {
-        var t = def.name ? String(def.name) : (def.id ? String(def.id) : "");
-        return t;
-      }
-
-      function inspectDescForDef(def, selColor) {
-        var base = def && def.desc ? String(def.desc) : "";
-        base = appendRuleNotes(def, base);
-        var v = valueForDef(def);
-        var vLine = (v != null && v > 0) ? ("Value: $" + String(v)) : "";
-        var usedAs = "";
-        if (def && PD.isWildDef(def)) {
-          var c = Math.floor(Number(selColor));
-          if (isFinite(c) && c !== PD.NO_COLOR && def.wildColors && (c === def.wildColors[0] || c === def.wildColors[1])) {
-            usedAs = "Currently used as: " + colorName(c);
-          }
-        }
-
-        var out = "";
-        if (vLine) out = vLine;
-        if (usedAs) out = out ? (out + "\n" + usedAs) : usedAs;
-        if (base) out = out ? (out + "\n" + base) : base;
-        return out;
-      }
-
-      function appendRuleNotes(def, baseDesc) {
-        baseDesc = baseDesc ? String(baseDesc) : "";
-        if (!def || !def.ruleNotes || def.ruleNotes.length === 0) return baseDesc;
-        var enabled = PD.config.rules.enabledRuleNotes;
-        if (enabled.length === 0) return baseDesc;
-
-        var out = baseDesc;
-        var i;
-        for (i = 0; i < def.ruleNotes.length; i++) {
-          var id = def.ruleNotes[i];
-          var j;
-          var on = false;
-          for (j = 0; j < enabled.length; j++) if (enabled[j] === id) { on = true; break; }
-          if (!on) continue;
-          var txt = PD.ruleNoteTextById[id] ? String(PD.ruleNoteTextById[id]) : "";
-          if (!txt) continue;
-          if (out) out += "\n";
-          out += txt;
-        }
-        return out;
-      }
-
       drawMiniCard(s, uid, xPrev, yPrev, false, sel.color);
-      printSafe(inspectTitleForDef(def), xTitle, yTitle, cfg.colText);
-      var desc = inspectDescForDef(def, sel.color);
+      printSafe(PD.fmt.inspectTitleForDef(def), xTitle, yTitle, cfg.colText);
+      var desc = PD.fmt.inspectDescForDef(def, sel.color);
       printExSafe(desc, xDesc, yDesc, cfg.colText, false, 1, true);
     }
 
@@ -693,8 +606,9 @@
       if (src && src.uid) drawMiniCard(s, src.uid, xPrev, yPrev, false);
       printSafe("Menu", xTitle, yTitle - 1, cfg.colText);
       var items = (view.menu && view.menu.items) ? view.menu.items : [];
-      var selI = (view.menu && view.menu.i != null) ? Math.floor(Number(view.menu.i)) : 0;
-      if (!isFinite(selI)) selI = 0;
+      var selI = view.menu ? view.menu.i : 0;
+      if (selI < 0) selI = 0;
+      if (selI >= items.length) selI = items.length - 1;
       var j;
       var y = yDesc - 1;
       // Backing box so the menu is unmistakable.
@@ -706,7 +620,7 @@
       var boxH = (items.length * 7 + 10);
       // Let the box sit 1px closer to the hint band to fit 3 items cleanly.
       var maxH = (hintY - 2) - boxY;
-      if (isFinite(maxH) && maxH > 0 && boxH > maxH) boxH = maxH;
+      if (maxH > 0 && boxH > maxH) boxH = maxH;
       if (boxH < 16) boxH = 16;
       rectSafe(boxX, boxY, boxW, boxH, PD.Pal.Black);
       rectbSafe(boxX, boxY, boxW, boxH, cfg.colCenterPanelBorder);
@@ -729,53 +643,11 @@
       if (!t || !t.active) return;
       if (t.card && t.card.uid) drawMiniCard(s, t.card.uid, xPrev, yPrev, false, (t.wildColor !== PD.NO_COLOR) ? t.wildColor : null);
 
-      function titleForCmd(cmd) {
-        if (!cmd || !cmd.kind) return (t && t.kind === "quick") ? "Action" : "Target";
-        if (cmd.kind === "playRent") return "Rent";
-        if (cmd.kind === "playHouse") return "Build";
-        if (cmd.kind === "bank") return "Bank";
-        if (cmd.kind === "playProp") return "Place";
-        if (cmd.kind === "source") return "Source";
-        return "Target";
-      }
+      var cmd = (t.cmds && t.cmds.length) ? t.cmds[t.cmdI % t.cmds.length] : null;
 
-      var cmdI = Math.floor(Number(t.cmdI || 0));
-      if (!isFinite(cmdI)) cmdI = 0;
-      var cmd = (t.cmds && t.cmds.length) ? t.cmds[cmdI % t.cmds.length] : null;
-
-      var title = (t.kind === "build") ? "Build" :
-        ((t.kind === "place") ? "Place" :
-          ((t.kind === "rent") ? "Rent" :
-            ((t.kind === "quick") ? titleForCmd(cmd) : "Bank")));
+      var title = PD.fmt.targetingTitle(t, cmd);
       printSafe(title, xTitle, yTitle, cfg.colText);
-      var destLine = "";
-      if (cmd && cmd.kind === "playProp") {
-        if (cmd.dest && cmd.dest.newSet) destLine = "Dest: New set";
-        else if (cmd.dest && cmd.dest.setI != null) {
-          var setI = Math.floor(Number(cmd.dest.setI));
-          var set = isFinite(setI) ? s.players[0].sets[setI] : null;
-          var col = set ? PD.getSetColor(set.props) : PD.NO_COLOR;
-          destLine = "Dest: " + colorName(col) + " set";
-        }
-        if (t.card && t.card.def && PD.isWildDef(t.card.def)) destLine += "\nAs: " + colorName(t.wildColor);
-      } else if (cmd && cmd.kind === "playHouse") {
-        var setI2 = Math.floor(Number(cmd.dest.setI));
-        var set2 = isFinite(setI2) ? s.players[0].sets[setI2] : null;
-        var col2 = set2 ? PD.getSetColor(set2.props) : PD.NO_COLOR;
-        destLine = "Dest: " + colorName(col2) + " set";
-      } else if (cmd && cmd.kind === "playRent") {
-        var setIR = Math.floor(Number(cmd.setI));
-        var setR = isFinite(setIR) ? s.players[0].sets[setIR] : null;
-        var colR = setR ? PD.getSetColor(setR.props) : PD.NO_COLOR;
-        var amt = PD.rentAmountForSet(s, 0, setIR);
-        destLine = "From: " + colorName(colR) + " set\nAmt: $" + amt;
-      } else if (cmd && cmd.kind === "bank") {
-        destLine = "Dest: Bank";
-      } else if (cmd && cmd.kind === "source") {
-        destLine = "Dest: Source";
-      } else {
-        destLine = "(no destination)";
-      }
+      var destLine = PD.fmt.targetingDestLine(s, t, cmd);
       // Backing box so targeting is unmistakable.
       var boxX = xDesc - 2;
       var boxY = yDesc - 2;
@@ -786,9 +658,7 @@
 
       printExSafe(destLine, xDesc, yDesc, cfg.colText, false, 1, false);
 
-      var help = (t.kind === "quick") ? "L/R: Option" : ((t.kind === "rent") ? "L/R: Set" : "L/R: Dest");
-      if (t.card && t.card.def && PD.isWildDef(t.card.def)) help += "  U/D: Color";
-      help += t.hold ? "\nRelease A: Drop  B:Cancel" : "\nA:Confirm  B:Cancel";
+      var help = PD.fmt.targetingHelp(t);
       printExSafe(help, xDesc, y1 - 18, cfg.colText, false, 1, true);
     }
 
@@ -807,9 +677,6 @@
     if (cfg.hudLineEnabled === false) return;
     var maxPlays = 3;
     var playsLeft = state.playsLeft;
-    if (playsLeft == null) playsLeft = 0;
-    playsLeft = Math.floor(Number(playsLeft));
-    if (!isFinite(playsLeft)) playsLeft = 0;
     if (playsLeft < 0) playsLeft = 0;
     if (playsLeft > maxPlays) playsLeft = maxPlays;
     var used = maxPlays - playsLeft;
@@ -886,7 +753,8 @@
       var i;
       for (i = 0; i < parts.length; i++) if (parts[i].length > maxLen) maxLen = parts[i].length;
 
-      var isError = (t.kind && String(t.kind) === "error");
+      var kind = t.kind ? String(t.kind) : "";
+      var isError = (kind === "error");
       var iconW = isError ? 10 : 0;
       var boxW = (padX * 2) + iconW + maxLen * charW;
       if (boxW > cfg.screenW - 8) boxW = cfg.screenW - 8;
@@ -895,7 +763,9 @@
       var x0 = Math.floor((cfg.screenW - boxW) / 2);
       var y0 = yCursor;
 
-      rectSafe(x0, y0, boxW, boxH, PD.Pal.Black);
+      var bgCol = PD.Pal.Black;
+      if (kind === "ai") bgCol = cfg.colToastBgAi;
+      rectSafe(x0, y0, boxW, boxH, bgCol);
       rectbSafe(x0, y0, boxW, boxH, cfg.colCenterPanelBorder);
 
       var textX = x0 + padX + iconW;
@@ -1141,16 +1011,6 @@
     }
     if (!it) return ["Sel:(none)", ""];
 
-    function colorName(c) {
-      c = Math.floor(Number(c));
-      if (!isFinite(c)) c = 0;
-      if (c === PD.Color.Cyan) return "Cyan";
-      if (c === PD.Color.Magenta) return "Magenta";
-      if (c === PD.Color.Orange) return "Orange";
-      if (c === PD.Color.Black) return "Black";
-      return "c" + c;
-    }
-
     if (it.row === R.ROW_CENTER) {
       if (it.kind === "deck") return ["Sel:Deck", "Cards:" + debug.state.deck.length];
       if (it.kind === "discard") return ["Sel:Discard", "Cards:" + debug.state.discard.length];
@@ -1167,12 +1027,12 @@
         if (PD.isWildDef(def)) {
           var c0 = def.wildColors[0];
           var c1 = def.wildColors[1];
-          line2 = "Wild:" + colorName(c0) + "/" + colorName(c1);
+          line2 = "Wild:" + PD.fmt.colorName(c0) + "/" + PD.fmt.colorName(c1);
           if (it.color != null && it.color !== PD.NO_COLOR) {
-            line2 += " As:" + colorName(it.color);
+            line2 += " As:" + PD.fmt.colorName(it.color);
           }
         } else {
-          line2 = "Prop:" + colorName(def.propertyColor);
+          line2 = "Prop:" + PD.fmt.colorName(def.propertyColor);
         }
       }
 
@@ -1199,21 +1059,6 @@
     }
   }
 
-  function selectedFromModels(view, models) {
-    if (!view || !view.cursor || !models) return null;
-    var row = Math.floor(Number(view.cursor.row || 0));
-    if (!isFinite(row)) row = 0;
-    if (row < 0) row = 0;
-    if (row > 4) row = 4;
-    var rm = models[row];
-    if (!rm || !rm.items || rm.items.length === 0) return null;
-    var i = Math.floor(Number(view.cursor.i || 0));
-    if (!isFinite(i)) i = 0;
-    if (i < 0) i = 0;
-    if (i >= rm.items.length) i = rm.items.length - 1;
-    return rm.items[i];
-  }
-
   R.drawFrame = function (args) {
     if (!args) return;
     var state = args.state || (args.debug && args.debug.state) || args.state;
@@ -1225,7 +1070,9 @@
     if (!computed || !computed.models) return;
 
     var models = computed.models;
-    var sel = selectedFromModels(view, models);
+    // UI owns cursor/selection policy (clamping, relocation off empty rows, etc.).
+    // Renderer should trust the computed selection rather than re-deriving from view.cursor.
+    var sel = computed.selected || null;
 
     var cfg = R.cfg;
     var hlCol = (computed.highlightCol != null) ? computed.highlightCol : cfg.colHighlight;
@@ -1240,7 +1087,7 @@
       var rm = models[row];
       if (!rm || !rm.items) continue;
       var cam = (view.camX && view.camX[row] != null) ? view.camX[row] : 0;
-      var selected = (view.cursor.row === row) ? sel : null;
+      var selected = (sel && sel.row === row) ? sel : null;
       drawRowCards(state, view, computed, rm, row, selected, cam, hlCol);
     }
 
@@ -1251,7 +1098,7 @@
     drawAnimOverlay(state, view, computed);
 
     // Highlight center widgets if selected.
-    if (view.cursor.row === R.ROW_CENTER && sel) {
+    if (sel && sel.row === R.ROW_CENTER) {
       rectbSafe(sel.x - 1, sel.y - 1, sel.w + 2, sel.h + 2, hlCol);
     }
 

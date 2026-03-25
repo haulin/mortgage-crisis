@@ -61,8 +61,7 @@ PD.hasAnyPayables = function (state, p) {
 };
 
 PD.beginDebt = function (state, fromP, toP, amount) {
-  amount = Math.floor(Number(amount));
-  if (!isFinite(amount) || amount <= 0) return;
+  if (!(amount > 0)) return;
   if (!PD.hasAnyPayables(state, fromP)) return;
   PD.setPrompt(state, { kind: "payDebt", p: fromP, toP: toP, rem: amount, buf: [] });
 };

@@ -62,7 +62,7 @@ Debug-only reveal behavior (gated by config):
 
 ## Tweak points (single source of truth)
 
-All Phase 03b tweak knobs live in `src/01_config.js`:
+All Phase 03b tweak knobs live in `src/05_config.js`:
 
 - `PD.config.seedBase`: seed used by Debug/Render resets
 - `PD.config.debug.enabled`: gates debug-only reveal behavior in preview

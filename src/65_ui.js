@@ -63,50 +63,36 @@ PD.ui.newView = function () {
 };
 
 PD.ui.toastPush = function (view, toast) {
-  if (!view) return;
-  if (!view.toasts) view.toasts = [];
-  if (!toast) return;
   var t = {
-    id: toast.id != null ? String(toast.id) : null,
-    kind: toast.kind != null ? String(toast.kind) : "",
-    text: toast.text != null ? String(toast.text) : "",
-    frames: toast.frames != null ? Math.floor(Number(toast.frames)) : 0,
-    persistent: !!toast.persistent
+    id: toast.id,
+    kind: toast.kind,
+    text: toast.text,
+    frames: toast.frames,
+    persistent: toast.persistent
   };
-  if (!isFinite(t.frames)) t.frames = 0;
-  if (t.frames < 0) t.frames = 0;
-  if (!t.text) return;
 
   // Replace-by-id if provided.
-  if (t.id) {
-    var i;
-    for (i = 0; i < view.toasts.length; i++) {
-      var ex = view.toasts[i];
-      if (ex && ex.id === t.id) { view.toasts[i] = t; return; }
-    }
+  var i;
+  for (i = 0; i < view.toasts.length; i++) {
+    var ex = view.toasts[i];
+    if (ex && ex.id === t.id) { view.toasts[i] = t; return; }
   }
   view.toasts.push(t);
 };
 
 PD.ui.toastsTick = function (view) {
-  if (!view || !view.toasts) return;
   var out = [];
   var i;
   for (i = 0; i < view.toasts.length; i++) {
     var t = view.toasts[i];
-    if (!t || !t.text) continue;
     if (t.persistent) { out.push(t); continue; }
-    var f = Number(t.frames || 0);
-    if (!isFinite(f)) f = 0;
-    f = Math.floor(f) - 1;
-    if (f > 0) { t.frames = f; out.push(t); }
+    t.frames -= 1;
+    if (t.frames > 0) out.push(t);
   }
   view.toasts = out;
 };
 
 PD.ui.syncPromptToast = function (state, view) {
-  if (!state || !view) return;
-  if (!view.toasts) view.toasts = [];
   var pr = state.prompt;
   var has = !!(pr && pr.kind && pr.p === 0);
   var i;
@@ -124,16 +110,13 @@ PD.ui.syncPromptToast = function (state, view) {
   var txt = "";
   if (pr.kind === "discardDown") {
     var over = state.players[0].hand.length - PD.HAND_MAX;
-    if (over < 0) over = 0;
     txt = "Too many cards. Discard " + over;
   } else if (pr.kind === "payDebt") {
-    var rem = Math.floor(pr.rem);
-    if (rem < 0) rem = 0;
-    txt = "Pay debt: $" + rem + " left";
+    txt = "Pay debt: $" + pr.rem + " left";
   } else if (pr.kind === "placeReceived") {
     txt = "Place received properties: " + pr.uids.length;
   } else {
-    txt = "Prompt: " + String(pr.kind);
+    txt = "Prompt: " + pr.kind;
   }
 
   var toast = { id: "prompt", kind: "prompt", text: txt, persistent: true };
@@ -163,6 +146,19 @@ PD.ui.wrapI = function (i, n) {
   return i;
 };
 
+PD.ui.cmdsWithoutSource = function (cmds) {
+  if (!cmds || cmds.length === 0) return [];
+  var out = [];
+  var i;
+  for (i = 0; i < cmds.length; i++) {
+    var c = cmds[i];
+    if (!c || !c.kind) continue;
+    if (c.kind === "source") continue;
+    out.push(c);
+  }
+  return out;
+};
+
 // Pick the first item matching a predicate from the given row order.
 // Returns { row, i, item } or null.
 PD.ui.findBestCursorTarget = function (models, rowOrder, predicate) {
@@ -172,8 +168,7 @@ PD.ui.findBestCursorTarget = function (models, rowOrder, predicate) {
 
   var ri;
   for (ri = 0; ri < rowOrder.length; ri++) {
-    var row = Math.floor(Number(rowOrder[ri]));
-    if (!isFinite(row)) continue;
+    var row = rowOrder[ri];
     if (row < 0 || row > 4) continue;
 
     var rm = models[row];
@@ -200,8 +195,6 @@ PD.ui.nearestByX = function (items, xCenter) {
   if (!items || items.length === 0) return 0;
   var bestI = 0;
   var bestD = 999999;
-  xCenter = Number(xCenter);
-  if (!isFinite(xCenter)) xCenter = 0;
   var i;
   for (i = 0; i < items.length; i++) {
     var it = items[i];
@@ -332,74 +325,6 @@ PD.ui.navPickInDirection = function (view, computed, dir) {
   return null;
 };
 
-PD.ui.rowY0 = function (row) {
-  var i = Math.floor(Number(row || 0));
-  if (!isFinite(i)) i = 0;
-  return PD.config.render.layout.rowY[i];
-};
-PD.ui.rowH = function (row) {
-  var i = Math.floor(Number(row || 0));
-  if (!isFinite(i)) i = 0;
-  return PD.config.render.layout.rowH[i];
-};
-
-PD.ui.faceYForRow = function (row) {
-  var L = PD.config.render.layout;
-  row = Math.floor(Number(row || 0));
-  if (!isFinite(row)) row = 0;
-  if (row === 0) {
-    // Opponent hand: bottom slice visible; cards extend upward off-screen.
-    return L.rowY[0] + L.rowH[0] - L.faceH;
-  }
-  if (row === 1 || row === 3 || row === 4) {
-    return L.rowY[row] + L.faceInsetY;
-  }
-  return L.rowY[row];
-};
-
-PD.ui.isOpponentRow = function (row) {
-  row = Math.floor(Number(row || 0));
-  if (!isFinite(row)) row = 0;
-  return row === 0 || row === 1;
-};
-
-PD.ui.playerForRow = function (row) {
-  row = Math.floor(Number(row || 0));
-  if (!isFinite(row)) row = 0;
-  if (row === 0 || row === 1) return 1;
-  if (row === 3 || row === 4) return 0;
-  return -1;
-};
-
-PD.ui.destForCmd = function (cmd) {
-  if (!cmd || !cmd.kind) return null;
-  if (cmd.kind === "playProp") {
-    if (cmd.dest && cmd.dest.newSet) return { kind: "newSet" };
-    if (cmd.dest && cmd.dest.setI != null) {
-      var sI = Math.floor(Number(cmd.dest.setI));
-      if (!isFinite(sI)) return null;
-      return { kind: "setEnd", setI: sI };
-    }
-    return null;
-  }
-  if (cmd.kind === "playHouse") {
-    if (cmd.dest && cmd.dest.setI != null) {
-      var hsI = Math.floor(Number(cmd.dest.setI));
-      if (!isFinite(hsI)) return null;
-      return { kind: "setEnd", setI: hsI };
-    }
-    return null;
-  }
-  if (cmd.kind === "bank") return { kind: "bankEnd" };
-  if (cmd.kind === "playRent") {
-    var rI = Math.floor(Number(cmd.setI));
-    if (!isFinite(rI)) return null;
-    return { kind: "setTop", setI: rI };
-  }
-  if (cmd.kind === "source") return { kind: "source" };
-  return null;
-};
-
 PD.ui.layoutHint = function (state, view) {
   // Reservation hint: which stacks need an extra slot so ghosts/previews don't overlap.
   // Keep the policy here so buildRowItems + computeRowModels stay consistent.
@@ -413,7 +338,7 @@ PD.ui.layoutHint = function (state, view) {
     var i;
     for (i = 0; i < cmds.length; i++) {
       var c = cmds[i];
-      var d = PD.ui.destForCmd(c);
+      var d = PD.moves.destForCmd(c);
       if (!d) continue;
       if (d.kind === "bankEnd") hint.bankReserve = true;
       if (d.kind === "setEnd") needs[d.setI] = true;
@@ -425,7 +350,7 @@ PD.ui.layoutHint = function (state, view) {
   // Menu-hover preview: reserve only when unambiguous (exactly 1 legal cmd).
   if (view.mode === "menu" && view.menu && view.menu.items && view.menu.items.length > 0 && view.menu.src && view.menu.src.uid) {
     var nMenuItems = view.menu.items.length;
-    var mi = PD.ui.clampI(Math.floor(Number(view.menu.i || 0)), nMenuItems);
+    var mi = PD.ui.clampI(view.menu.i, nMenuItems);
     view.menu.i = mi;
     var it = view.menu.items[mi];
     var src = view.menu.src;
@@ -433,37 +358,24 @@ PD.ui.layoutHint = function (state, view) {
 
     var uid = src.uid;
     var def = PD.defByUid(state, uid);
-    var moves = PD.legalMoves(state);
     var cmdsM = [];
 
     if (it.id === "bank") {
-      var ib;
-      for (ib = 0; ib < moves.length; ib++) {
-        var mb = moves[ib];
-        if (!mb || mb.kind !== "bank") continue;
-        if (!mb.card || mb.card.uid !== uid) continue;
-        cmdsM.push(mb);
-      }
+      cmdsM = PD.moves.bankCmdsForUid(state, uid);
     } else if (it.id === "place") {
       if (def && def.kind === PD.CardKind.Property) {
-        var wildColorM = (def && PD.isWildDef(def)) ? PD.ui.defaultWildColorForPlace(state, uid, def) : PD.NO_COLOR;
-        cmdsM = PD.ui.placeCmdsForUid(state, uid, def, wildColorM);
+        var wildColorM = (def && PD.isWildDef(def)) ? PD.moves.defaultWildColorForPlace(state, uid, def) : PD.NO_COLOR;
+        cmdsM = PD.moves.placeCmdsForUid(state, uid, def, wildColorM);
       }
     } else if (it.id === "build") {
       if (def && def.kind === PD.CardKind.House) {
-        var ih;
-        for (ih = 0; ih < moves.length; ih++) {
-          var mh = moves[ih];
-          if (!mh || mh.kind !== "playHouse") continue;
-          if (!mh.card || mh.card.uid !== uid) continue;
-          cmdsM.push(mh);
-        }
+        cmdsM = PD.moves.buildCmdsForUid(state, uid);
       }
     }
 
     if (cmdsM.length === 1) {
       hint.menuHoverCmd = cmdsM[0];
-      var d2 = PD.ui.destForCmd(hint.menuHoverCmd);
+      var d2 = PD.moves.destForCmd(hint.menuHoverCmd);
       if (d2 && d2.kind === "bankEnd") hint.bankReserve = true;
       if (d2 && d2.kind === "setEnd") {
         var needs2 = {};
@@ -478,13 +390,11 @@ PD.ui.layoutHint = function (state, view) {
 
 PD.ui.buildRowItems = function (state, view, row, hint) {
   var L = PD.config.render.layout;
-  row = Math.floor(Number(row || 0));
-  if (!isFinite(row)) row = 0;
 
   var out = { items: [], minX: 0, maxX: 0 };
-  var isOp = PD.ui.isOpponentRow(row);
-  var p = PD.ui.playerForRow(row);
-  var yFace = PD.ui.faceYForRow(row);
+  var isOp = PD.layout.isOpponentRow(row);
+  var p = PD.layout.playerForRow(row);
+  var yFace = PD.layout.faceYForRow(row);
   var padX = L.rowPadX;
 
   var i;
@@ -820,17 +730,14 @@ PD.ui.computeRowModels = function (state, view) {
 
   // Clamp cursor to existing rows/items.
   if (!view || !view.cursor) return { models: models, selected: null, meta: meta };
-  var row = Math.floor(Number(view.cursor.row || 0));
-  if (!isFinite(row)) row = 0;
+  var row = view.cursor.row;
   if (row < 0) row = 0;
   if (row > 4) row = 4;
   view.cursor.row = row;
 
   var rm = models[row];
   var n = (rm && rm.items) ? rm.items.length : 0;
-  var curI = Math.floor(Number(view.cursor.i || 0));
-  if (!isFinite(curI)) curI = 0;
-  view.cursor.i = PD.ui.clampI(curI, n);
+  view.cursor.i = PD.ui.clampI(view.cursor.i, n);
 
   var sel = (rm && rm.items && rm.items.length) ? rm.items[view.cursor.i] : null;
 
@@ -846,7 +753,7 @@ PD.ui.computeRowModels = function (state, view) {
   }
 
   var L = PD.config.render.layout;
-  var yTable = PD.ui.faceYForRow(3);
+  var yTable = PD.layout.faceYForRow(3);
 
   function pushOverlay(row0, it0) {
     if (row0 == null) return;
@@ -892,7 +799,7 @@ PD.ui.computeRowModels = function (state, view) {
   }
 
   function slotForCmd(cmd, srcSlot) {
-    var d = PD.ui.destForCmd(cmd);
+    var d = PD.moves.destForCmd(cmd);
     if (!d) return null;
     if (d.kind === "newSet") return slotNewSet();
     if (d.kind === "setEnd") return slotSetEnd(d.setI);
@@ -929,7 +836,7 @@ PD.ui.computeRowModels = function (state, view) {
   if (view.mode === "targeting" && view.targeting && view.targeting.active) {
     var t = view.targeting;
     var cmds = t.cmds;
-    var cmdI = PD.ui.clampI(Math.floor(Number(t.cmdI || 0)), cmds.length);
+    var cmdI = PD.ui.clampI(t.cmdI, cmds.length);
     t.cmdI = cmdI;
 
     // Find source slot in models (for hold-targeting Source destination).
@@ -986,17 +893,14 @@ PD.ui.computeRowModels = function (state, view) {
         setFocus(slot, (t.card && t.card.uid) ? t.card.uid : 0, null, cmdSel.kind);
       }
     } else if (cmdSel && cmdSel.kind === "playRent") {
-      var rsI = Math.floor(Number(cmdSel.setI));
-      if (isFinite(rsI)) {
-        var sets = state.players[0].sets;
-        var setR = sets[rsI];
-        var stRR = tableStack(rsI);
-        if (setR && stRR && stRR.nReal > 0) {
-          var topUid = setR.houseUid ? setR.houseUid : ((setR.props && setR.props.length) ? setR.props[setR.props.length - 1][0] : 0);
-          var topColor = null;
-          if (!setR.houseUid && setR.props && setR.props.length) topColor = setR.props[setR.props.length - 1][1];
-          setFocus(slotForCmd(cmdSel, srcSlot), topUid, topColor, "rent");
-        }
+      var sets = state.players[0].sets;
+      var setR = sets[cmdSel.setI];
+      var stRR = tableStack(cmdSel.setI);
+      if (setR && stRR && stRR.nReal > 0) {
+        var topUid = setR.houseUid ? setR.houseUid : ((setR.props && setR.props.length) ? setR.props[setR.props.length - 1][0] : 0);
+        var topColor = null;
+        if (!setR.houseUid && setR.props && setR.props.length) topColor = setR.props[setR.props.length - 1][1];
+        setFocus(slotForCmd(cmdSel, srcSlot), topUid, topColor, "rent");
       }
     } else if (cmdSel && cmdSel.kind === "bank") {
       setFocus(slotForCmd(cmdSel, srcSlot), (t.card && t.card.uid) ? t.card.uid : 0, null, "bank");
@@ -1069,12 +973,9 @@ PD.ui.computeRowModels = function (state, view) {
 
 PD.ui.ensureCamForSelection = function (rowModel, row, selItem, camArr) {
   var L = PD.config.render.layout;
-  row = Math.floor(Number(row || 0));
-  if (!isFinite(row)) row = 0;
   if (!camArr) return;
 
-  var cam = (camArr[row] != null) ? Number(camArr[row]) : 0;
-  if (!isFinite(cam)) cam = 0;
+  var cam = camArr[row];
   var margin = L.camMarginX;
 
   if (!rowModel || !rowModel.items || rowModel.items.length === 0 || !selItem) {
@@ -1132,53 +1033,6 @@ PD.ui.updateCameras = function (state, view, computed) {
   }
 };
 
-// Helpers for Place command lists (shared by targeting + menu label tweaks).
-PD.ui.defaultWildColorForPlace = function (state, uid, def) {
-  if (!def || !PD.isWildDef(def)) return PD.NO_COLOR;
-  var moves = PD.legalMoves(state);
-  var c0 = def.wildColors[0];
-  var c1 = def.wildColors[1];
-  var has0 = false, has1 = false;
-  var i;
-  for (i = 0; i < moves.length; i++) {
-    var mp = moves[i];
-    if (!mp || mp.kind !== "playProp") continue;
-    if (!mp.card || mp.card.uid !== uid) continue;
-    if (mp.color === c0 && mp.dest && mp.dest.setI != null) has0 = true;
-    if (mp.color === c1 && mp.dest && mp.dest.setI != null) has1 = true;
-  }
-  return has0 ? c0 : (has1 ? c1 : c0);
-};
-
-PD.ui.placeCmdsForUid = function (state, uid, def, wildColor) {
-  var moves = PD.legalMoves(state);
-  var cmds = [];
-  var i;
-  var isWild = !!(def && PD.isWildDef(def));
-  for (i = 0; i < moves.length; i++) {
-    var mf = moves[i];
-    if (!mf || mf.kind !== "playProp") continue;
-    if (!mf.card || mf.card.uid !== uid) continue;
-    if (isWild && mf.color !== wildColor) continue;
-    cmds.push(mf);
-  }
-
-  // Ordering: existing sets first (by setI), then newSet.
-  var existing = [];
-  var newSet = [];
-  for (i = 0; i < cmds.length; i++) {
-    var c = cmds[i];
-    if (c && c.dest && c.dest.newSet) newSet.push(c);
-    else existing.push(c);
-  }
-  existing.sort(function (a, b) {
-    var ai = (a.dest && a.dest.setI != null) ? a.dest.setI : 9999;
-    var bi = (b.dest && b.dest.setI != null) ? b.dest.setI : 9999;
-    return ai - bi;
-  });
-  return existing.concat(newSet);
-};
-
 PD.ui.menuOpenForSelection = function (state, view, sel) {
   if (!view || !view.menu) return;
   view.menu.items = [];
@@ -1194,90 +1048,23 @@ PD.ui.menuOpenForSelection = function (state, view, sel) {
   var def = PD.defByUid(state, uid);
   if (!def) return;
 
-  function colorName(c) {
-    c = Math.floor(Number(c));
-    if (!isFinite(c)) c = 0;
-    if (c === PD.Color.Cyan) return "Cyan";
-    if (c === PD.Color.Magenta) return "Magenta";
-    if (c === PD.Color.Orange) return "Orange";
-    if (c === PD.Color.Black) return "Black";
-    return "c" + c;
-  }
-
-  function destLabelForCmd(cmd) {
-    if (!cmd) return "";
-    if (cmd.kind === "playProp") {
-      if (cmd.dest && cmd.dest.newSet) return "New Set";
-      if (cmd.dest && cmd.dest.setI != null) {
-        var setI = Math.floor(Number(cmd.dest.setI));
-        var set = isFinite(setI) ? state.players[0].sets[setI] : null;
-        var col = set ? PD.getSetColor(set.props) : PD.NO_COLOR;
-        return colorName(col) + " Set";
-      }
-    } else if (cmd.kind === "playHouse") {
-      if (cmd.dest && cmd.dest.setI != null) {
-        var setI2 = Math.floor(Number(cmd.dest.setI));
-        var set2 = isFinite(setI2) ? state.players[0].sets[setI2] : null;
-        var col2 = set2 ? PD.getSetColor(set2.props) : PD.NO_COLOR;
-        return colorName(col2) + " Set";
-      }
-    }
-    return "";
-  }
-
   // Build/Place actions are only meaningful for the currently implemented rules.
   if (def.kind === PD.CardKind.Property) {
-    var wildColor = (def && PD.isWildDef(def)) ? PD.ui.defaultWildColorForPlace(state, uid, def) : PD.NO_COLOR;
-    var placeCmds = PD.ui.placeCmdsForUid(state, uid, def, wildColor);
-    var placeLabel = "Place";
-    if (placeCmds.length === 1) {
-      var dl = destLabelForCmd(placeCmds[0]);
-      if (dl) placeLabel = "Place -> " + dl;
-    }
-    view.menu.items.push({ id: "place", label: placeLabel });
+    var wildColor = (def && PD.isWildDef(def)) ? PD.moves.defaultWildColorForPlace(state, uid, def) : PD.NO_COLOR;
+    var placeCmds = PD.moves.placeCmdsForUid(state, uid, def, wildColor);
+    view.menu.items.push({ id: "place", label: PD.fmt.menuLabelForCmds("Place", state, placeCmds) });
   }
   if (def.kind === PD.CardKind.House) {
-    // Only offer Build if legal.
-    var moves = PD.legalMoves(state);
-    var hasBuild = false;
-    var buildMoves = [];
-    var m;
-    for (m = 0; m < moves.length; m++) {
-      var mv = moves[m];
-      if (mv && mv.kind === "playHouse" && mv.card && mv.card.uid === uid) {
-        hasBuild = true;
-        buildMoves.push(mv);
-      }
-    }
-    if (hasBuild) {
-      var buildLabel = "Build";
-      if (buildMoves.length === 1) {
-        var dl2 = destLabelForCmd(buildMoves[0]);
-        if (dl2) buildLabel = "Build -> " + dl2;
-      }
-      view.menu.items.push({ id: "build", label: buildLabel });
+    var buildMoves = PD.moves.buildCmdsForUid(state, uid);
+    if (buildMoves.length > 0) {
+      view.menu.items.push({ id: "build", label: PD.fmt.menuLabelForCmds("Build", state, buildMoves) });
     }
   }
   if (def.kind === PD.CardKind.Action && def.actionKind === PD.ActionKind.Rent) {
     // Offer Rent only if there is at least one legal rent target.
-    var movesR = PD.legalMoves(state);
-    var rentMoves = [];
-    var mr;
-    for (mr = 0; mr < movesR.length; mr++) {
-      var mvR = movesR[mr];
-      if (mvR && mvR.kind === "playRent" && mvR.card && mvR.card.uid === uid) rentMoves.push(mvR);
-    }
+    var rentMoves = PD.moves.rentMovesForUid(state, uid);
     if (rentMoves.length > 0) {
-      var rentLabel = "Rent";
-      if (rentMoves.length === 1) {
-        // Reuse destination labeling by synthesizing a playProp-like label.
-        var onlyR = rentMoves[0];
-        var setI3 = Math.floor(Number(onlyR.setI));
-        var set3 = isFinite(setI3) ? state.players[0].sets[setI3] : null;
-        var col3 = set3 ? PD.getSetColor(set3.props) : PD.NO_COLOR;
-        rentLabel = "Rent -> " + colorName(col3) + " Set";
-      }
-      view.menu.items.push({ id: "rent", label: rentLabel });
+      view.menu.items.push({ id: "rent", label: PD.fmt.menuLabelForRentMoves(state, rentMoves) });
     }
   }
   if (PD.isBankableDef(def)) {
@@ -1288,12 +1075,6 @@ PD.ui.menuOpenForSelection = function (state, view, sel) {
   view.menu.items.push({ id: "source", label: "Cancel" });
 
   // Always allow cancel/back with B; no explicit menu item needed.
-};
-
-PD.ui.locAllowsSource = function (loc) {
-  if (!loc || !loc.zone) return false;
-  var z = String(loc.zone);
-  return (z === "hand") || (z === "recvProps");
 };
 
 PD.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
@@ -1308,115 +1089,25 @@ PD.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
   var def = PD.defByUid(state, uid);
   t.card = { uid: uid, loc: loc || null, def: def || null };
 
-  var moves = PD.legalMoves(state);
-  var cmds = [];
-  var i;
-  var allowSource = PD.ui.locAllowsSource(t.card ? t.card.loc : null);
-
-  if (t.kind === "bank") {
-    for (i = 0; i < moves.length; i++) {
-      var mb = moves[i];
-      if (!mb || mb.kind !== "bank") continue;
-      if (!mb.card || mb.card.uid !== uid) continue;
-      cmds.push(mb);
-    }
-    if (allowSource) cmds.push({ kind: "source" });
-    t.cmds = cmds;
-    t.cmdI = 0;
-    view.mode = "targeting";
+  var r = PD.moves.cmdsForTargeting(state, t.kind, uid, t.card ? t.card.loc : null);
+  if (!r) {
+    t.active = false;
+    view.mode = "browse";
     return;
   }
 
-  if (t.kind === "rent") {
-    for (i = 0; i < moves.length; i++) {
-      var mr = moves[i];
-      if (!mr || mr.kind !== "playRent") continue;
-      if (!mr.card || mr.card.uid !== uid) continue;
-      cmds.push(mr);
-    }
-    // Default selection prefers the highest rent amount, but player can override by cycling.
-    cmds.sort(function (a, b) {
-      var ai = (a && a.setI != null) ? a.setI : -1;
-      var bi = (b && b.setI != null) ? b.setI : -1;
-      var aa = PD.rentAmountForSet(state, 0, ai);
-      var bb = PD.rentAmountForSet(state, 0, bi);
-      var d = bb - aa;
-      if (d) return d;
-      return ai - bi;
-    });
-    if (allowSource) cmds.push({ kind: "source" });
-    t.cmds = cmds;
-    t.cmdI = 0;
-    view.mode = "targeting";
-    return;
-  }
-
-  if (t.kind === "quick") {
-    // Quick (hold-A) targeting: cycle a flat list of command options.
-    var rentCmds = [];
-    var buildCmds = [];
-    var bankCmds = [];
-    for (i = 0; i < moves.length; i++) {
-      var m = moves[i];
-      if (!m || !m.kind) continue;
-      if (m.card && m.card.uid !== uid) continue;
-      if (m.kind === "playRent") rentCmds.push(m);
-      else if (m.kind === "playHouse") buildCmds.push(m);
-      else if (m.kind === "bank") bankCmds.push(m);
-    }
-
-    // Default rent choice: highest amount first (player can override via cycling).
-    rentCmds.sort(function (a, b) {
-      var ai = (a && a.setI != null) ? a.setI : -1;
-      var bi = (b && b.setI != null) ? b.setI : -1;
-      var aa = PD.rentAmountForSet(state, 0, ai);
-      var bb = PD.rentAmountForSet(state, 0, bi);
-      var d = bb - aa;
-      if (d) return d;
-      return ai - bi;
-    });
-
-    cmds = rentCmds.concat(buildCmds).concat(bankCmds);
-    if (allowSource) cmds.push({ kind: "source" });
-    t.cmds = cmds;
-    t.cmdI = 0;
-    view.mode = "targeting";
-    return;
-  }
-
-  if (t.kind === "build") {
-    for (i = 0; i < moves.length; i++) {
-      var mh = moves[i];
-      if (!mh || mh.kind !== "playHouse") continue;
-      if (!mh.card || mh.card.uid !== uid) continue;
-      cmds.push(mh);
-    }
-    if (allowSource) cmds.push({ kind: "source" });
-    t.cmds = cmds;
-    t.cmdI = 0;
-    view.mode = "targeting";
-    return;
-  }
-
-  if (t.kind === "place") {
-    if (def && PD.isWildDef(def)) {
-      t.wildColor = PD.ui.defaultWildColorForPlace(state, uid, def);
-      cmds = PD.ui.placeCmdsForUid(state, uid, def, t.wildColor);
-    } else {
-      t.wildColor = PD.NO_COLOR;
-      cmds = PD.ui.placeCmdsForUid(state, uid, def, PD.NO_COLOR);
-    }
-    if (allowSource) cmds.push({ kind: "source" });
-    t.cmds = cmds;
-    t.cmdI = 0; // default always-existing if any
-
-    view.mode = "targeting";
-    return;
-  }
+  t.cmds = r.cmds || [];
+  t.wildColor = (r.wildColor != null) ? r.wildColor : PD.NO_COLOR;
+  t.cmdI = 0; // default always-existing if any
 
   // Unknown targeting kind.
-  t.active = false;
-  view.mode = "browse";
+  if (!t.cmds || t.cmds.length === 0) {
+    t.active = false;
+    view.mode = "browse";
+    return;
+  }
+
+  view.mode = "targeting";
 };
 
 PD.ui.targetingRetargetWild = function (state, view, dir) {
@@ -1438,8 +1129,8 @@ PD.ui.targetingRetargetWild = function (state, view, dir) {
   var keepSource = !!(prevCmd && prevCmd.kind === "source");
 
   var uid = t.card.uid;
-  var cmds = PD.ui.placeCmdsForUid(state, uid, def, nextColor);
-  if (PD.ui.locAllowsSource(t.card ? t.card.loc : null)) cmds.push({ kind: "source" });
+  var cmds = PD.moves.placeCmdsForUid(state, uid, def, nextColor);
+  if (PD.moves.locAllowsSource(t.card ? t.card.loc : null)) cmds.push({ kind: "source" });
 
   t.wildColor = nextColor;
   t.cmds = cmds;
@@ -1513,9 +1204,6 @@ PD.ui.step = function (state, view, actions) {
     var prevP = view.ux.lastActiveP;
     var prevPlays = view.ux.lastPlaysLeft;
     var curPlays = state.playsLeft;
-    if (curPlays == null) curPlays = 0;
-    curPlays = Math.floor(Number(curPlays));
-    if (!isFinite(curPlays)) curPlays = 0;
 
     if (prevP === 0 && prevPlays != null && prevPlays > 0 && curPlays <= 0) {
       var pickEnd = PD.ui.findBestCursorTarget(computed.models, [2], function (it) {
@@ -1628,13 +1316,7 @@ PD.ui.step = function (state, view, actions) {
       if (it.id === "rent") {
         if (srcZone !== "hand") return null;
         // If unambiguous, auto-apply. Otherwise enter targeting.
-        var movesR = PD.legalMoves(state);
-        var rentMoves = [];
-        var mr;
-        for (mr = 0; mr < movesR.length; mr++) {
-          var mvR = movesR[mr];
-          if (mvR && mvR.kind === "playRent" && mvR.card && mvR.card.uid === uid) rentMoves.push(mvR);
-        }
+        var rentMoves = PD.moves.rentMovesForUid(state, uid);
         if (rentMoves.length === 1) {
           return { kind: "applyCmd", cmd: rentMoves[0] };
         }
@@ -1646,18 +1328,11 @@ PD.ui.step = function (state, view, actions) {
         if (!(srcZone === "hand" || srcZone === "recvProps")) return null;
         PD.ui.targetingEnter(state, view, "place", false, uid, src.loc);
         if (view.targeting && view.targeting.active && view.targeting.cmds) {
-          var real = [];
-          var r;
-          for (r = 0; r < view.targeting.cmds.length; r++) {
-            var c = view.targeting.cmds[r];
-            if (!c || !c.kind) continue;
-            if (c.kind === "source") continue;
-            real.push(c);
-          }
+          var real = PD.ui.cmdsWithoutSource(view.targeting.cmds);
           if (real.length === 1) {
             var only = real[0];
-          view.targeting.active = false;
-          view.mode = "browse";
+            view.targeting.active = false;
+            view.mode = "browse";
             if (only && only.kind) return { kind: "applyCmd", cmd: only };
           }
         }
@@ -1668,18 +1343,11 @@ PD.ui.step = function (state, view, actions) {
         if (srcZone !== "hand") return null;
         PD.ui.targetingEnter(state, view, "build", false, uid, src.loc);
         if (view.targeting && view.targeting.active && view.targeting.cmds) {
-          var realB = [];
-          var rb;
-          for (rb = 0; rb < view.targeting.cmds.length; rb++) {
-            var cb = view.targeting.cmds[rb];
-            if (!cb || !cb.kind) continue;
-            if (cb.kind === "source") continue;
-            realB.push(cb);
-          }
+          var realB = PD.ui.cmdsWithoutSource(view.targeting.cmds);
           if (realB.length === 1) {
             var onlyB = realB[0];
-          view.targeting.active = false;
-          view.mode = "browse";
+            view.targeting.active = false;
+            view.mode = "browse";
             if (onlyB && onlyB.kind) return { kind: "applyCmd", cmd: onlyB };
           }
         }
@@ -1800,9 +1468,7 @@ PD.ui.step = function (state, view, actions) {
 
       // Cancel: only before any discard has happened in this prompt instance.
       if (actions.b && actions.b.pressed) {
-        var nDiscarded = Number(prompt.nDiscarded || 0);
-        if (!isFinite(nDiscarded)) nDiscarded = 0;
-        if (nDiscarded <= 0) {
+        if (prompt.nDiscarded <= 0) {
           return { kind: "applyCmd", cmd: { kind: "cancelPrompt" } };
         }
         PD.anim.feedbackError(view, "prompt_forced", "Must discard");

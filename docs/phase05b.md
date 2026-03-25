@@ -51,16 +51,16 @@ To keep centering predictable, toast text is rendered in **fixed-width** mode.
 
 ## Files changed
 
-- `src/07_state.js`: reshuffle-on-draw behavior in `PD.drawToHand`
-- `src/08_rules.js`: `discard` + `cancelPrompt`, discardDown prompt flow in `endTurn`/`legalMoves`
-- `src/12_ui.js`: `view.mode="prompt"` handler, prompt toasts, prompt cancel rules, hold-targeting Source destination
-- `src/11_render.js`: stacked toasts renderer + toast fixed-width printing; hide grabbed source card during targeting; bank/menu preview overlays
+- `src/40_state.js`: reshuffle-on-draw behavior in `PD.drawToHand`
+- `src/45_rules.js`: `discard` + `cancelPrompt`, discardDown prompt flow in `endTurn`/`legalMoves`
+- `src/65_ui.js`: `view.mode="prompt"` handler, prompt toasts, prompt cancel rules, hold-targeting Source destination
+- `src/60_render.js`: stacked toasts renderer + toast fixed-width printing; hide grabbed source card during targeting; bank/menu preview overlays
 
 Tests:
 
-- `test/08_rules.test.mjs`
-- `test/11_render.test.mjs`
-- `test/12_ui_controls.test.mjs`
+- `test/45_rules.test.mjs`
+- `test/60_render.test.mjs`
+- `test/65_ui_controls.test.mjs`
 
 ## Definition of done
 

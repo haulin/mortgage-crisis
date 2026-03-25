@@ -1095,6 +1095,21 @@ test("render: feedback message draws a screen-top toast with background, border,
   assert.ok(msg, "expected toast message print");
 });
 
+test("render: ai narration toast uses configured background color", async () => {
+  const rec = makeRecorder();
+  const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
+
+  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const view = newView(ctx);
+  view.toasts = [{ kind: "ai", text: "Opponent: Rent", frames: 10 }];
+
+  drawFrame(ctx, s, view);
+
+  const bgCol = ctx.PD.config.render.style.colToastBgAi;
+  const bg = rec.calls.find((c) => c.kind === "rect" && c.args[1] === 2 && c.args[4] === bgCol);
+  assert.ok(bg, "expected ai toast to use cfg.colToastBgAi as background");
+});
+
 test("render: toasts stack top-to-bottom (prompt then error)", async () => {
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });

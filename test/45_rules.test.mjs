@@ -405,6 +405,9 @@ test("Rent: playRent discards rent card, decrements plays, and creates payDebt p
   assert.ok(state.prompt && state.prompt.kind === "payDebt", "expected debt prompt to begin");
   assert.equal(state.prompt.p, 1, "expected opponent to be payer");
   assert.equal(state.prompt.toP, 0, "expected active player to be payee");
+  assert.equal(typeof state.prompt.rem, "number", "expected numeric remaining rent");
+  assert.ok(Number.isFinite(state.prompt.rem), "expected finite remaining rent");
+  assert.ok(Number.isInteger(state.prompt.rem), "expected integer remaining rent");
   assert.ok(state.prompt.rem > 0, "expected positive remaining rent");
 });
 

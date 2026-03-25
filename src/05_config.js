@@ -42,7 +42,11 @@ PD.config.ui = {
   dealGapFrames: 2,
   // Shuffle: default includes ~1 extra 1→2→3 loop for readability.
   shuffleAnimFrames: 42,
-  shuffleToastFrames: 42
+  shuffleToastFrames: 42,
+
+  // Phase 07: AI pacing (frames at 60fps).
+  aiStepDelayFrames: 60,
+  aiNarrateToastFrames: 60
 };
 
 // Rule-note IDs (Phase 05+). These are small display-only annotations in Inspect.
@@ -189,6 +193,7 @@ PD.config.render = {
     colValuePatch: PD.Pal.White,
     colValuePatchBorder: PD.Pal.Black,
     hudLineCol: PD.Pal.White,
+    colToastBgAi: PD.Pal.DarkBlue,
 
     // Center pile depth outlines (Phase 03b polish)
     pileShadowOutlineCol: PD.Pal.Black,

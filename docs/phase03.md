@@ -12,7 +12,7 @@ This phase is still **debug-first** and remains **rules-driven**:
 
 ### Harness / mode switching
 
-- Keep `src/10_debug.js` as the main harness module.
+- Keep `src/90_debug.js` as the main harness module.
 - `Y` cycles **Boot → DebugText → Render → Boot**.
 - Render screen uses the same backing state as debug: `PD.debug.state`.
 
@@ -23,7 +23,7 @@ This phase is still **debug-first** and remains **rules-driven**:
 - `B`: next scenario.
 - `X`: reset scenario (keep existing Phase 02 mapping).
 - `Y`: cycle mode (Boot/DebugText/Render).
-- Controls hint is rendered as a **single-line overlay** (tweak via `PD.config.render.cfg.hudLine*` in `src/01_config.js`).
+- Controls hint is rendered as a **single-line overlay** (tweak via `PD.config.render.cfg.hudLine*` in `src/05_config.js`).
 
 ### Seating + opponent mirroring
 
@@ -58,7 +58,7 @@ The harness calls a small entry point (e.g. `PD.render.tick(state)` or `PD.rende
 
 ### Config centralization (what actually shipped)
 
-To make pixel tweaks fast, Phase 03 moved tweakable render knobs into `src/01_config.js`:
+To make pixel tweaks fast, Phase 03 moved tweakable render knobs into `src/05_config.js`:
 
 - `PD.Pal.*`: named Sweetie-16 palette indices (e.g. `PD.Pal.White=12`, `PD.Pal.Yellow=4`)
 - `PD.config.render` (nested):
@@ -66,7 +66,7 @@ To make pixel tweaks fast, Phase 03 moved tweakable render knobs into `src/01_co
   - `PD.config.render.spr`: sprite ID map (was `R.spr`)
   - `PD.config.render.moneyBgByValue`: money/action background mapping (was `R.moneyBgByValue`)
 
-`src/11_render.js` reads these values and **fails loudly** if they’re missing (load order is deterministic by design).
+`src/60_render.js` reads these values and **fails loudly** if they’re missing (load order is deterministic by design).
 
 ## Layout geometry (locked + tweakable constants)
 
@@ -186,10 +186,10 @@ Even though rendering is visual, we add lightweight tests:
 ## Expected files (Phase 03)
 
 - New:
-  - `src/11_render.js` (renderer, layout constants, cursor/camera, draw helpers; namespaced under `PD.render.*`)
-  - `test/11_render.test.mjs` (draw-call invariants; file number may vary)
+  - `src/60_render.js` (renderer, layout constants, cursor/camera, draw helpers; namespaced under `PD.render.*`)
+  - `test/60_render.test.mjs` (draw-call invariants; file number may vary)
 - Updated:
-  - `src/10_debug.js` (add mode cycling and call render tick; keep debug text mode intact)
+  - `src/90_debug.js` (add mode cycling and call render tick; keep debug text mode intact)
   - `test/helpers/loadSrcIntoVm.mjs` (add TIC-80 API stubs used by render code; optionally provide a record-calls stub for render tests)
 
 ## Definition of Done

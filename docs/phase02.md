@@ -56,12 +56,12 @@ Events are returned from `applyCommand` as an array, with kinds such as:
 
 ## Files added/changed
 
-- `src/06_defs.js`: card defs + set rules + enums
-- `src/07_state.js`: state, RNG-in-state, shuffle, `newGame`, scenario helpers
-- `src/08_rules.js`: `evaluateWin`, `legalMoves`, `applyCommand`
-- `src/09_scenarios.js`: `applyScenario` + minimal scenario catalog
-- `test/07_state.test.mjs`: deck invariants + determinism tests
-- `test/08_rules.test.mjs`: scenario-driven rules tests
+- `src/35_defs.js`: card defs + set rules + enums
+- `src/40_state.js`: state, RNG-in-state, shuffle, `newGame`, scenario helpers
+- `src/45_rules.js`: `evaluateWin`, `legalMoves`, `applyCommand`
+- `src/50_scenarios.js`: `applyScenario` + minimal scenario catalog
+- `test/40_state.test.mjs`: deck invariants + determinism tests
+- `test/45_rules.test.mjs`: scenario-driven rules tests
 
 ## Definition of Done
 
@@ -74,6 +74,6 @@ Phase 02 is done when:
 
 - Start with a **debug-first renderer**: rectangles + text + highlights are enough to validate the 5-row layout and navigation before sprite polish.
 - Keep Phase 03 rendering **read-only**: rendering should never mutate `GameState`. UI should only mutate state via commands.
-- The Phase 02 debug screen (`src/10_debug.js`) can remain as a fallback harness while Phase 03 rendering is being built.
+- The Phase 02 debug screen (`src/90_debug.js`) can remain as a fallback harness while Phase 03 rendering is being built.
 - If we introduce new TIC-80 globals (e.g. `btnp`, `spr`, `rect`, `rectb`) into `src/*`, update `test/helpers/loadSrcIntoVm.mjs` stubs to keep tests frictionless.
 

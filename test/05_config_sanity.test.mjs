@@ -34,7 +34,7 @@ async function loadSrcFilesIntoVm(fileNames) {
 
 test("config sanity: render.layout/style/spr/moneyBgByValue shape", async () => {
   // Load only prelude+config so this test can't be masked by later modules.
-  const ctx = await loadSrcFilesIntoVm(["00_prelude.js", "01_config.js"]);
+  const ctx = await loadSrcFilesIntoVm(["00_prelude.js", "05_config.js"]);
   const { PD } = ctx;
   assert.equal(typeof PD, "object", "expected PD object");
   assert.equal(typeof PD.config, "object", "expected PD.config");
@@ -123,6 +123,7 @@ test("config sanity: render.layout/style/spr/moneyBgByValue shape", async () => 
     "colValuePatch",
     "colValuePatchBorder",
     "hudLineCol",
+    "colToastBgAi",
     "pileShadowOutlineCol",
     "pileOutlineUnder1Col",
     "pileOutlineUnder2Col",
@@ -137,7 +138,7 @@ test("config sanity: render.layout/style/spr/moneyBgByValue shape", async () => 
 
 test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async () => {
   // Load only prelude+config so we validate what ships in the cartridge.
-  const ctx = await loadSrcFilesIntoVm(["00_prelude.js", "01_config.js"]);
+  const ctx = await loadSrcFilesIntoVm(["00_prelude.js", "05_config.js"]);
   const { PD } = ctx;
 
   assert.equal(typeof PD.config.controls, "object", "expected PD.config.controls");
@@ -164,10 +165,12 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   requirePosNum(PD.config.ui, "dealGapFrames");
   requirePosNum(PD.config.ui, "shuffleAnimFrames");
   requirePosNum(PD.config.ui, "shuffleToastFrames");
+  requirePosNum(PD.config.ui, "aiStepDelayFrames");
+  requirePosNum(PD.config.ui, "aiNarrateToastFrames");
 });
 
 test("config sanity: rule notes are configured", async () => {
-  const ctx = await loadSrcFilesIntoVm(["00_prelude.js", "01_config.js"]);
+  const ctx = await loadSrcFilesIntoVm(["00_prelude.js", "05_config.js"]);
   const { PD } = ctx;
 
   assert.equal(typeof PD.RuleNote, "object", "expected PD.RuleNote");

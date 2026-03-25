@@ -63,27 +63,27 @@ Rent cards are now playable:
 - UI:
   - Rent cards show a **Rent** menu option when at least one eligible set exists.
   - Rent uses a targeting-like picker where **L/R cycles sets**, defaulting to the **highest** rent amount but allowing player override (strategic low-rent plays).
-- Temporary dev harness behavior:
-  - When Rent triggers a `payDebt` prompt for P1, the debug harness auto-resolves it deterministically so the flow is play-testable before full AI/hotseat UX exists.
+- Harness note:
+  - During Phase 06 development, the debug harness temporarily auto-resolved opponent `payDebt` prompts for playtesting; this is superseded by Phase 07’s simple AI loop.
 
 ## Files changed
 
-- `src/07_state.js`
+- `src/40_state.js`
   - prompt shapes now preserve extra fields
   - `PD.beginDebt` + `PD.hasAnyPayables`
-- `src/08_rules.js`
+- `src/45_rules.js`
   - prompt actor separation (`prompt.p`)
   - `payDebt` / `placeReceived` prompt handling
   - `payDebt` command + placement from `recvProps`
   - `playRent` command + rent amount helper
-- `src/12_ui.js`
+- `src/65_ui.js`
   - prompt toast text for `payDebt` / `placeReceived`
   - prompt-mode handling for `payDebt` / `placeReceived`
   - faux-hand rendering + additional `loc` wiring for selectable bank/set items
-- `src/09_scenarios.js`
+- `src/50_scenarios.js`
   - scenario renames + optional titles/descriptions (`PD.SCENARIO_INFO`)
   - minimal Phase 06 scenarios: `debtHouseFirst`, `placeReceived`
-- `test/07_state.test.mjs`, `test/08_rules.test.mjs`, `test/12_ui_controls.test.mjs`
+- `test/40_state.test.mjs`, `test/45_rules.test.mjs`, `test/65_ui_controls.test.mjs`
   - invariants updated to include prompt buffers
   - new tests for prompt actor, house-first, placement UX
 

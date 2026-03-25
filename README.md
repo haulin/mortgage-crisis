@@ -43,12 +43,12 @@ npm test
 ### Testing workflow notes (practical)
 
 - **Regression-first**: when fixing a bug (especially a visual/render bug), add at least one **assertion** or a small **new test** so we don’t re-break it later.
-- **Renderer tests**: Phase 03 uses “draw-call recording” tests (stub TIC-80 draw APIs like `rect`, `spr`, etc. and assert call ordering/positions). See `test/11_render.test.mjs`.
-- **Phase 03 render harness controls (debug-first)**:
+- **Bundle load test**: `test/00_bundle_compiled.test.mjs` runs a compiled-style “single script” bundle in a VM context to catch load-order/concat issues early.
+- **Renderer tests**: draw-call recording tests stub TIC-80 draw APIs like `rect`, `spr`, etc. and assert call ordering/positions. See `test/60_render.test.mjs`.
+- **Debug harness controls (dev-only)**:
   - `Y`: toggle DebugText ↔ Render
-  - In Render mode: `A` steps a random legal move, `B` switches scenario, `X` resets scenario
-  - This is intentionally not the final UX (Phase 04 introduces A/B confirm/back menus and real prompts)
-  - DebugText includes extra dev hints (e.g. wild assigned color, bank count + total value)
+  - In **DebugText** mode: `A` step, `B` next scenario, `X` reset scenario
+  - In **Render** mode: use the normal UI (D-pad navigate, `A` confirm/menu/target, `B` back/cancel, hold `X` for Inspect)
 - **Run in TIC-80**:
   - Open a JS cart in TIC-80
   - Recommended (PRO / external workflow): put `game.js` in the TIC-80 folder and run `import code game.js`
