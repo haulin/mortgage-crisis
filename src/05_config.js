@@ -46,7 +46,8 @@ PD.config.ui = {
 
   // Phase 07: AI pacing (frames at 60fps).
   aiStepDelayFrames: 60,
-  aiNarrateToastFrames: 60
+  aiNarrateToastFrames: 60,
+ 
 };
 
 // Rule-note IDs (Phase 05+). These are small display-only annotations in Inspect.

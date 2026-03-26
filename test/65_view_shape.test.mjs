@@ -131,3 +131,41 @@ test("ui: view numeric invariants stay finite across flows", async () => {
   assertFiniteInt("targeting.cmdI(postCompute2)", v.targeting.cmdI);
 });
 
+test("focus policy: rules are well-formed (caller preconditions are tested, no runtime fallbacks)", async () => {
+  const ctx = await loadSrcIntoVm();
+  assert.ok(ctx.PD.ui.focus, "expected PD.ui.focus");
+  assert.equal(typeof ctx.PD.ui.focus.apply, "function");
+  assert.ok(Array.isArray(ctx.PD.ui.focus.rules));
+  assert.ok(ctx.PD.ui.focus.rules.length > 0);
+
+  for (const r of ctx.PD.ui.focus.rules) {
+    assert.equal(typeof r.id, "string");
+    assert.ok(r.id.length > 0);
+    assert.equal(typeof r.enabled, "function");
+    assert.equal(typeof r.when, "function");
+    assert.equal(typeof r.pick, "function");
+  }
+});
+
+test("ui.step calls focus.apply with canonical args", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ seedU32: 1 });
+  const v = ctx.PD.ui.newView();
+
+  let called = false;
+  const orig = ctx.PD.ui.focus.apply;
+  ctx.PD.ui.focus.apply = (state, view, computed, actions) => {
+    called = true;
+    assert.ok(state);
+    assert.ok(view);
+    assert.ok(computed);
+    assert.ok(Array.isArray(computed.models));
+    assert.equal(computed.models.length, 5);
+    assert.ok(actions && typeof actions === "object");
+    return orig(state, view, computed, actions);
+  };
+
+  ctx.PD.ui.step(s, v, { nav: {}, a: {}, b: {}, x: {} });
+  assert.ok(called, "expected focus.apply to be called");
+});
+

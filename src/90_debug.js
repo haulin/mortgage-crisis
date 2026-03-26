@@ -13,8 +13,10 @@ PD.debug = PD.debug || {
 
 PD.debug.scenarios = ["default"].concat(PD.SCENARIO_IDS);
 
-PD.debugReset = function () {
+PD.debugReset = function (opts) {
   var d = PD.debug;
+  var prevPaused = !!(d.view && d.view.ux && d.view.ux.autoFocusPausedByDebug);
+  var shouldPause = !!(opts && opts.pauseAutoFocus) || prevPaused;
   var seedU32 = PD.computeSeed();
   var scenarioId = d.scenarios[d.scenarioI];
   if (scenarioId === "default") {
@@ -23,6 +25,7 @@ PD.debugReset = function () {
     d.state = PD.newGame({ seedU32: seedU32 >>> 0, scenarioId: scenarioId });
   }
   d.view = PD.ui.newView();
+  if (shouldPause && d.view && d.view.ux) d.view.ux.autoFocusPausedByDebug = true;
   d.ctrl = PD.controls.newState();
   d.lastCmd = "";
   d.lastEvents = [];
@@ -34,7 +37,7 @@ PD.debugReset = function () {
 PD.debugNextScenario = function () {
   var d = PD.debug;
   d.scenarioI = (d.scenarioI + 1) % d.scenarios.length;
-  PD.debugReset();
+  PD.debugReset({ pauseAutoFocus: true });
 };
 
 PD.debugPickMove = function (moves) {
@@ -90,7 +93,7 @@ PD.debugTick = function () {
     // A: step, B: next scenario, X: reset
     if (btnp(4)) PD.debugStep();
     if (btnp(5)) PD.debugNextScenario();
-    if (btnp(6)) PD.debugReset();
+    if (btnp(6)) PD.debugReset({ pauseAutoFocus: true });
   }
 
   var s = d.state;
@@ -179,6 +182,13 @@ PD.debugTick = function () {
   printSmall("Legal:" + moves.length, x, y, 12); y += step;
   printSmall("LastCmd:" + (d.lastCmd || "(none)"), x, y, 12); y += step;
   printSmall("Events:" + PD.debugEventsToLine(d.lastEvents), x, y, 12); y += step;
+
+  // Long focus rule ids don't fit well in the right column; render them full-width here.
+  var vFocus = d.view;
+  if (vFocus && vFocus.ux && vFocus.ux.lastFocusRuleId) {
+    printSmall("FocusRule:" + String(vFocus.ux.lastFocusRuleId), x, y, 12); y += step;
+  }
+
   // Render scenario description after Events so it doesn't overlap the right UI column.
   if (pendingDesc) { printSmall(pendingDesc, x, y, 13); y += step; }
 
@@ -190,6 +200,17 @@ PD.debugTick = function () {
     printSmall("UI:" + String(v.mode || "?") + " I:" + bool01(v.inspectActive) + " Drag:" + bool01(isDragging), xR, yR, 12); yR += step;
     if (v.cursor) printSmall("Cur:r" + v.cursor.row + " i" + v.cursor.i, xR, yR, 12);
     yR += step;
+
+    if (v.ux) {
+      var a = v.ux.selAnchor;
+      if (a) {
+        var zone = (a.loc && a.loc.zone) ? String(a.loc.zone) : "?";
+        printSmall("Anchor:uid" + a.uid + " " + zone, xR, yR, 12); yR += step;
+      }
+      if (v.ux.pendingFocusErrorCode) {
+        printSmall("FocusErr:" + String(v.ux.pendingFocusErrorCode), xR, yR, 12); yR += step;
+      }
+    }
 
     if (v.mode === "menu" && v.menu && v.menu.items) {
       var nM = v.menu.items.length;
@@ -303,7 +324,7 @@ PD.mainTick = function () {
         PD.debugStep();
         PD.anim.onEvents(d.state, d.view, d.lastEvents);
       }
-      else if (intent.action === "reset") PD.debugReset();
+      else if (intent.action === "reset") PD.debugReset({ pauseAutoFocus: true });
       else if (intent.action === "nextScenario") PD.debugNextScenario();
     }
 

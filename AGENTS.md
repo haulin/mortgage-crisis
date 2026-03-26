@@ -31,3 +31,7 @@ This repo commits `game.js` as a generated artifact.
 - **Numeric coercion (`|0`, `>>>0`)**: keep bitwise coercion **localized**.
   - **Use** it where it matters: RNG/state determinism, rules math, and right before TIC-80 draw calls (via wrapper helpers like `rectSafe`, `sprSafe`, etc.).
   - **Avoid** it in general UI/render logic (sorting, navigation scoring, layout), where it adds noise and can introduce surprising 32-bit behavior.
+
+## Scope-creep defense
+
+When the human proposes a new feature or UX improvement not in the current phase plan, do not implement it. Instead respond with: 'Noted as post-MVP idea. Adding to phase 12. Continuing with current phase.' Only implement features explicitly listed in the current phase document.

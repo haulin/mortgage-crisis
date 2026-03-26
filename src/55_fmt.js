@@ -94,14 +94,15 @@ PD.fmt.setLabelForSetI = function (state, p, setI) {
 PD.fmt.menuLabelForCmds = function (baseLabel, state, cmds) {
   baseLabel = String(baseLabel || "");
   if (!baseLabel) baseLabel = "Action";
-  if (!cmds || cmds.length !== 1) return baseLabel;
+  if (!cmds || cmds.length === 0) return baseLabel;
+  if (cmds.length !== 1) return baseLabel + "...";
   var dl = PD.fmt.destLabelForCmd(state, cmds[0]);
   return dl ? (baseLabel + " -> " + dl) : baseLabel;
 };
 
 PD.fmt.menuLabelForRentMoves = function (state, rentMoves) {
   if (!rentMoves || rentMoves.length === 0) return "";
-  if (rentMoves.length !== 1) return "Rent";
+  if (rentMoves.length !== 1) return "Rent...";
   var onlyR = rentMoves[0];
   var sl = PD.fmt.setLabelForSetI(state, 0, onlyR.setI);
   return sl ? ("Rent -> " + sl) : "Rent";

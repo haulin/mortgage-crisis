@@ -543,6 +543,8 @@ test("ui: winCheck scenario is navigable (cursor relocates off empty hand)", asy
   // Default view cursor is player hand, which is empty in winCheck.
   assert.equal(view.cursor.row, ctx.PD.render.ROW_P_HAND);
 
+  // Relocation is now handled by focus policy during ui.step().
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
   const c = ctx.PD.ui.computeRowModels(s, view);
   assert.ok(c.selected, "expected a selected item even when the current row is empty");
   // winCheck gives P0 multiple table stacks; selection should relocate to something selectable.
@@ -911,6 +913,513 @@ test("ui: rent card menu shows Rent (not just Bank) when a matching set exists",
   assert.ok(view.menu.items.some((it) => it && it.id === "rent"), "expected Rent menu item");
   assert.ok(view.menu.items.some((it) => it && it.id === "bank"), "expected Bank menu item");
   assert.ok(view.menu.items.some((it) => it && it.id === "source"), "expected Cancel/Source menu item");
+});
+
+test("ui: menu hover Rent previews default target set", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const uid = s.players[0].hand.find((u) => ctx.PD.defByUid(s, u).id === "rent_mo");
+  assert.ok(uid, "expected rent_mo in hand");
+  const i = s.players[0].hand.indexOf(uid);
+  assert.ok(i >= 0);
+
+  const view = ctx.PD.ui.newView();
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = i;
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(view.mode, "menu");
+  assert.ok(view.menu.items.length > 0);
+  assert.equal(view.menu.items[0].id, "rent");
+  assert.ok(String(view.menu.items[0].label || "").includes("->"), "expected single-target Rent label to include destination");
+
+  const c = ctx.PD.ui.computeRowModels(s, view);
+  assert.ok(c.meta && c.meta.focus, "expected focus preview while hovering Rent in menu mode");
+  assert.equal(c.meta.focus.forCmdKind, "rent");
+  assert.equal(c.meta.focus.row, ctx.PD.render.ROW_P_TABLE);
+  assert.equal(c.meta.focus.stackKey, "set:p0:set0");
+  assert.ok(c.meta && c.meta.hideSrc, "expected Rent preview to ghost source (no double-highlight in hand)");
+  assert.equal(c.meta.hideSrc.uid, uid);
+  assert.equal(c.meta.hideSrc.loc.p, 0);
+  assert.equal(String(c.meta.hideSrc.loc.zone), "hand");
+  assert.equal(c.meta.hideSrc.loc.i, i);
+});
+
+test("ui: menu hover Rent (multi-target) previews the same default target as quick targeting", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  // Add a second eligible Magenta set with 3 props so its rent is higher than the Orange set.
+  const mags = s.deck.filter((u) => ctx.PD.defByUid(s, u).id === "prop_magenta").slice(0, 3);
+  assert.equal(mags.length, 3, "expected 3 prop_magenta uids in deck");
+  s.deck = s.deck.filter((u) => !mags.includes(u));
+  const setM = ctx.PD.newEmptySet();
+  setM.props.push([mags[0], ctx.PD.Color.Magenta]);
+  setM.props.push([mags[1], ctx.PD.Color.Magenta]);
+  setM.props.push([mags[2], ctx.PD.Color.Magenta]);
+  s.players[0].sets.push(setM); // setI=1
+
+  const uid = s.players[0].hand.find((u) => ctx.PD.defByUid(s, u).id === "rent_mo");
+  assert.ok(uid, "expected rent_mo in hand");
+
+  const rentMoves = ctx.PD.moves.rentMovesForUid(s, uid);
+  assert.ok(rentMoves.length >= 2, "expected 2+ rent targets");
+  ctx.PD.moves.sortRentMovesByAmount(s, 0, rentMoves);
+  assert.equal(rentMoves[0].setI, 1, "expected sorted default target to be the Magenta set (setI=1)");
+
+  const i = s.players[0].hand.indexOf(uid);
+  const view = ctx.PD.ui.newView();
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = i;
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(view.mode, "menu");
+  assert.equal(view.menu.items[0].id, "rent");
+  assert.equal(view.menu.items[0].label, "Rent...", "expected multi-target Rent label to show ellipsis");
+
+  const c = ctx.PD.ui.computeRowModels(s, view);
+  assert.equal(!!(c.meta && c.meta.focus), false, "expected no focus preview while hovering Rent... (multi-target)");
+});
+
+test("ui: game over shows winner toast and hides prompt toast", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ scenarioId: "winCheck", seedU32: 1 });
+  assert.notEqual(s.winnerP, ctx.PD.NO_WINNER, "expected winner in winCheck scenario");
+
+  const view = ctx.PD.ui.newView();
+  // Tick once to allow UI to sync persistent toasts.
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+
+  const winner = view.toasts.find((t) => t && t.id === "winner");
+  assert.ok(winner && winner.persistent, "expected persistent winner toast");
+  assert.ok(String(winner.text || "").startsWith("Winner:"), "expected Winner: toast text");
+
+  const prompt = view.toasts.find((t) => t && t.id === "prompt");
+  assert.equal(!!prompt, false, "expected prompt toast to be suppressed during game over");
+});
+
+test("ui: game over blocks card tap-A actions (no menu/targeting; blink only)", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ scenarioId: "winCheck", seedU32: 1 });
+  assert.notEqual(s.winnerP, ctx.PD.NO_WINNER);
+
+  // Put a card in hand so we can press A on it.
+  const uid = s.deck[0];
+  assert.ok(uid, "expected at least 1 card in deck");
+  s.deck = s.deck.slice(1);
+  s.players[0].hand = [uid];
+
+  const view = ctx.PD.ui.newView();
+  // Prevent the one-shot game-over autofocus from moving the cursor away from the card.
+  view.ux.lastWinnerP = s.winnerP;
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = 0;
+
+  const intent = ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(intent, null, "expected no intent on game over card tap");
+  assert.equal(view.mode, "browse", "expected browse mode (no menu/targeting)");
+  assert.equal(view.menu.items.length, 0, "expected menu not to open");
+  assert.ok(view.feedback && view.feedback.blinkFrames > 0, "expected feedback blink on disallowed action");
+});
+
+test("ui: game over transition auto-focuses Reset button (debug enabled)", async () => {
+  const ctx = await loadSrcIntoVm();
+  ctx.PD.config.debug.enabled = true;
+
+  const s = ctx.PD.newGame({ seedU32: 1 });
+  s.winnerP = ctx.PD.NO_WINNER;
+
+  const view = ctx.PD.ui.newView();
+  // Establish prior ux state.
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+
+  // Simulate winner appearing between ticks.
+  s.winnerP = 0;
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+
+  const c = ctx.PD.ui.computeRowModels(s, view);
+  assert.equal(c.selected.row, ctx.PD.render.ROW_CENTER);
+  assert.equal(c.selected.kind, "btn");
+  assert.equal(c.selected.id, "reset");
+});
+
+test("ui: focus preservation keeps selection near removed hand card (avoids jumping to bank)", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+  s.winnerP = ctx.PD.NO_WINNER;
+  ctx.PD.clearPrompt(s);
+
+  // Build a minimal hand with 2 cards and an empty bank.
+  const u1 = ctx.PD.takeUid(s, "money_1");
+  const u2 = ctx.PD.takeUid(s, "money_2");
+  const uB = ctx.PD.takeUid(s, "money_3");
+
+  const strip = (uid) => {
+    s.deck = s.deck.filter((u) => u !== uid);
+    s.discard = s.discard.filter((u) => u !== uid);
+    for (let p = 0; p < 2; p++) {
+      s.players[p].hand = (s.players[p].hand || []).filter((u) => u !== uid);
+      s.players[p].bank = (s.players[p].bank || []).filter((u) => u !== uid);
+      for (const set of (s.players[p].sets || [])) {
+        if (!set) continue;
+        if (set.props) set.props = set.props.filter(([u]) => u !== uid);
+        if (set.houseUid === uid) set.houseUid = 0;
+      }
+    }
+  };
+  [u1, u2, uB].forEach(strip);
+
+  s.players[0].hand = [u1, u2];
+  s.players[0].bank = [];
+  s.players[0].sets = [];
+
+  const view = ctx.PD.ui.newView();
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = 1; // select the second hand card (u2)
+
+  // Tick once to capture selection anchor.
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+
+  // Simulate mutation between ticks:
+  // - selected hand card removed (played/discarded)
+  // - bank becomes non-empty (received money)
+  s.players[0].hand = [u1];
+  s.players[0].bank = [uB];
+
+  // Cursor index remains 1; naive clamping would now select the bank card.
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  const c = ctx.PD.ui.computeRowModels(s, view);
+  assert.ok(c.selected && c.selected.loc, "expected a selection");
+  assert.equal(c.selected.loc.zone, "hand", "expected focus preservation to stay on a hand card, not bank");
+});
+
+test("ui: hand empty but plays left snaps to End", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+  s.players[0].hand = [];
+  s.winnerP = ctx.PD.NO_WINNER;
+  ctx.PD.clearPrompt(s);
+
+  const view = ctx.PD.ui.newView();
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  const c = ctx.PD.ui.computeRowModels(s, view);
+  assert.equal(c.selected.row, ctx.PD.render.ROW_CENTER);
+  assert.equal(c.selected.kind, "btn");
+  assert.equal(c.selected.id, "endTurn");
+});
+
+test("ui: hand becoming empty mid-turn nudges End (one-shot)", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ scenarioId: "wildBasic", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+  s.winnerP = ctx.PD.NO_WINNER;
+  ctx.PD.clearPrompt(s);
+
+  const view = ctx.PD.ui.newView();
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = 0;
+
+  // Prime ux memory with a non-empty hand.
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  assert.ok(s.players[0].hand.length > 0, "expected non-empty hand after prime tick");
+
+  // Simulate last-card spent mid-turn (e.g. banking/playing removed the final card).
+  s.players[0].hand = [];
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  const c = ctx.PD.ui.computeRowModels(s, view);
+  assert.equal(c.selected.row, ctx.PD.render.ROW_CENTER);
+  assert.equal(c.selected.kind, "btn");
+  assert.equal(c.selected.id, "endTurn");
+});
+
+test("ui: exiting placeReceived prompt with playsLeft<=0 snaps to End", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ scenarioId: "placeReceived", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 0;
+  s.winnerP = ctx.PD.NO_WINNER;
+
+  const view = ctx.PD.ui.newView();
+  // Tick once while prompt is active so lastPromptKind is recorded.
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  assert.ok(s.prompt && s.prompt.kind === "placeReceived");
+
+  // Prompt ends between ticks.
+  ctx.PD.clearPrompt(s);
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+
+  const c = ctx.PD.ui.computeRowModels(s, view);
+  assert.equal(c.selected.row, ctx.PD.render.ROW_CENTER);
+  assert.equal(c.selected.kind, "btn");
+  assert.equal(c.selected.id, "endTurn");
+});
+
+test("ui: payDebt prompt auto-focuses bank when available, else house/props", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  // Bank available case.
+  {
+    const s = ctx.PD.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
+    const pay = s.deck.find((u) => String(ctx.PD.defByUid(s, u).id || "").startsWith("money_"));
+    assert.ok(pay, "expected a money card in deck");
+    s.deck = s.deck.filter((u) => u !== pay);
+    s.players[0].bank.push(pay);
+
+    const view = ctx.PD.ui.newView();
+    ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+    const c = ctx.PD.ui.computeRowModels(s, view);
+    assert.ok(c.selected && c.selected.loc);
+    assert.equal(c.selected.loc.zone, "bank");
+  }
+
+  // No bank case: should focus house (house-pay-first friendly).
+  {
+    const s = ctx.PD.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
+    const view = ctx.PD.ui.newView();
+    ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+    const c = ctx.PD.ui.computeRowModels(s, view);
+    assert.ok(c.selected && c.selected.loc);
+    assert.equal(c.selected.loc.zone, "setHouse");
+  }
+});
+
+test("ui: payDebt cant_pay triggers refocus on next tick", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
+  const view = ctx.PD.ui.newView();
+
+  // Enter prompt and let default focus happen.
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+
+  // Move cursor onto a non-payable hand card.
+  const c0 = ctx.PD.ui.computeRowModels(s, view);
+  const rmH = c0.models[ctx.PD.render.ROW_P_HAND];
+  const handI = rmH.items.findIndex((it) => it && it.loc && it.loc.zone === "hand" && it.loc.p === 0);
+  assert.ok(handI >= 0, "expected a hand card");
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = handI;
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(view.feedback.lastCode, "cant_pay");
+  assert.equal(view.ux.pendingFocusErrorCode, "cant_pay");
+
+  // Next tick should refocus to the default payable item (house, since bank empty).
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  const c1 = ctx.PD.ui.computeRowModels(s, view);
+  assert.ok(c1.selected && c1.selected.loc);
+  assert.equal(c1.selected.loc.zone, "setHouse");
+});
+
+test("ui: payDebt prompt navigation does not snap back to bank next tick (selection anchor refresh)", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
+
+  // Add a bank card so default focus picks bank.
+  const pay = s.deck.find((u) => String(ctx.PD.defByUid(s, u).id || "").startsWith("money_"));
+  assert.ok(pay, "expected a money card in deck");
+  s.deck = s.deck.filter((u) => u !== pay);
+  s.players[0].bank.push(pay);
+
+  const view = ctx.PD.ui.newView();
+
+  // Tick once to enter prompt mode + apply payDebt default focus (bank).
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  let c = ctx.PD.ui.computeRowModels(s, view);
+  assert.ok(c.selected && c.selected.loc);
+  assert.equal(c.selected.loc.zone, "bank");
+
+  // Navigate left to a different selection (hand card, not payable but selectable).
+  ctx.PD.ui.step(s, view, { nav: { left: true }, a: {}, b: {}, x: {} });
+  c = ctx.PD.ui.computeRowModels(s, view);
+  assert.ok(c.selected && c.selected.loc);
+  assert.equal(c.selected.loc.zone, "hand", "expected navigation to move selection off bank onto hand");
+  const movedUid = c.selected.uid;
+
+  // Next tick with no nav should not snap back to the previous bank selection.
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  c = ctx.PD.ui.computeRowModels(s, view);
+  assert.ok(c.selected && c.selected.loc);
+  assert.equal(c.selected.uid, movedUid, "expected selection to remain where the user navigated");
+});
+
+test("ui: pause autofocus after NextScenario prevents End snap", async () => {
+  const ctx = await loadSrcIntoVm();
+  ctx.PD.config.debug.enabled = true;
+  const s = ctx.PD.newGame({ seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+  // Keep hand non-empty so HandEmptySnapEnd doesn't steal focus before we press Next.
+  s.players[0].hand = [s.players[0].hand[0]];
+  s.winnerP = ctx.PD.NO_WINNER;
+  ctx.PD.clearPrompt(s);
+
+  const view = ctx.PD.ui.newView();
+  // Move cursor to Next button.
+  const c0 = ctx.PD.ui.computeRowModels(s, view);
+  const rmC = c0.models[ctx.PD.render.ROW_CENTER];
+  const nextI = rmC.items.findIndex((it) => it && it.kind === "btn" && it.id === "nextScenario");
+  assert.ok(nextI >= 0, "expected Next button");
+  view.cursor.row = ctx.PD.render.ROW_CENTER;
+  view.cursor.i = nextI;
+
+  const intent = ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.ok(intent && intent.kind === "debug" && intent.action === "nextScenario");
+  assert.equal(view.ux.autoFocusPausedByDebug, true, "expected debug pause latch to be set");
+
+  // Now make the state eligible for HandEmptySnapEnd; pause should keep us on Next.
+  s.players[0].hand = [];
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  const c1 = ctx.PD.ui.computeRowModels(s, view);
+  assert.equal(c1.selected.row, ctx.PD.render.ROW_CENTER);
+  assert.equal(c1.selected.kind, "btn");
+  assert.equal(c1.selected.id, "nextScenario");
+});
+
+test("ui: debug pause latch survives long opponent delay and clears on first non-debug input", async () => {
+  const ctx = await loadSrcIntoVm();
+  ctx.PD.config.debug.enabled = true;
+
+  const s = ctx.PD.newGame({ seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+  s.winnerP = ctx.PD.NO_WINNER;
+  ctx.PD.clearPrompt(s);
+
+  const view = ctx.PD.ui.newView();
+
+  // Move cursor to Next button.
+  let c = ctx.PD.ui.computeRowModels(s, view);
+  let rmC = c.models[ctx.PD.render.ROW_CENTER];
+  const nextI = rmC.items.findIndex((it) => it && it.kind === "btn" && it.id === "nextScenario");
+  assert.ok(nextI >= 0);
+  view.cursor.row = ctx.PD.render.ROW_CENTER;
+  view.cursor.i = nextI;
+
+  // Press NextScenario -> latch on.
+  const intent = ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.ok(intent && intent.kind === "debug" && intent.action === "nextScenario");
+  assert.equal(view.ux.autoFocusPausedByDebug, true);
+
+  // Simulate a long opponent/AI delay (many ticks where activeP != 0).
+  s.activeP = 1;
+  for (let i = 0; i < 120; i++) ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  assert.equal(view.ux.autoFocusPausedByDebug, true);
+
+  // Turn returns to player, but latch should suppress turn-start snap.
+  s.activeP = 0;
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  c = ctx.PD.ui.computeRowModels(s, view);
+  assert.equal(c.selected.row, ctx.PD.render.ROW_CENTER);
+  assert.equal(c.selected.kind, "btn");
+  assert.equal(c.selected.id, "nextScenario");
+
+  // First non-debug input clears latch without retroactive snapping on that tick.
+  ctx.PD.ui.step(s, view, { nav: { left: true }, a: {}, b: {}, x: {} });
+  assert.equal(view.ux.autoFocusPausedByDebug, false);
+});
+
+test("debug: Next/Reset preserve autofocus pause latch across debugReset", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  ctx.PD.debugReset();
+  const v0 = ctx.PD.debug.view;
+  assert.ok(v0 && v0.ux);
+  assert.equal(v0.ux.autoFocusPausedByDebug, false);
+
+  // NextScenario should recreate the view but keep the latch on.
+  ctx.PD.debugNextScenario();
+  const v1 = ctx.PD.debug.view;
+  assert.notEqual(v1, v0, "expected debugNextScenario to recreate the view");
+  assert.ok(v1 && v1.ux);
+  assert.equal(v1.ux.autoFocusPausedByDebug, true, "expected debugNextScenario to pause autofocus after reset");
+
+  // A plain debugReset should preserve a previously latched pause.
+  v1.ux.autoFocusPausedByDebug = true;
+  ctx.PD.debugReset();
+  const v2 = ctx.PD.debug.view;
+  assert.notEqual(v2, v1, "expected debugReset to recreate the view");
+  assert.ok(v2 && v2.ux);
+  assert.equal(v2.ux.autoFocusPausedByDebug, true, "expected debugReset to preserve pause latch when previously set");
+});
+
+test("ui: deck-empty style empty-hand nudges End once on turn start, but does not keep snapping while browsing", async () => {
+  const ctx = await loadSrcIntoVm();
+  ctx.PD.config.debug.enabled = true;
+
+  const s = ctx.PD.newGame({ seedU32: 1 });
+  // Simulate: player turn just started, but no hand cards.
+  s.activeP = 0;
+  s.playsLeft = 3;
+  s.players[0].hand = [];
+  s.winnerP = ctx.PD.NO_WINNER;
+  ctx.PD.clearPrompt(s);
+
+  const view = ctx.PD.ui.newView();
+  // Make the transition visible to the focus rule.
+  view.ux.lastActiveP = 1;
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  let c = ctx.PD.ui.computeRowModels(s, view);
+  assert.equal(c.selected.row, ctx.PD.render.ROW_CENTER);
+  assert.equal(c.selected.kind, "btn");
+  assert.equal(c.selected.id, "endTurn");
+
+  // Move cursor to Reset and idle-tick: should stay on Reset (no continuous empty-hand snapping).
+  const rmC = c.models[ctx.PD.render.ROW_CENTER];
+  const resetI = rmC.items.findIndex((it) => it && it.kind === "btn" && it.id === "reset");
+  assert.ok(resetI >= 0, "expected Reset button");
+  view.cursor.row = ctx.PD.render.ROW_CENTER;
+  view.cursor.i = resetI;
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  c = ctx.PD.ui.computeRowModels(s, view);
+  assert.equal(c.selected.row, ctx.PD.render.ROW_CENTER);
+  assert.equal(c.selected.kind, "btn");
+  assert.equal(c.selected.id, "reset");
+});
+
+test("ui: empty-hand invalid action can nudge back to End (error-triggered)", async () => {
+  const ctx = await loadSrcIntoVm();
+  ctx.PD.config.debug.enabled = true;
+
+  const s = ctx.PD.newGame({ seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+  s.players[0].hand = [];
+  s.winnerP = ctx.PD.NO_WINNER;
+  ctx.PD.clearPrompt(s);
+
+  const view = ctx.PD.ui.newView();
+  // Start browsing on Reset.
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  let c = ctx.PD.ui.computeRowModels(s, view);
+  const rmC = c.models[ctx.PD.render.ROW_CENTER];
+  const resetI = rmC.items.findIndex((it) => it && it.kind === "btn" && it.id === "reset");
+  assert.ok(resetI >= 0);
+  view.cursor.row = ctx.PD.render.ROW_CENTER;
+  view.cursor.i = resetI;
+
+  // Simulate an invalid action happening (e.g. player tried to do something impossible).
+  ctx.PD.anim.feedbackError(view, "no_actions", "No actions");
+  assert.equal(view.ux.pendingFocusErrorCode, "no_actions");
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  c = ctx.PD.ui.computeRowModels(s, view);
+  assert.equal(c.selected.row, ctx.PD.render.ROW_CENTER);
+  assert.equal(c.selected.kind, "btn");
+  assert.equal(c.selected.id, "endTurn");
+  assert.equal(view.ux.pendingFocusErrorCode, "");
 });
 
 test("ui: hold-A on rent card enters quick targeting and defaults to playRent", async () => {

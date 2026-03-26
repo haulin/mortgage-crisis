@@ -21,7 +21,7 @@ Documentation convention (for future phases):
 - **Phase 05b ✅**: turn loop framing + discard-down-to-7 prompt + deterministic reshuffle + toast/prompt foundation polish. See `docs/phase05b.md`.
 - **Phase 05c ✅**: draw + reshuffle visibility (staged dealing + shuffle toast/animation), plus renderer‑oblivious animation presentation via `PD.anim.present`. See `docs/phase05c.md`.
 - **Phase 06 ✅**: debt/payment prompt + recipient “faux-turn placement” for received properties (incl. Wild color choice), using prompt actor `prompt.p` (not `activeP`). See `docs/phase06.md`.
-- **Phase 07 ✅**: AI (random legal) + narrated pacing. See `docs/phase07.md`.
+- **Phase 07 ✅**: AI (random legal) + narrated pacing, plus Phase 07 UX/focus polish. See `docs/phase07.md`.
 
 ## Goals + Constraints
 
@@ -398,25 +398,31 @@ Content expansion readiness:
 
 - Keep the debt/payment UX generic so Phase 11 can add “pay/select/transfer” actions (e.g. Forced Purchase) without inventing new interaction patterns
 
-### Phase 07 — AI (random legal) + narrated pacing
+### Phase 07 ✅ — AI (random legal) + narrated pacing + focus/UX polish
 
 - Implement AI as:
   - `legalMoves(state)` → choose random → enqueue commands
 - Show narrated messages with fixed delay between steps
 
+Additionally in this phase we did a sizable pass of **controller UX and focus policy** to make playtesting and edge cases feel sane. Detailed notes live in `docs/phase07.md`.
+
 Content expansion readiness:
 
 - Create a system that will allow future phases to integrate easily
 
-Issues:
-- When player is out of moves and they attempt to place a card, the only valid destination is source. They no longer get negative feedback about no action possible. If only source is a valid destination then action should be disallowed.
-- keep numeric coercion (`|0`, `>>>0`) localized to TIC-80 API boundary wrappers and determinism hot spots; prefer wrappers over ad-hoc coercion in UI/layout/render logic.
-- scrolling in the last scenario is not good
-- the project was renamed to Mortgage Crisis, so we should update all references
-- action menu should maybe get rendered as a bigger overlay, similar to inspect and not cover buttons
-- descriptions of some scenarios don't fit screen in Debug
-- press A when there is a default action such as Rent > Cyan set do not show the highlight of the set.
-- pay debt prompt triggerring can't pay with that should auto-focus on bank if available, on props if not.
+Done:
+- AI (random legal) + narrated pacing (`src/53_ai.js`, `src/90_debug.js`).
+- Updated the middle-panel label to show **Phase 07**.
+- Menu clarity: actions that invoke targeting show `...` (e.g. `Rent...`).
+- Rent UX: tap‑A default Rent preview now highlights the destination set consistently with hold‑A, and the source card is ghosted (no double-highlight).
+- Menu hover previews: only preview when the action is unambiguous (no default highlight for `Rent...` multi-target).
+- Endgame UX: replace stale prompts with a persistent **Winner** toast; keep navigation/inspect; block card tap‑A actions; auto-focus `Reset` (debug).
+- Focus policy refactor:
+  - Centralized in `src/66_focus.js` (event-driven one-shot rules + selection preservation).
+  - Debug pause latch: after debug buttons (`Step`/`Next`/`Reset`), suppress all autofocus until first non-debug input.
+  - Pay-debt prompt default focus + error-triggered refocus (`cant_pay`).
+  - One-shot nudges to `End` for key transitions (plays exhausted, hand becomes empty mid-turn, exit PRP with playsLeft<=0, etc.).
+
 
 ### Phase 08 — Actions + responses
 
@@ -426,6 +432,16 @@ Issues:
 Content expansion readiness:
 
 - Keep the response window + targeting UX generic so Phase 11 can add additional action card types without bespoke UI
+
+Issues:
+- When player is out of moves and they attempt to place a card, the only valid destination is source. They no longer get negative feedback about no action possible. If only source is a valid destination then action should be disallowed.
+- scrolling in the last scenario is not good
+- the project was renamed to Mortgage Crisis, so we should update all references
+- action menu should maybe get rendered as a bigger overlay, similar to inspect and not cover buttons
+- descriptions of some scenarios don't fit screen in Debug
+- I don't think I like "Opponent: " prefix for the AI prompts. It is not that important and it is too long.
+- When we do "Opponent: pay", the money just appears in user's bank. Difficult to notice. Perhaps we can animate it like dealing/drawing?
+- when starting a game/default scenario, the 5/7 cards on each side are already dealt. We should probably start with the 2x5 draw animation and display a toast with who is starting.
 
 ### Phase 09 — Wild replace-window
 
@@ -493,6 +509,7 @@ Content expansion readiness:
   - `56_layout.js` (shared geometry/row policy)
   - `60_render.js` (renderer; namespaced under `PD.render.`*)
   - `65_ui.js` (UI state machine + view models; namespaced under `PD.ui.`*)
+- `66_focus.js` (focus policy: selection preservation + event-driven one-shot autofocus rules)
   - `70_anim.js` (renderer‑oblivious animation presentation)
   - `90_debug.js` (debug harness + `PD.mainTick`)
   - `99_main.js` (single `TIC()` entry point)

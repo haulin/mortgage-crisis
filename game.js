@@ -64,7 +64,8 @@ PD.config.ui = {
 
   // Phase 07: AI pacing (frames at 60fps).
   aiStepDelayFrames: 60,
-  aiNarrateToastFrames: 60
+  aiNarrateToastFrames: 60,
+ 
 };
 
 // Rule-note IDs (Phase 05+). These are small display-only annotations in Inspect.
@@ -2204,14 +2205,15 @@ PD.fmt.setLabelForSetI = function (state, p, setI) {
 PD.fmt.menuLabelForCmds = function (baseLabel, state, cmds) {
   baseLabel = String(baseLabel || "");
   if (!baseLabel) baseLabel = "Action";
-  if (!cmds || cmds.length !== 1) return baseLabel;
+  if (!cmds || cmds.length === 0) return baseLabel;
+  if (cmds.length !== 1) return baseLabel + "...";
   var dl = PD.fmt.destLabelForCmd(state, cmds[0]);
   return dl ? (baseLabel + " -> " + dl) : baseLabel;
 };
 
 PD.fmt.menuLabelForRentMoves = function (state, rentMoves) {
   if (!rentMoves || rentMoves.length === 0) return "";
-  if (rentMoves.length !== 1) return "Rent";
+  if (rentMoves.length !== 1) return "Rent...";
   var onlyR = rentMoves[0];
   var sl = PD.fmt.setLabelForSetI(state, 0, onlyR.setI);
   return sl ? ("Rent -> " + sl) : "Rent";
@@ -3042,7 +3044,7 @@ PD.layout.playerForRow = function (row) {
     var y = maxBtnY - 7; // 6px font + 1
     var yPhase = y - 7;
     if (yPhase < 0) yPhase = 0;
-    printSafe("Phase 04", x, yPhase, cfg.hudLineCol);
+    printSafe("Phase 07", x, yPhase, cfg.hudLineCol);
     printSafe("Y:Mode", x, y, cfg.hudLineCol);
   }
 
@@ -3480,13 +3482,23 @@ PD.ui.newView = function () {
     feedback: {
       blinkFrames: 0,
       blinkPhase: 0,
+      lastCode: "",
       attemptsByCode: {}
     },
 
     // Small UX memory (used for one-shot nudges like snapping to End when out of plays).
     ux: {
       lastActiveP: null,
-      lastPlaysLeft: null
+      lastPlaysLeft: null,
+      lastHandLenP0: null,
+      lastWinnerP: PD.NO_WINNER,
+      lastPromptKind: "",
+      lastPromptForP0: false,
+      lastCenterBtnPressedId: "",
+      lastFocusRuleId: "",
+      pendingFocusErrorCode: "",
+      autoFocusPausedByDebug: false,
+      selAnchor: null
     }
   };
 };
@@ -3522,6 +3534,16 @@ PD.ui.toastsTick = function (view) {
 };
 
 PD.ui.syncPromptToast = function (state, view) {
+  // Game over: hide prompt toast so Winner toast can take over.
+  if (state && state.winnerP !== PD.NO_WINNER) {
+    var iGo;
+    for (iGo = 0; iGo < view.toasts.length; iGo++) {
+      var tGo = view.toasts[iGo];
+      if (tGo && tGo.id === "prompt") { view.toasts.splice(iGo, 1); break; }
+    }
+    return;
+  }
+
   var pr = state.prompt;
   var has = !!(pr && pr.kind && pr.p === 0);
   var i;
@@ -3552,6 +3574,34 @@ PD.ui.syncPromptToast = function (state, view) {
   if (idx >= 0) {
     view.toasts[idx] = toast;
     // Keep prompt toast at the top.
+    if (idx !== 0) {
+      view.toasts.splice(idx, 1);
+      view.toasts.unshift(toast);
+    }
+  } else {
+    view.toasts.unshift(toast);
+  }
+};
+
+PD.ui.syncWinnerToast = function (state, view) {
+  if (!state || !view) return;
+  var has = (state.winnerP !== PD.NO_WINNER);
+  var i;
+  var idx = -1;
+  for (i = 0; i < view.toasts.length; i++) {
+    var t = view.toasts[i];
+    if (t && t.id === "winner") { idx = i; break; }
+  }
+
+  if (!has) {
+    if (idx >= 0) view.toasts.splice(idx, 1);
+    return;
+  }
+
+  var name = (state.winnerP === 0) ? "Player" : "Opponent";
+  var toast = { id: "winner", kind: "info", text: "Winner: " + name, persistent: true };
+  if (idx >= 0) {
+    view.toasts[idx] = toast;
     if (idx !== 0) {
       view.toasts.splice(idx, 1);
       view.toasts.unshift(toast);
@@ -3788,6 +3838,7 @@ PD.ui.layoutHint = function (state, view) {
     var uid = src.uid;
     var def = PD.defByUid(state, uid);
     var cmdsM = [];
+    var isRent = (it.id === "rent");
 
     if (it.id === "bank") {
       cmdsM = PD.moves.bankCmdsForUid(state, uid);
@@ -3800,8 +3851,15 @@ PD.ui.layoutHint = function (state, view) {
       if (def && def.kind === PD.CardKind.House) {
         cmdsM = PD.moves.buildCmdsForUid(state, uid);
       }
+    } else if (isRent) {
+      if (def && def.kind === PD.CardKind.Action && def.actionKind === PD.ActionKind.Rent) {
+        cmdsM = PD.moves.rentMovesForUid(state, uid);
+        PD.moves.sortRentMovesByAmount(state, (src && src.loc) ? src.loc.p : 0, cmdsM);
+      }
     }
 
+    // Only preview when unambiguous (exactly 1 legal cmd). Multi-target actions show "..." and should not
+    // imply a default destination highlight while browsing the menu.
     if (cmdsM.length === 1) {
       hint.menuHoverCmd = cmdsM[0];
       var d2 = PD.moves.destForCmd(hint.menuHoverCmd);
@@ -4117,7 +4175,9 @@ PD.ui.buildRowItems = function (state, view, row, hint) {
       var endDisabled = (state.winnerP !== PD.NO_WINNER) || (state.activeP !== 0);
       pushBtn("endTurn", "End", stripY0, endDisabled);
       if (dbgEnabled) {
-        pushBtn("step", "Step", stripY0 + 11, false);
+        // Game over: Step would attempt to mutate state via debugStep and can throw.
+        // Keep Reset/Next available for recovery.
+        pushBtn("step", "Step", stripY0 + 11, (state.winnerP !== PD.NO_WINNER));
         pushBtn("reset", "Reset", stripY0 + 22, false);
         pushBtn("nextScenario", "Next", stripY0 + 33, false);
       }
@@ -4170,16 +4230,7 @@ PD.ui.computeRowModels = function (state, view) {
 
   var sel = (rm && rm.items && rm.items.length) ? rm.items[view.cursor.i] : null;
 
-  // If the cursor is on an empty row (common in scenarios like winCheck where hand is empty),
-  // relocate to the first row that has at least 1 selectable item so navigation is never "stuck".
-  if (!sel) {
-    var pick = PD.ui.findBestCursorTarget(models, [4, 3, 2, 1, 0], function () { return true; });
-    if (pick) {
-      PD.ui.cursorMoveTo(view, pick);
-      rm = models[pick.row];
-      sel = pick.item;
-    }
-  }
+  // Note: cursor relocation off empty selections is handled by PD.ui.focus.preserve().
 
   var L = PD.config.render.layout;
   var yTable = PD.layout.faceYForRow(3);
@@ -4261,6 +4312,59 @@ PD.ui.computeRowModels = function (state, view) {
     pushOverlay(slot.row, meta.focus);
   }
 
+  function setFocusForCmd(cmd, srcSlot, card) {
+    if (!cmd || !cmd.kind) return;
+    var k = String(cmd.kind);
+    var uid = (card && card.uid) ? card.uid : 0;
+    var def = (card && card.def) ? card.def : null;
+    var wildColor = (card && card.wildColor != null) ? card.wildColor : null;
+
+    if (k === "playProp") {
+      var slotP = slotForCmd(cmd, srcSlot);
+      if (!slotP) return;
+      var colP = null;
+      if (def && PD.isWildDef(def)) colP = (cmd.color != null) ? cmd.color : wildColor;
+      setFocus(slotP, uid, colP, "playProp");
+      return;
+    }
+
+    if (k === "playHouse") {
+      var slotH = slotForCmd(cmd, srcSlot);
+      if (!slotH) return;
+      setFocus(slotH, uid, null, "playHouse");
+      return;
+    }
+
+    if (k === "playRent") {
+      var slotR = slotForCmd(cmd, srcSlot);
+      if (!slotR) return;
+      var sets = state.players[0].sets;
+      var setR = sets[cmd.setI];
+      var stRR = tableStack(cmd.setI);
+      if (!setR || !stRR || stRR.nReal <= 0) return;
+      var topUid = setR.houseUid ? setR.houseUid : ((setR.props && setR.props.length) ? setR.props[setR.props.length - 1][0] : 0);
+      var topColor = null;
+      if (!setR.houseUid && setR.props && setR.props.length) topColor = setR.props[setR.props.length - 1][1];
+      setFocus(slotR, topUid, topColor, "rent");
+      return;
+    }
+
+    if (k === "bank") {
+      var slotB = slotForCmd(cmd, srcSlot);
+      if (!slotB) return;
+      setFocus(slotB, uid, null, "bank");
+      return;
+    }
+
+    if (k === "source") {
+      if (!srcSlot) return;
+      var colS = null;
+      if (def && PD.isWildDef(def)) colS = wildColor;
+      setFocus(srcSlot, uid, colS, "source");
+      return;
+    }
+  }
+
   // Targeting overlays: ghosts + preview-in-stack for the selected destination.
   if (view.mode === "targeting" && view.targeting && view.targeting.active) {
     var t = view.targeting;
@@ -4314,31 +4418,7 @@ PD.ui.computeRowModels = function (state, view) {
 
     // Preview-in-stack for selected destination.
     var cmdSel = cmds[cmdI];
-    if (cmdSel && (cmdSel.kind === "playProp" || cmdSel.kind === "playHouse")) {
-      var slot = slotForCmd(cmdSel, srcSlot);
-      if (cmdSel.kind === "playProp") {
-        setFocus(slot, (t.card && t.card.uid) ? t.card.uid : 0, (t.card && t.card.def && PD.isWildDef(t.card.def)) ? t.wildColor : null, cmdSel.kind);
-      } else {
-        setFocus(slot, (t.card && t.card.uid) ? t.card.uid : 0, null, cmdSel.kind);
-      }
-    } else if (cmdSel && cmdSel.kind === "playRent") {
-      var sets = state.players[0].sets;
-      var setR = sets[cmdSel.setI];
-      var stRR = tableStack(cmdSel.setI);
-      if (setR && stRR && stRR.nReal > 0) {
-        var topUid = setR.houseUid ? setR.houseUid : ((setR.props && setR.props.length) ? setR.props[setR.props.length - 1][0] : 0);
-        var topColor = null;
-        if (!setR.houseUid && setR.props && setR.props.length) topColor = setR.props[setR.props.length - 1][1];
-        setFocus(slotForCmd(cmdSel, srcSlot), topUid, topColor, "rent");
-      }
-    } else if (cmdSel && cmdSel.kind === "bank") {
-      setFocus(slotForCmd(cmdSel, srcSlot), (t.card && t.card.uid) ? t.card.uid : 0, null, "bank");
-    } else if (cmdSel && cmdSel.kind === "source") {
-      // Preview at the source slot (hold-targeting cancel-by-dropping-back).
-      if (srcX != null && srcY != null && srcRow != null) {
-        setFocus(srcSlot, (t.card && t.card.uid) ? t.card.uid : 0, (t.kind === "place" && t.card && t.card.def && PD.isWildDef(t.card.def)) ? t.wildColor : null, "source");
-      }
-    }
+    setFocusForCmd(cmdSel, srcSlot, { uid: (t.card && t.card.uid) ? t.card.uid : 0, def: (t.card && t.card.def) ? t.card.def : null, wildColor: t.wildColor });
 
     // If the selected destination previews the same uid elsewhere, ensure the source slot is still readable.
     // (This keeps menu-targeting and recvProps placement consistent with hold-targeting: source becomes a ghost.)
@@ -4363,17 +4443,12 @@ PD.ui.computeRowModels = function (state, view) {
     var cm = (hint && hint.menuHoverCmd) ? hint.menuHoverCmd : null;
     if (uidM && cm) {
       var defM = PD.defByUid(state, uidM);
-      if (cm.kind === "playProp" || cm.kind === "playHouse") {
-        var slotM = slotForCmd(cm, null);
-        if (cm.kind === "playProp") setFocus(slotM, uidM, (defM && PD.isWildDef(defM)) ? cm.color : null, cm.kind);
-        else setFocus(slotM, uidM, null, cm.kind);
-      } else if (cm.kind === "bank") {
-        setFocus(slotForCmd(cm, null), uidM, null, "bank");
-      }
+      setFocusForCmd(cm, null, { uid: uidM, def: defM, wildColor: (defM && PD.isWildDef(defM)) ? cm.color : null });
     }
 
-    // When menu hover produces a preview of the same uid, ghost the source slot so it doesn't look duplicated.
-    if (meta.focus && uidM && srcM && srcM.loc && meta.focus.uid === uidM) {
+    // When menu hover produces a preview of the same uid (or Rent preview where the preview card differs),
+    // ghost the source slot so it doesn't look duplicated.
+    if (meta.focus && uidM && srcM && srcM.loc && (meta.focus.uid === uidM || meta.focus.forCmdKind === "rent")) {
       if (srcM.uid && srcM.loc && (srcM.loc.zone === "hand" || srcM.loc.zone === "recvProps")) {
         meta.hideSrc = { uid: srcM.uid, loc: srcM.loc };
       }
@@ -4464,6 +4539,7 @@ PD.ui.updateCameras = function (state, view, computed) {
 
 PD.ui.menuOpenForSelection = function (state, view, sel) {
   if (!view || !view.menu) return;
+  if (state && state.winnerP !== PD.NO_WINNER) return;
   view.menu.items = [];
   view.menu.i = 0;
   view.menu.src = sel ? { row: sel.row, i: view.cursor.i, uid: sel.uid, loc: sel.loc || null } : null;
@@ -4584,13 +4660,25 @@ PD.ui.step = function (state, view, actions) {
   PD.anim.feedbackTick(view);
   PD.ui.toastsTick(view);
   PD.ui.syncPromptToast(state, view);
+  PD.ui.syncWinnerToast(state, view);
   PD.anim.tick(state, view);
+
+  var gameOver = (state.winnerP !== PD.NO_WINNER);
+  var prevWinner = (view.ux && view.ux.lastWinnerP != null) ? view.ux.lastWinnerP : PD.NO_WINNER;
+  var justEnded = (gameOver && prevWinner === PD.NO_WINNER);
+
+  // Game over: close overlays and allow free navigation/inspect.
+  if (gameOver) {
+    if (view.mode === "menu") { view.menu.items = []; }
+    if (view.targeting) view.targeting.active = false;
+    view.mode = "browse";
+  }
 
   // Prompt mode sync (Phase 05b+): prompts are rules-owned, UI adopts a dedicated mode.
   var pr = state.prompt;
   var hasPrompt = !!pr;
   var promptForP0 = !!(hasPrompt && pr.p === 0);
-  if (promptForP0) {
+  if (!gameOver && promptForP0) {
     var k = pr && pr.kind ? String(pr.kind) : "";
     // Phase 06: allow overlays during recipient placement prompt.
     var allowOverlays = (k === "placeReceived");
@@ -4626,30 +4714,42 @@ PD.ui.step = function (state, view, actions) {
     return null;
   }
 
-  // One-shot nudge: when P0 runs out of plays, snap selection to End (browse-only).
-  // This makes "A to end turn" frictionless while still allowing players to wander away.
-  if (view.mode === "browse" && !view.inspectActive && state.activeP === 0) {
-    if (!view.ux) view.ux = { lastActiveP: null, lastPlaysLeft: null };
-    var prevP = view.ux.lastActiveP;
-    var prevPlays = view.ux.lastPlaysLeft;
-    var curPlays = state.playsLeft;
-
-    if (prevP === 0 && prevPlays != null && prevPlays > 0 && curPlays <= 0) {
-      var pickEnd = PD.ui.findBestCursorTarget(computed.models, [2], function (it) {
-        return it && it.kind === "btn" && it.id === "endTurn" && !it.disabled;
-      });
-      if (pickEnd) {
-        PD.ui.cursorMoveTo(view, pickEnd);
-        computed = PD.ui.computeRowModels(state, view);
-        PD.ui.updateCameras(state, view, computed);
-      }
+  // Focus policy (selection preservation + centralized autofocus rules).
+  // (Defined in a later-concatenated module; safe to call at runtime.)
+  var allowFocus = (view.mode === "browse" || view.mode === "prompt");
+  var isHardLockedPrompt = !!(promptForP0 && pr && pr.kind === "discardDown");
+  if (allowFocus && !isHardLockedPrompt) {
+    var didFocus = PD.ui.focus.apply(state, view, computed, actions);
+    if (didFocus) {
+      computed = PD.ui.computeRowModels(state, view);
+      PD.ui.updateCameras(state, view, computed);
     }
+  }
 
-    view.ux.lastActiveP = 0;
-    view.ux.lastPlaysLeft = curPlays;
-  } else if (view.ux) {
-    view.ux.lastActiveP = state.activeP;
-    view.ux.lastPlaysLeft = state.playsLeft;
+  // Track transitions for focus rules (after applying them).
+  view.ux.lastActiveP = state.activeP;
+  view.ux.lastPlaysLeft = state.playsLeft;
+  view.ux.lastHandLenP0 = state.players[0].hand.length;
+  view.ux.lastWinnerP = state.winnerP;
+  view.ux.lastPromptForP0 = !!promptForP0;
+  view.ux.lastPromptKind = promptForP0 && pr && pr.kind ? String(pr.kind) : "";
+
+  // Prevent accidental immediate Reset/Next activation if the player is pressing A
+  // during the same frame the win becomes visible.
+  if (justEnded && actions && actions.a && (actions.a.tap || actions.a.grabStart)) {
+    PD.anim.feedbackError(view, "game_over", "");
+    return null;
+  }
+
+  function focusSnapshot() {
+    PD.ui.focus.snapshot(state, view, computed);
+  }
+
+  function setAutoFocusPauseForCenterBtn(id) {
+    view.ux.lastCenterBtnPressedId = id;
+    if (id === "step" || id === "nextScenario" || id === "reset") {
+      view.ux.autoFocusPausedByDebug = true;
+    }
   }
 
   function currentSelection() {
@@ -4739,6 +4839,7 @@ PD.ui.step = function (state, view, actions) {
       if (it.id === "bank") {
         if (srcZone !== "hand") return null;
         var cmd = { kind: "bank", card: { uid: uid, loc: src.loc } };
+        focusSnapshot();
         return { kind: "applyCmd", cmd: cmd };
       }
 
@@ -4747,6 +4848,7 @@ PD.ui.step = function (state, view, actions) {
         // If unambiguous, auto-apply. Otherwise enter targeting.
         var rentMoves = PD.moves.rentMovesForUid(state, uid);
         if (rentMoves.length === 1) {
+          focusSnapshot();
           return { kind: "applyCmd", cmd: rentMoves[0] };
         }
         PD.ui.targetingEnter(state, view, "rent", false, uid, src.loc);
@@ -4762,7 +4864,7 @@ PD.ui.step = function (state, view, actions) {
             var only = real[0];
             view.targeting.active = false;
             view.mode = "browse";
-            if (only && only.kind) return { kind: "applyCmd", cmd: only };
+            if (only && only.kind) { focusSnapshot(); return { kind: "applyCmd", cmd: only }; }
           }
         }
         return null;
@@ -4777,7 +4879,7 @@ PD.ui.step = function (state, view, actions) {
             var onlyB = realB[0];
             view.targeting.active = false;
             view.mode = "browse";
-            if (onlyB && onlyB.kind) return { kind: "applyCmd", cmd: onlyB };
+            if (onlyB && onlyB.kind) { focusSnapshot(); return { kind: "applyCmd", cmd: onlyB }; }
           }
         }
         return null;
@@ -4836,6 +4938,7 @@ PD.ui.step = function (state, view, actions) {
 
     if (!cmdSel) return null;
     if (cmdSel.kind === "source") return null;
+    focusSnapshot();
     return { kind: "applyCmd", cmd: cmdSel };
   }
 
@@ -4849,8 +4952,6 @@ PD.ui.step = function (state, view, actions) {
       view.mode = "browse";
       return null;
     }
-    if (!view.ux) view.ux = { lastActiveP: null, lastPlaysLeft: null };
-    if (prompt.kind !== "placeReceived") view.ux.placeReceivedSnapped = false;
 
     function applyPromptNav() {
       if (!actions.nav) return;
@@ -4874,14 +4975,6 @@ PD.ui.step = function (state, view, actions) {
       if (pick) PD.ui.cursorMoveTo(view, pick);
     }
 
-    // One-shot autofocus when the placeReceived prompt begins.
-    if (prompt.kind === "placeReceived" && !view.ux.placeReceivedSnapped) {
-      snapCursorToFirstRecv();
-      view.ux.placeReceivedSnapped = true;
-      computed = PD.ui.computeRowModels(state, view);
-      PD.ui.updateCameras(state, view, computed);
-    }
-
     if (prompt.kind === "discardDown") {
       // Lock cursor to player hand cards only (not bank).
       var handIs = promptPickHandItemIndices();
@@ -4898,6 +4991,7 @@ PD.ui.step = function (state, view, actions) {
       // Cancel: only before any discard has happened in this prompt instance.
       if (actions.b && actions.b.pressed) {
         if (prompt.nDiscarded <= 0) {
+          focusSnapshot();
           return { kind: "applyCmd", cmd: { kind: "cancelPrompt" } };
         }
         PD.anim.feedbackError(view, "prompt_forced", "Must discard");
@@ -4910,6 +5004,7 @@ PD.ui.step = function (state, view, actions) {
         PD.ui.updateCameras(state, view, computed);
         var selP = currentSelection();
         if (selP && selP.loc && selP.loc.zone === "hand" && selP.loc.p === 0) {
+          focusSnapshot();
           return { kind: "applyCmd", cmd: { kind: "discard", card: { uid: selP.uid, loc: selP.loc } } };
         }
       }
@@ -4935,6 +5030,8 @@ PD.ui.step = function (state, view, actions) {
     applyPromptNav();
     computed = PD.ui.computeRowModels(state, view);
     PD.ui.updateCameras(state, view, computed);
+    // Refresh selection anchor during prompt ticks so selection preservation doesn't fight user navigation.
+    PD.ui.focus.snapshot(state, view, computed);
 
     if (prompt.kind === "payDebt") {
       if (actions.b && actions.b.pressed) {
@@ -4946,9 +5043,9 @@ PD.ui.step = function (state, view, actions) {
         var selD = currentSelection();
         // Allow debug buttons (Step/Reset/Next) during this prompt; End remains disallowed.
         if (selD && selD.kind === "btn") {
-          if (selD.id === "step") return { kind: "debug", action: "step" };
-          if (selD.id === "reset") return { kind: "debug", action: "reset" };
-          if (selD.id === "nextScenario") return { kind: "debug", action: "nextScenario" };
+          if (selD.id === "step") { setAutoFocusPauseForCenterBtn("step"); focusSnapshot(); return { kind: "debug", action: "step" }; }
+          if (selD.id === "reset") { setAutoFocusPauseForCenterBtn("reset"); focusSnapshot(); return { kind: "debug", action: "reset" }; }
+          if (selD.id === "nextScenario") { setAutoFocusPauseForCenterBtn("nextScenario"); focusSnapshot(); return { kind: "debug", action: "nextScenario" }; }
           if (selD.id === "endTurn") { PD.anim.feedbackError(view, "prompt_forced", "Must pay"); return null; }
         }
         if (!selD || !selD.loc) { PD.anim.feedbackError(view, "no_actions", "No actions"); return null; }
@@ -4979,10 +5076,11 @@ PD.ui.step = function (state, view, actions) {
         }
 
         if (selD.loc.zone === "bank" || selD.loc.zone === "setProps" || selD.loc.zone === "setHouse") {
+          focusSnapshot();
           return { kind: "applyCmd", cmd: { kind: "payDebt", card: { uid: selD.uid, loc: selD.loc } } };
         }
 
-        PD.anim.feedbackError(view, "no_actions", "Can't pay with that");
+        PD.anim.feedbackError(view, "cant_pay", "Can't pay with that");
       }
 
       return null;
@@ -4999,9 +5097,9 @@ PD.ui.step = function (state, view, actions) {
         var selR = currentSelection();
         // Allow debug buttons (Step/Reset/Next) during this prompt; End remains disallowed.
         if (selR && selR.kind === "btn") {
-          if (selR.id === "step") return { kind: "debug", action: "step" };
-          if (selR.id === "reset") return { kind: "debug", action: "reset" };
-          if (selR.id === "nextScenario") return { kind: "debug", action: "nextScenario" };
+          if (selR.id === "step") { setAutoFocusPauseForCenterBtn("step"); focusSnapshot(); return { kind: "debug", action: "step" }; }
+          if (selR.id === "reset") { setAutoFocusPauseForCenterBtn("reset"); focusSnapshot(); return { kind: "debug", action: "reset" }; }
+          if (selR.id === "nextScenario") { setAutoFocusPauseForCenterBtn("nextScenario"); focusSnapshot(); return { kind: "debug", action: "nextScenario" }; }
           if (selR.id === "endTurn") {
             PD.anim.feedbackError(view, "prompt_forced", "Must place");
             snapCursorToFirstRecv();
@@ -5030,6 +5128,10 @@ PD.ui.step = function (state, view, actions) {
   // Navigation (directional, screen-space).
   // Hold-A grab: enter targeting *before* directional nav so the nudge that triggers
   // grabStart doesn't also move the cursor to a different card in the same frame.
+  if (gameOver && actions.a && actions.a.grabStart) {
+    PD.anim.feedbackError(view, "game_over", "");
+    return null;
+  }
   if (actions.a && actions.a.grabStart) {
     var selGrab = currentSelection();
     if (selGrab && selGrab.loc && selGrab.loc.zone === "hand" && selGrab.loc.p === 0) {
@@ -5075,6 +5177,15 @@ PD.ui.step = function (state, view, actions) {
     var sel = currentSelection();
     if (!sel) return null;
 
+    // Game over: only allow Reset/Next debug buttons; everything else is a no-op with feedback blink.
+    if (gameOver) {
+      var allowBtn = !!(sel.row === 2 && sel.kind === "btn" && (sel.id === "reset" || sel.id === "nextScenario"));
+      if (!allowBtn) {
+        PD.anim.feedbackError(view, "game_over", "");
+        return null;
+      }
+    }
+
     // Center buttons.
     if (sel.row === 2 && sel.kind === "btn") {
       if (sel.disabled) {
@@ -5103,10 +5214,10 @@ PD.ui.step = function (state, view, actions) {
         return null;
       }
 
-      if (sel.id === "endTurn") return { kind: "applyCmd", cmd: { kind: "endTurn" } };
-      if (sel.id === "step") return { kind: "debug", action: "step" };
-      if (sel.id === "reset") return { kind: "debug", action: "reset" };
-      if (sel.id === "nextScenario") return { kind: "debug", action: "nextScenario" };
+      if (sel.id === "endTurn") { setAutoFocusPauseForCenterBtn("endTurn"); focusSnapshot(); return { kind: "applyCmd", cmd: { kind: "endTurn" } }; }
+      if (sel.id === "step") { setAutoFocusPauseForCenterBtn("step"); focusSnapshot(); return { kind: "debug", action: "step" }; }
+      if (sel.id === "reset") { setAutoFocusPauseForCenterBtn("reset"); focusSnapshot(); return { kind: "debug", action: "reset" }; }
+      if (sel.id === "nextScenario") { setAutoFocusPauseForCenterBtn("nextScenario"); focusSnapshot(); return { kind: "debug", action: "nextScenario" }; }
       return null;
     }
 
@@ -5123,7 +5234,374 @@ PD.ui.step = function (state, view, actions) {
 
   // If hold targeting is active and A is no longer held, auto-confirm is handled in targeting mode.
 
+  // Keep selection anchor fresh for the next tick.
+  focusSnapshot();
   return null;
+};
+
+// ---- src/66_focus.js ----
+// Centralized focus policy (autofocus + selection preservation).
+// Note: This file is concatenated after `src/65_ui.js`; callers only invoke it at runtime from PD.ui.step().
+
+PD.ui.focus = {};
+
+PD.ui.focus._screenCenter = function (view, item) {
+  var row = item.row;
+  var cam = view.camX[row];
+  var x = item.x;
+  var y = item.y;
+  var w = item.w;
+  var h = item.h;
+  return { cx: (x - cam) + (w / 2), cy: y + (h / 2) };
+};
+
+PD.ui.focus.snapshot = function (state, view, computed) {
+  var row = view.cursor.row;
+  var rm = computed.models[row];
+  var items = rm.items;
+  var sel = items[PD.ui.clampI(view.cursor.i, items.length)];
+  if (!sel) { view.ux.selAnchor = null; return; }
+
+  var c = PD.ui.focus._screenCenter(view, sel);
+  view.ux.selAnchor = {
+    row: sel.row,
+    kind: sel.kind,
+    uid: sel.uid,
+    loc: sel.loc,
+    screenCx: c.cx,
+    screenCy: c.cy
+  };
+};
+
+PD.ui.focus._findItemByUidLoc = function (computed, uid, loc) {
+  var models = computed.models;
+  var row;
+  for (row = 0; row < models.length; row++) {
+    var rm = models[row];
+    if (!rm || !rm.items) continue;
+    var i;
+    for (i = 0; i < rm.items.length; i++) {
+      var it = rm.items[i];
+      if (!it) continue;
+      if (it.uid !== uid) continue;
+      if (loc) {
+        // Match on zone/p and indices when available.
+        if (!it.loc) continue;
+        if (it.loc.zone !== loc.zone) continue;
+        if ((it.loc.p != null) && (loc.p != null) && it.loc.p !== loc.p) continue;
+        if ((it.loc.i != null) && (loc.i != null) && it.loc.i !== loc.i) continue;
+        if ((it.loc.setI != null) && (loc.setI != null) && it.loc.setI !== loc.setI) continue;
+      }
+      return { row: row, i: i, item: it };
+    }
+  }
+  return null;
+};
+
+PD.ui.focus._nearestByGeometry = function (view, computed, anchor) {
+  var models = computed.models;
+  var best = null;
+  var bestScore = 999999999;
+  var ax = anchor.screenCx;
+  var ay = anchor.screenCy;
+
+  var row;
+  for (row = 0; row < models.length; row++) {
+    var rm = models[row];
+    if (!rm || !rm.items || rm.items.length === 0) continue;
+    var i;
+    for (i = 0; i < rm.items.length; i++) {
+      var it = rm.items[i];
+      if (!it) continue;
+      var c = PD.ui.focus._screenCenter(view, it);
+      var dx = c.cx - ax;
+      var dy = c.cy - ay;
+      var d2 = dx * dx + dy * dy;
+      // Prefer staying in the same row when distances are similar.
+      var rowPenalty = (anchor.row != null && row !== anchor.row) ? 2000 : 0;
+      var score = d2 + rowPenalty;
+      if (score < bestScore) { bestScore = score; best = { row: row, i: i, item: it }; }
+    }
+  }
+  return best;
+};
+
+PD.ui.focus.preserve = function (state, view, computed) {
+  var sel = computed.selected;
+
+  // Try anchor restore first; otherwise relocate to any selectable when selection is missing.
+  var a = view.ux.selAnchor;
+  var pick = null;
+  if (a && (a.uid || !sel)) {
+    // If the currently-selected item still matches the anchor, keep it.
+    if (sel && a.uid && sel.uid === a.uid) {
+      // If anchor had a loc, require zone match too.
+      if (!a.loc || (sel.loc && sel.loc.zone === a.loc.zone)) {
+        return false;
+      }
+    }
+
+    if (a.uid) pick = PD.ui.focus._findItemByUidLoc(computed, a.uid, a.loc);
+    if (!pick) pick = PD.ui.focus._nearestByGeometry(view, computed, a);
+  }
+
+  // If we have no anchor-based pick and selection is missing, pick any valid item.
+  if (!pick && !sel) {
+    pick = PD.ui.findBestCursorTarget(computed.models, [4, 3, 2, 1, 0], function () { return true; });
+  }
+
+  if (pick) {
+    // Avoid churn if already there.
+    if (view.cursor && view.cursor.row === pick.row && view.cursor.i === pick.i) return false;
+    PD.ui.cursorMoveTo(view, pick);
+    view.ux.lastFocusRuleId = "preserve";
+    return true;
+  }
+
+  return false;
+};
+
+PD.ui.focus._pickCenterBtn = function (computed, id) {
+  return PD.ui.findBestCursorTarget(computed.models, [2], function (it) {
+    return it && it.kind === "btn" && it.id === id && !it.disabled;
+  });
+};
+
+PD.ui.focus._pickPayDebtDefault = function (computed) {
+  var rmHand = computed.models[PD.render.ROW_P_HAND];
+  var rmTable = computed.models[PD.render.ROW_P_TABLE];
+
+  // Prefer bank if any cards exist.
+  if (rmHand && rmHand.items) {
+    var i;
+    for (i = rmHand.items.length - 1; i >= 0; i--) {
+      var it = rmHand.items[i];
+      if (it && it.loc && it.loc.p === 0 && it.loc.zone === "bank") return { row: PD.render.ROW_P_HAND, i: i, item: it };
+    }
+  }
+
+  // Then houses (house-pay-first friendly).
+  if (rmTable && rmTable.items) {
+    var j;
+    for (j = 0; j < rmTable.items.length; j++) {
+      var itH = rmTable.items[j];
+      if (itH && itH.loc && itH.loc.p === 0 && itH.loc.zone === "setHouse") return { row: PD.render.ROW_P_TABLE, i: j, item: itH };
+    }
+    for (j = 0; j < rmTable.items.length; j++) {
+      var itP = rmTable.items[j];
+      if (itP && itP.loc && itP.loc.p === 0 && itP.loc.zone === "setProps") return { row: PD.render.ROW_P_TABLE, i: j, item: itP };
+    }
+  }
+
+  return null;
+};
+
+PD.ui.focus._pickHandCard = function (computed) {
+  return PD.ui.findBestCursorTarget(computed.models, [PD.render.ROW_P_HAND], function (it) {
+    return it && it.kind === "hand" && it.loc && it.loc.p === 0 && it.loc.zone === "hand";
+  });
+};
+
+PD.ui.focus.rules = [
+  {
+    id: "PauseAfterDebug",
+    enabled: function () { return true; },
+    when: function (ctx) { return !!ctx.view.ux.autoFocusPausedByDebug; },
+    pick: function () {
+      // No pick; this rule acts as a gate in apply().
+      return null;
+    }
+  },
+  {
+    id: "OnGameOverEntered_Reset",
+    enabled: function (ctx) { return !!(PD.config && PD.config.debug && PD.config.debug.enabled); },
+    when: function (ctx) { return (ctx.view.ux.lastWinnerP === PD.NO_WINNER && ctx.state.winnerP !== PD.NO_WINNER); },
+    pick: function (ctx) {
+      return PD.ui.focus._pickCenterBtn(ctx.computed, "reset");
+    }
+  },
+  {
+    id: "OnInvalidActionGameOver_Reset",
+    enabled: function (ctx) { return !!(PD.config && PD.config.debug && PD.config.debug.enabled); },
+    when: function (ctx) {
+      if (ctx.state.winnerP === PD.NO_WINNER) return false;
+      if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
+      return (ctx.view.ux.pendingFocusErrorCode === "game_over");
+    },
+    pick: function (ctx) {
+      ctx.view.ux.pendingFocusErrorCode = "";
+      return PD.ui.focus._pickCenterBtn(ctx.computed, "reset");
+    }
+  },
+  {
+    id: "OnPlaysExhausted_End",
+    enabled: function () { return true; },
+    when: function (ctx) {
+      if (ctx.state.winnerP !== PD.NO_WINNER) return false;
+      if (ctx.state.activeP !== 0) return false;
+      if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
+      return (ctx.view.ux.lastActiveP === 0 && ctx.view.ux.lastPlaysLeft > 0 && ctx.state.playsLeft <= 0);
+    },
+    pick: function (ctx) {
+      return PD.ui.focus._pickCenterBtn(ctx.computed, "endTurn");
+    }
+  },
+  {
+    id: "OnHandBecameEmpty_End",
+    enabled: function () { return true; },
+    when: function (ctx) {
+      if (ctx.state.winnerP !== PD.NO_WINNER) return false;
+      if (ctx.state.activeP !== 0) return false;
+      if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
+      if (ctx.state.prompt) return false;
+      if (ctx.view.ux.autoFocusPausedByDebug) return false;
+      return (ctx.view.ux.lastHandLenP0 > 0 && ctx.state.players[0].hand.length === 0);
+    },
+    pick: function (ctx) {
+      return PD.ui.focus._pickCenterBtn(ctx.computed, "endTurn");
+    }
+  },
+  {
+    id: "OnPlayerTurnStart_FocusHandOrEnd",
+    enabled: function () { return true; },
+    when: function (ctx) {
+      if (ctx.state.winnerP !== PD.NO_WINNER) return false;
+      if (ctx.state.activeP !== 0) return false;
+      if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
+      if (ctx.state.prompt && ctx.state.prompt.p === 0) return false;
+      if (ctx.view.ux.autoFocusPausedByDebug) return false;
+      // Turn-start transition into P0.
+      return (ctx.view.ux.lastActiveP !== 0);
+    },
+    pick: function (ctx) {
+      if (ctx.state.players[0].hand.length > 0) return PD.ui.focus._pickHandCard(ctx.computed);
+      if (ctx.state.playsLeft > 0) return PD.ui.focus._pickCenterBtn(ctx.computed, "endTurn");
+      return null;
+    }
+  },
+  {
+    id: "OnInvalidActionWhileHandEmpty_End",
+    enabled: function () { return true; },
+    when: function (ctx) {
+      if (ctx.state.winnerP !== PD.NO_WINNER) return false;
+      if (ctx.state.activeP !== 0) return false;
+      if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
+      if (ctx.state.prompt) return false;
+      if (ctx.view.ux.autoFocusPausedByDebug) return false;
+      if (!ctx.view.ux.pendingFocusErrorCode) return false;
+      return (ctx.state.players[0].hand.length === 0 && ctx.state.playsLeft > 0);
+    },
+    pick: function (ctx) {
+      ctx.view.ux.pendingFocusErrorCode = "";
+      return PD.ui.focus._pickCenterBtn(ctx.computed, "endTurn");
+    }
+  },
+  {
+    id: "OnEnterPlaceReceivedPrompt",
+    enabled: function () { return true; },
+    when: function (ctx) {
+      var pr = ctx.state.prompt;
+      var cur = !!(pr && pr.kind === "placeReceived" && pr.p === 0);
+      return cur && (!ctx.view.ux.lastPromptForP0 || ctx.view.ux.lastPromptKind !== "placeReceived");
+    },
+    pick: function (ctx) {
+      // First recvProps card in hand row.
+      return PD.ui.findBestCursorTarget(ctx.computed.models, [PD.render.ROW_P_HAND], function (it) {
+        return it && it.kind === "hand" && it.loc && it.loc.zone === "recvProps" && it.loc.p === 0;
+      });
+    }
+  },
+  {
+    id: "OnExitPlaceReceivedPrompt_End",
+    enabled: function () { return true; },
+    when: function (ctx) {
+      if (ctx.state.winnerP !== PD.NO_WINNER) return false;
+      var pr = ctx.state.prompt;
+      var cur = !!(pr && pr.kind === "placeReceived" && pr.p === 0);
+      var exited = (ctx.view.ux.lastPromptForP0 && ctx.view.ux.lastPromptKind === "placeReceived" && !cur);
+      if (!exited) return false;
+      if (ctx.state.activeP !== 0) return false;
+      // Common case: last play was Rent and playsLeft is now 0.
+      return (ctx.state.playsLeft <= 0);
+    },
+    pick: function (ctx) {
+      return PD.ui.focus._pickCenterBtn(ctx.computed, "endTurn");
+    }
+  },
+  {
+    id: "OnEnterPayDebtPrompt_DefaultFocus",
+    enabled: function () { return true; },
+    when: function (ctx) {
+      var pr = ctx.state.prompt;
+      var cur = !!(pr && pr.kind === "payDebt" && pr.p === 0);
+      return cur && (!ctx.view.ux.lastPromptForP0 || ctx.view.ux.lastPromptKind !== "payDebt");
+    },
+    pick: function (ctx) {
+      return PD.ui.focus._pickPayDebtDefault(ctx.computed);
+    }
+  },
+  {
+    id: "OnInvalidActionPayDebt_DefaultFocus",
+    enabled: function () { return true; },
+    when: function (ctx) {
+      var pr = ctx.state.prompt;
+      if (!(pr && pr.kind === "payDebt" && pr.p === 0)) return false;
+      return (ctx.view.ux.pendingFocusErrorCode === "cant_pay");
+    },
+    pick: function (ctx) {
+      var pick = PD.ui.focus._pickPayDebtDefault(ctx.computed);
+      if (pick) ctx.view.ux.pendingFocusErrorCode = "";
+      return pick;
+    }
+  }
+];
+
+PD.ui.focus.apply = function (state, view, computed, actions) {
+  var nav = actions.nav;
+  var a = actions.a;
+  var hasNav = !!(nav && (nav.up || nav.down || nav.left || nav.right));
+  var hasA = !!(a && (a.tap || a.grabStart));
+
+  // Debug-pause latch: suppress all snapping until the player provides a non-debug input.
+  if (view.ux.autoFocusPausedByDebug) {
+    if (hasNav) { view.ux.autoFocusPausedByDebug = false; return false; }
+    if (hasA) {
+      var sel = computed.selected;
+      var isDebugBtn = !!(sel && sel.kind === "btn" && sel.row === PD.render.ROW_CENTER &&
+        (sel.id === "step" || sel.id === "reset" || sel.id === "nextScenario"));
+      if (!isDebugBtn) view.ux.autoFocusPausedByDebug = false;
+      return false;
+    }
+
+    // While latched, allow preservation only when selection disappears.
+    if (!computed.selected) return PD.ui.focus.preserve(state, view, computed);
+    return false;
+  }
+
+  // Never move the cursor out from under the player during the same tick that they
+  // are navigating or confirming; preservation/autofocus is for state churn between ticks.
+  if (hasNav || hasA) return false;
+
+  // Always preserve selection stability first.
+  var changed = false;
+  if (PD.ui.focus.preserve(state, view, computed)) changed = true;
+
+  var ctx = { state: state, view: view, computed: computed, actions: actions };
+
+  var ri;
+  for (ri = 0; ri < PD.ui.focus.rules.length; ri++) {
+    var r = PD.ui.focus.rules[ri];
+    if (!r.enabled(ctx)) continue;
+    if (!r.when(ctx)) continue;
+    var pick = r.pick(ctx);
+    if (pick && pick.row != null && pick.i != null) {
+      PD.ui.cursorMoveTo(view, pick);
+      view.ux.lastFocusRuleId = r.id;
+      return true;
+    }
+  }
+
+  return changed;
 };
 
 // ---- src/70_anim.js ----
@@ -5273,6 +5751,11 @@ PD.anim.feedbackError = function (view, code, msg) {
   msg = String(msg || "");
 
   var fb = view.feedback;
+  fb.lastCode = code;
+
+  // Focus policy can optionally respond to the *next* idle tick after an invalid action.
+  // Keep the first error until consumed so repeated blinks don't overwrite the trigger.
+  if (view.ux && !view.ux.pendingFocusErrorCode) view.ux.pendingFocusErrorCode = code;
   var attempts = fb.attemptsByCode[code] || 0;
   attempts += 1;
   fb.attemptsByCode[code] = attempts;
@@ -5300,6 +5783,8 @@ PD.anim.feedbackTick = function (view) {
   } else {
     fb.blinkFrames = 0;
     fb.blinkPhase = 0;
+    fb.lastCode = "";
+    if (view.ux) view.ux.pendingFocusErrorCode = "";
   }
 };
 
@@ -5457,8 +5942,10 @@ PD.debug = PD.debug || {
 
 PD.debug.scenarios = ["default"].concat(PD.SCENARIO_IDS);
 
-PD.debugReset = function () {
+PD.debugReset = function (opts) {
   var d = PD.debug;
+  var prevPaused = !!(d.view && d.view.ux && d.view.ux.autoFocusPausedByDebug);
+  var shouldPause = !!(opts && opts.pauseAutoFocus) || prevPaused;
   var seedU32 = PD.computeSeed();
   var scenarioId = d.scenarios[d.scenarioI];
   if (scenarioId === "default") {
@@ -5467,6 +5954,7 @@ PD.debugReset = function () {
     d.state = PD.newGame({ seedU32: seedU32 >>> 0, scenarioId: scenarioId });
   }
   d.view = PD.ui.newView();
+  if (shouldPause && d.view && d.view.ux) d.view.ux.autoFocusPausedByDebug = true;
   d.ctrl = PD.controls.newState();
   d.lastCmd = "";
   d.lastEvents = [];
@@ -5478,7 +5966,7 @@ PD.debugReset = function () {
 PD.debugNextScenario = function () {
   var d = PD.debug;
   d.scenarioI = (d.scenarioI + 1) % d.scenarios.length;
-  PD.debugReset();
+  PD.debugReset({ pauseAutoFocus: true });
 };
 
 PD.debugPickMove = function (moves) {
@@ -5534,7 +6022,7 @@ PD.debugTick = function () {
     // A: step, B: next scenario, X: reset
     if (btnp(4)) PD.debugStep();
     if (btnp(5)) PD.debugNextScenario();
-    if (btnp(6)) PD.debugReset();
+    if (btnp(6)) PD.debugReset({ pauseAutoFocus: true });
   }
 
   var s = d.state;
@@ -5623,6 +6111,13 @@ PD.debugTick = function () {
   printSmall("Legal:" + moves.length, x, y, 12); y += step;
   printSmall("LastCmd:" + (d.lastCmd || "(none)"), x, y, 12); y += step;
   printSmall("Events:" + PD.debugEventsToLine(d.lastEvents), x, y, 12); y += step;
+
+  // Long focus rule ids don't fit well in the right column; render them full-width here.
+  var vFocus = d.view;
+  if (vFocus && vFocus.ux && vFocus.ux.lastFocusRuleId) {
+    printSmall("FocusRule:" + String(vFocus.ux.lastFocusRuleId), x, y, 12); y += step;
+  }
+
   // Render scenario description after Events so it doesn't overlap the right UI column.
   if (pendingDesc) { printSmall(pendingDesc, x, y, 13); y += step; }
 
@@ -5634,6 +6129,17 @@ PD.debugTick = function () {
     printSmall("UI:" + String(v.mode || "?") + " I:" + bool01(v.inspectActive) + " Drag:" + bool01(isDragging), xR, yR, 12); yR += step;
     if (v.cursor) printSmall("Cur:r" + v.cursor.row + " i" + v.cursor.i, xR, yR, 12);
     yR += step;
+
+    if (v.ux) {
+      var a = v.ux.selAnchor;
+      if (a) {
+        var zone = (a.loc && a.loc.zone) ? String(a.loc.zone) : "?";
+        printSmall("Anchor:uid" + a.uid + " " + zone, xR, yR, 12); yR += step;
+      }
+      if (v.ux.pendingFocusErrorCode) {
+        printSmall("FocusErr:" + String(v.ux.pendingFocusErrorCode), xR, yR, 12); yR += step;
+      }
+    }
 
     if (v.mode === "menu" && v.menu && v.menu.items) {
       var nM = v.menu.items.length;
@@ -5747,7 +6253,7 @@ PD.mainTick = function () {
         PD.debugStep();
         PD.anim.onEvents(d.state, d.view, d.lastEvents);
       }
-      else if (intent.action === "reset") PD.debugReset();
+      else if (intent.action === "reset") PD.debugReset({ pauseAutoFocus: true });
       else if (intent.action === "nextScenario") PD.debugNextScenario();
     }
 

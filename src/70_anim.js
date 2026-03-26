@@ -144,6 +144,11 @@ PD.anim.feedbackError = function (view, code, msg) {
   msg = String(msg || "");
 
   var fb = view.feedback;
+  fb.lastCode = code;
+
+  // Focus policy can optionally respond to the *next* idle tick after an invalid action.
+  // Keep the first error until consumed so repeated blinks don't overwrite the trigger.
+  if (view.ux && !view.ux.pendingFocusErrorCode) view.ux.pendingFocusErrorCode = code;
   var attempts = fb.attemptsByCode[code] || 0;
   attempts += 1;
   fb.attemptsByCode[code] = attempts;
@@ -171,6 +176,8 @@ PD.anim.feedbackTick = function (view) {
   } else {
     fb.blinkFrames = 0;
     fb.blinkPhase = 0;
+    fb.lastCode = "";
+    if (view.ux) view.ux.pendingFocusErrorCode = "";
   }
 };
 
