@@ -65,12 +65,12 @@ test("ui: early hold-A grab does not move cursor selection", async () => {
   const ctx = await loadSrcIntoVm();
 
   // Build a deterministic hand with 2 known properties so we can detect drift.
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
 
   function takeFromDeckByDefId(defId) {
-    const uid = s.deck.find((u) => ctx.PD.defByUid(s, u).id === defId);
+    const uid = s.deck.find((u) => ctx.PD.state.defByUid(s, u).id === defId);
     assert.ok(uid, `expected ${defId} uid in deck`);
     s.deck = s.deck.filter((u) => u !== uid);
     return uid;
@@ -166,7 +166,7 @@ test("ui: findBestCursorTarget returns null when no match", async () => {
 test("ui: center buttons remain visible during Inspect", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   const view = ctx.PD.ui.newView();
   view.mode = "browse";
   view.inspectActive = true;
@@ -180,7 +180,7 @@ test("ui: center buttons remain visible during Inspect", async () => {
 test("ui: targeting defaults to existing set when available (Place)", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   const view = ctx.PD.ui.newView();
   view.cursor.row = ctx.PD.render.ROW_P_HAND;
   view.cursor.i = 0;
@@ -197,15 +197,15 @@ test("ui: targeting defaults to existing set when available (Place)", async () =
 test("ui: place preview reserves width so later sets shift (no overlap)", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
 
   // Add a second set to the right so shifting is observable.
   // Use a Cyan property so colors differ (set legality doesn't matter for shifting).
-  const uidC = s.deck.find((u) => ctx.PD.defByUid(s, u).id === "prop_cyan");
+  const uidC = s.deck.find((u) => ctx.PD.state.defByUid(s, u).id === "prop_cyan");
   assert.ok(uidC, "expected prop_cyan uid in deck");
   s.deck = s.deck.filter((u) => u !== uidC);
-  const set2 = ctx.PD.newEmptySet();
+  const set2 = ctx.PD.state.newEmptySet();
   set2.props.push([uidC, ctx.PD.Color.Cyan]);
   s.players[0].sets.push(set2);
 
@@ -240,7 +240,7 @@ test("ui: place preview reserves width so later sets shift (no overlap)", async 
 test("ui: wild color toggles and updates cmd list", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ scenarioId: "wildBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "wildBasic", seedU32: 1 });
   const view = ctx.PD.ui.newView();
   view.cursor.row = ctx.PD.render.ROW_P_HAND;
   view.cursor.i = 0;
@@ -250,8 +250,8 @@ test("ui: wild color toggles and updates cmd list", async () => {
   assert.equal(view.mode, "targeting");
   assert.equal(view.targeting.kind, "place");
 
-  const def = ctx.PD.defByUid(s, view.targeting.card.uid);
-  assert.ok(ctx.PD.isWildDef(def), "expected wild card");
+  const def = ctx.PD.state.defByUid(s, view.targeting.card.uid);
+  assert.ok(ctx.PD.rules.isWildDef(def), "expected wild card");
   const c0 = def.wildColors[0];
   const c1 = def.wildColors[1];
 
@@ -267,13 +267,13 @@ test("ui: wild color toggles and updates cmd list", async () => {
 test("ui: browse directional nav - Up from End picks opponent table if present", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ seedU32: 1 });
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
   // Give opponent a single table property; clear opponent hand so table is the only Up candidate.
-  const uid = s.deck.find((u) => ctx.PD.defByUid(s, u).id === "prop_cyan");
+  const uid = s.deck.find((u) => ctx.PD.state.defByUid(s, u).id === "prop_cyan");
   assert.ok(uid, "expected prop_cyan uid in deck");
   s.deck = s.deck.filter((u) => u !== uid);
 
-  const set = ctx.PD.newEmptySet();
+  const set = ctx.PD.state.newEmptySet();
   set.props.push([uid, ctx.PD.Color.Cyan]);
   s.players[1].sets = [set];
   s.players[1].hand = [];
@@ -296,7 +296,7 @@ test("ui: browse directional nav - Up from End picks opponent table if present",
 test("ui: browse directional nav - Up from End picks opponent hand if no table", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ seedU32: 1 });
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
   s.players[1].sets = [];
   // Keep exactly 1 opponent hand card to avoid ambiguity.
   const keep = s.players[1].hand[0];
@@ -317,7 +317,7 @@ test("ui: browse directional nav - Up from End picks opponent hand if no table",
 test("ui: browse directional nav - Left from End prefers center piles (not opponent hand)", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ seedU32: 1 });
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
   // Default start: opponent has 5 hand cards, no table sets.
   s.players[1].sets = [];
 
@@ -338,7 +338,7 @@ test("ui: browse directional nav - Left from End prefers center piles (not oppon
 test("ui: browse directional nav - global axis-wrap fallback triggers when no Up candidates", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   // Remove all opponent items so nothing exists above the center row.
   s.players[1].hand = [];
   s.players[1].bank = [];
@@ -360,7 +360,7 @@ test("ui: browse directional nav - global axis-wrap fallback triggers when no Up
 test("ui: out of plays snaps to End button (one-shot)", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
 
   const view = ctx.PD.ui.newView();
@@ -385,10 +385,10 @@ test("ui: out of plays snaps to End button (one-shot)", async () => {
 test("ui: discardDown prompt locks to hand and A discards a hand card", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ seedU32: 1 });
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
   s.activeP = 0;
   // Force discard prompt.
-  ctx.PD.setPrompt(s, { kind: "discardDown", p: 0 });
+  ctx.PD.state.setPrompt(s, { kind: "discardDown", p: 0 });
 
   const view = ctx.PD.ui.newView();
   // Start somewhere else to prove prompt forces us into hand.
@@ -416,9 +416,9 @@ test("ui: discardDown prompt locks to hand and A discards a hand card", async ()
 test("ui: discardDown prompt allows B to cancel before any discard", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ seedU32: 1 });
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
   s.activeP = 0;
-  ctx.PD.setPrompt(s, { kind: "discardDown", p: 0 });
+  ctx.PD.state.setPrompt(s, { kind: "discardDown", p: 0 });
 
   const view = ctx.PD.ui.newView();
   // Enter prompt mode.
@@ -433,9 +433,9 @@ test("ui: discardDown prompt allows B to cancel before any discard", async () =>
 test("ui: discardDown prompt B after discarding gives negative feedback (no cancel)", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ seedU32: 1 });
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
   s.activeP = 0;
-  ctx.PD.setPrompt(s, { kind: "discardDown", p: 0 });
+  ctx.PD.state.setPrompt(s, { kind: "discardDown", p: 0 });
   // Simulate a discard having already happened.
   if (s.prompt) s.prompt.nDiscarded = 1;
 
@@ -451,12 +451,12 @@ test("ui: discardDown prompt B after discarding gives negative feedback (no canc
 test("ui: menu Place auto-applies when only one destination exists", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
 
   // Add a property color that does not match any existing set => only New set is legal.
-  const uid = s.deck.find((u) => ctx.PD.defByUid(s, u).id === "prop_cyan");
+  const uid = s.deck.find((u) => ctx.PD.state.defByUid(s, u).id === "prop_cyan");
   assert.ok(uid, "expected prop_cyan uid in deck");
   s.deck = s.deck.filter((u) => u !== uid);
   s.players[0].hand.push(uid);
@@ -482,7 +482,7 @@ test("ui: menu Place auto-applies when only one destination exists", async () =>
 test("ui: hold-A targeting includes a Source destination (release-A cancels)", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
 
@@ -507,7 +507,7 @@ test("ui: hold-A targeting includes a Source destination (release-A cancels)", a
 test("ui: menu targeting includes a Source destination (tap-A cancels)", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
 
@@ -538,7 +538,7 @@ test("ui: menu targeting includes a Source destination (tap-A cancels)", async (
 test("ui: winCheck scenario is navigable (cursor relocates off empty hand)", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ scenarioId: "winCheck", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "winCheck", seedU32: 1 });
   const view = ctx.PD.ui.newView();
   // Default view cursor is player hand, which is empty in winCheck.
   assert.equal(view.cursor.row, ctx.PD.render.ROW_P_HAND);
@@ -554,11 +554,11 @@ test("ui: winCheck scenario is navigable (cursor relocates off empty hand)", asy
 test("ui: pressing disabled End (opponent turn) gives feedback + moves to Step", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ seedU32: 1 });
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
   s.activeP = 1;
   s.playsLeft = 3;
   // Keep P0 hand under limit so "disabled" is strictly opponent-turn.
-  s.players[0].hand = (s.players[0].hand || []).slice(0, ctx.PD.HAND_MAX);
+  s.players[0].hand = s.players[0].hand.slice(0, ctx.PD.state.HAND_MAX);
 
   const view = ctx.PD.ui.newView();
   view.cursor.row = ctx.PD.render.ROW_CENTER;
@@ -577,9 +577,9 @@ test("ui: pressing disabled End (opponent turn) gives feedback + moves to Step",
 test("ui: bank targeting produces a preview in the bank stack row", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ seedU32: 1 });
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
   // Force a simple state: one money card in hand, empty bank/sets.
-  const moneyUid = ctx.PD.takeUid(s, "money_1");
+  const moneyUid = ctx.PD.state.takeUid(s, "money_1");
   assert.ok(moneyUid, "expected money_1 uid");
   // Remove uid from any zone it might already be in.
   s.deck = s.deck.filter((u) => u !== moneyUid);
@@ -615,8 +615,8 @@ test("ui: bank targeting produces a preview in the bank stack row", async () => 
 test("ui: menu hover Bank produces a preview when unambiguous", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ seedU32: 1 });
-  const moneyUid = ctx.PD.takeUid(s, "money_1");
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
+  const moneyUid = ctx.PD.state.takeUid(s, "money_1");
   assert.ok(moneyUid, "expected money_1 uid");
   // Force a simple state: one money card in hand, empty bank/sets.
   s.deck = s.deck.filter((u) => u !== moneyUid);
@@ -656,14 +656,14 @@ test("ui: menu hover Bank produces a preview when unambiguous", async () => {
 test("ui: onEvents stages dealing and hides drawn cards until revealed", async () => {
   const ctx = await loadSrcIntoVm();
 
-  const s = ctx.PD.newGame({ seedU32: 1 });
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
   const p = 0;
   const view = ctx.PD.ui.newView();
 
   // Force a known draw and capture events.
   const events = [];
   const beforeHand = s.players[p].hand.slice();
-  ctx.PD.drawToHand(s, p, 2, events);
+  ctx.PD.state.drawToHand(s, p, 2, events);
   const drawEv = events.find((e) => e && e.kind === "draw" && e.p === p);
   assert.ok(drawEv, "expected draw event");
   assert.equal(drawEv.uids.length, 2);
@@ -705,7 +705,7 @@ test("ui: onEvents stages dealing and hides drawn cards until revealed", async (
 
 test("ui: placeReceived prompt - A on real hand snaps back to faux-hand", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ scenarioId: "placeReceived", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeReceived", seedU32: 1 });
   const view = ctx.PD.ui.newView();
 
   // Enter prompt mode (sync happens inside step).
@@ -729,7 +729,7 @@ test("ui: placeReceived prompt - A on real hand snaps back to faux-hand", async 
 
 test("ui: placeReceived prompt - A on faux-hand enters targeting", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ scenarioId: "placeReceived", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeReceived", seedU32: 1 });
   const view = ctx.PD.ui.newView();
 
   ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
@@ -746,7 +746,7 @@ test("ui: placeReceived prompt - A on faux-hand enters targeting", async () => {
 
 test("ui: placeReceived prompt - auto-focus snaps to a received property", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ scenarioId: "placeReceived", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeReceived", seedU32: 1 });
   const view = ctx.PD.ui.newView();
 
   // Start somewhere else (center row) then enter prompt.
@@ -764,7 +764,7 @@ test("ui: placeReceived prompt - auto-focus snaps to a received property", async
 
 test("ui: placeReceived prompt - hold-A grabStart on received prop enters place targeting (hold=true)", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ scenarioId: "placeReceived", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeReceived", seedU32: 1 });
   const view = ctx.PD.ui.newView();
 
   ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
@@ -784,7 +784,7 @@ test("ui: placeReceived prompt - hold-A grabStart on received prop enters place 
 
 test("ui: placeReceived prompt - A on End is disallowed and snaps back to received properties", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ scenarioId: "placeReceived", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeReceived", seedU32: 1 });
   const view = ctx.PD.ui.newView();
 
   ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
@@ -810,7 +810,7 @@ test("ui: placeReceived prompt - A on End is disallowed and snaps back to receiv
 test("ui: placeReceived prompt - A on Step is allowed (debug action)", async () => {
   const ctx = await loadSrcIntoVm();
   ctx.PD.config.debug.enabled = true;
-  const s = ctx.PD.newGame({ scenarioId: "placeReceived", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeReceived", seedU32: 1 });
   const view = ctx.PD.ui.newView();
 
   ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
@@ -830,7 +830,7 @@ test("ui: placeReceived prompt - A on Step is allowed (debug action)", async () 
 
 test("ui: payDebt prompt - A on housed setProp redirects to setHouse; second A emits payDebt", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
   const view = ctx.PD.ui.newView();
 
   // Enter prompt mode.
@@ -865,7 +865,7 @@ test("ui: payDebt prompt - A on housed setProp redirects to setHouse; second A e
 test("ui: payDebt prompt - Step button returns debug intent and debugStep pays debt", async () => {
   const ctx = await loadSrcIntoVm();
   ctx.PD.config.debug.enabled = true;
-  const s = ctx.PD.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
   const view = ctx.PD.ui.newView();
 
   // Enter prompt mode.
@@ -886,20 +886,19 @@ test("ui: payDebt prompt - Step button returns debug intent and debugStep pays d
   assert.equal(intent.action, "step");
 
   // Simulate Render-mode debug handling: debugStep applies a legal move.
-  ctx.PD.debug = ctx.PD.debug || {};
   ctx.PD.debug.state = s;
-  ctx.PD.debugStep();
+  ctx.PD.debug.step();
   assert.ok(!s.prompt || s.prompt.kind !== "payDebt", "expected debt prompt to progress/resolve after step");
 });
 
 test("ui: rent card menu shows Rent (not just Bank) when a matching set exists", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
 
   // Find rent_mo in hand and set cursor to it.
-  const uid = s.players[0].hand.find((u) => ctx.PD.defByUid(s, u).id === "rent_mo");
+  const uid = s.players[0].hand.find((u) => ctx.PD.state.defByUid(s, u).id === "rent_mo");
   assert.ok(uid, "expected rent_mo in hand");
   const i = s.players[0].hand.indexOf(uid);
   assert.ok(i >= 0);
@@ -917,11 +916,11 @@ test("ui: rent card menu shows Rent (not just Bank) when a matching set exists",
 
 test("ui: menu hover Rent previews default target set", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
 
-  const uid = s.players[0].hand.find((u) => ctx.PD.defByUid(s, u).id === "rent_mo");
+  const uid = s.players[0].hand.find((u) => ctx.PD.state.defByUid(s, u).id === "rent_mo");
   assert.ok(uid, "expected rent_mo in hand");
   const i = s.players[0].hand.indexOf(uid);
   assert.ok(i >= 0);
@@ -950,21 +949,21 @@ test("ui: menu hover Rent previews default target set", async () => {
 
 test("ui: menu hover Rent (multi-target) previews the same default target as quick targeting", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
 
   // Add a second eligible Magenta set with 3 props so its rent is higher than the Orange set.
-  const mags = s.deck.filter((u) => ctx.PD.defByUid(s, u).id === "prop_magenta").slice(0, 3);
+  const mags = s.deck.filter((u) => ctx.PD.state.defByUid(s, u).id === "prop_magenta").slice(0, 3);
   assert.equal(mags.length, 3, "expected 3 prop_magenta uids in deck");
   s.deck = s.deck.filter((u) => !mags.includes(u));
-  const setM = ctx.PD.newEmptySet();
+  const setM = ctx.PD.state.newEmptySet();
   setM.props.push([mags[0], ctx.PD.Color.Magenta]);
   setM.props.push([mags[1], ctx.PD.Color.Magenta]);
   setM.props.push([mags[2], ctx.PD.Color.Magenta]);
   s.players[0].sets.push(setM); // setI=1
 
-  const uid = s.players[0].hand.find((u) => ctx.PD.defByUid(s, u).id === "rent_mo");
+  const uid = s.players[0].hand.find((u) => ctx.PD.state.defByUid(s, u).id === "rent_mo");
   assert.ok(uid, "expected rent_mo in hand");
 
   const rentMoves = ctx.PD.moves.rentMovesForUid(s, uid);
@@ -988,8 +987,8 @@ test("ui: menu hover Rent (multi-target) previews the same default target as qui
 
 test("ui: game over shows winner toast and hides prompt toast", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ scenarioId: "winCheck", seedU32: 1 });
-  assert.notEqual(s.winnerP, ctx.PD.NO_WINNER, "expected winner in winCheck scenario");
+  const s = ctx.PD.state.newGame({ scenarioId: "winCheck", seedU32: 1 });
+  assert.notEqual(s.winnerP, ctx.PD.state.NO_WINNER, "expected winner in winCheck scenario");
 
   const view = ctx.PD.ui.newView();
   // Tick once to allow UI to sync persistent toasts.
@@ -1005,8 +1004,8 @@ test("ui: game over shows winner toast and hides prompt toast", async () => {
 
 test("ui: game over blocks card tap-A actions (no menu/targeting; blink only)", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ scenarioId: "winCheck", seedU32: 1 });
-  assert.notEqual(s.winnerP, ctx.PD.NO_WINNER);
+  const s = ctx.PD.state.newGame({ scenarioId: "winCheck", seedU32: 1 });
+  assert.notEqual(s.winnerP, ctx.PD.state.NO_WINNER);
 
   // Put a card in hand so we can press A on it.
   const uid = s.deck[0];
@@ -1031,8 +1030,8 @@ test("ui: game over transition auto-focuses Reset button (debug enabled)", async
   const ctx = await loadSrcIntoVm();
   ctx.PD.config.debug.enabled = true;
 
-  const s = ctx.PD.newGame({ seedU32: 1 });
-  s.winnerP = ctx.PD.NO_WINNER;
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
+  s.winnerP = ctx.PD.state.NO_WINNER;
 
   const view = ctx.PD.ui.newView();
   // Establish prior ux state.
@@ -1050,16 +1049,16 @@ test("ui: game over transition auto-focuses Reset button (debug enabled)", async
 
 test("ui: focus preservation keeps selection near removed hand card (avoids jumping to bank)", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ seedU32: 1 });
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
-  s.winnerP = ctx.PD.NO_WINNER;
-  ctx.PD.clearPrompt(s);
+  s.winnerP = ctx.PD.state.NO_WINNER;
+  ctx.PD.state.clearPrompt(s);
 
   // Build a minimal hand with 2 cards and an empty bank.
-  const u1 = ctx.PD.takeUid(s, "money_1");
-  const u2 = ctx.PD.takeUid(s, "money_2");
-  const uB = ctx.PD.takeUid(s, "money_3");
+  const u1 = ctx.PD.state.takeUid(s, "money_1");
+  const u2 = ctx.PD.state.takeUid(s, "money_2");
+  const uB = ctx.PD.state.takeUid(s, "money_3");
 
   const strip = (uid) => {
     s.deck = s.deck.filter((u) => u !== uid);
@@ -1102,12 +1101,12 @@ test("ui: focus preservation keeps selection near removed hand card (avoids jump
 
 test("ui: hand empty but plays left snaps to End", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ seedU32: 1 });
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
   s.players[0].hand = [];
-  s.winnerP = ctx.PD.NO_WINNER;
-  ctx.PD.clearPrompt(s);
+  s.winnerP = ctx.PD.state.NO_WINNER;
+  ctx.PD.state.clearPrompt(s);
 
   const view = ctx.PD.ui.newView();
   ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
@@ -1119,11 +1118,11 @@ test("ui: hand empty but plays left snaps to End", async () => {
 
 test("ui: hand becoming empty mid-turn nudges End (one-shot)", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ scenarioId: "wildBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "wildBasic", seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
-  s.winnerP = ctx.PD.NO_WINNER;
-  ctx.PD.clearPrompt(s);
+  s.winnerP = ctx.PD.state.NO_WINNER;
+  ctx.PD.state.clearPrompt(s);
 
   const view = ctx.PD.ui.newView();
   view.cursor.row = ctx.PD.render.ROW_P_HAND;
@@ -1145,10 +1144,10 @@ test("ui: hand becoming empty mid-turn nudges End (one-shot)", async () => {
 
 test("ui: exiting placeReceived prompt with playsLeft<=0 snaps to End", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ scenarioId: "placeReceived", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeReceived", seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 0;
-  s.winnerP = ctx.PD.NO_WINNER;
+  s.winnerP = ctx.PD.state.NO_WINNER;
 
   const view = ctx.PD.ui.newView();
   // Tick once while prompt is active so lastPromptKind is recorded.
@@ -1156,7 +1155,7 @@ test("ui: exiting placeReceived prompt with playsLeft<=0 snaps to End", async ()
   assert.ok(s.prompt && s.prompt.kind === "placeReceived");
 
   // Prompt ends between ticks.
-  ctx.PD.clearPrompt(s);
+  ctx.PD.state.clearPrompt(s);
   ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
 
   const c = ctx.PD.ui.computeRowModels(s, view);
@@ -1170,8 +1169,8 @@ test("ui: payDebt prompt auto-focuses bank when available, else house/props", as
 
   // Bank available case.
   {
-    const s = ctx.PD.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
-    const pay = s.deck.find((u) => String(ctx.PD.defByUid(s, u).id || "").startsWith("money_"));
+    const s = ctx.PD.state.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
+    const pay = s.deck.find((u) => String(ctx.PD.state.defByUid(s, u).id || "").startsWith("money_"));
     assert.ok(pay, "expected a money card in deck");
     s.deck = s.deck.filter((u) => u !== pay);
     s.players[0].bank.push(pay);
@@ -1185,7 +1184,7 @@ test("ui: payDebt prompt auto-focuses bank when available, else house/props", as
 
   // No bank case: should focus house (house-pay-first friendly).
   {
-    const s = ctx.PD.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
+    const s = ctx.PD.state.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
     const view = ctx.PD.ui.newView();
     ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
     const c = ctx.PD.ui.computeRowModels(s, view);
@@ -1196,7 +1195,7 @@ test("ui: payDebt prompt auto-focuses bank when available, else house/props", as
 
 test("ui: payDebt cant_pay triggers refocus on next tick", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
   const view = ctx.PD.ui.newView();
 
   // Enter prompt and let default focus happen.
@@ -1223,10 +1222,10 @@ test("ui: payDebt cant_pay triggers refocus on next tick", async () => {
 
 test("ui: payDebt prompt navigation does not snap back to bank next tick (selection anchor refresh)", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
 
   // Add a bank card so default focus picks bank.
-  const pay = s.deck.find((u) => String(ctx.PD.defByUid(s, u).id || "").startsWith("money_"));
+  const pay = s.deck.find((u) => String(ctx.PD.state.defByUid(s, u).id || "").startsWith("money_"));
   assert.ok(pay, "expected a money card in deck");
   s.deck = s.deck.filter((u) => u !== pay);
   s.players[0].bank.push(pay);
@@ -1256,13 +1255,13 @@ test("ui: payDebt prompt navigation does not snap back to bank next tick (select
 test("ui: pause autofocus after NextScenario prevents End snap", async () => {
   const ctx = await loadSrcIntoVm();
   ctx.PD.config.debug.enabled = true;
-  const s = ctx.PD.newGame({ seedU32: 1 });
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
   // Keep hand non-empty so HandEmptySnapEnd doesn't steal focus before we press Next.
   s.players[0].hand = [s.players[0].hand[0]];
-  s.winnerP = ctx.PD.NO_WINNER;
-  ctx.PD.clearPrompt(s);
+  s.winnerP = ctx.PD.state.NO_WINNER;
+  ctx.PD.state.clearPrompt(s);
 
   const view = ctx.PD.ui.newView();
   // Move cursor to Next button.
@@ -1290,11 +1289,11 @@ test("ui: debug pause latch survives long opponent delay and clears on first non
   const ctx = await loadSrcIntoVm();
   ctx.PD.config.debug.enabled = true;
 
-  const s = ctx.PD.newGame({ seedU32: 1 });
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
-  s.winnerP = ctx.PD.NO_WINNER;
-  ctx.PD.clearPrompt(s);
+  s.winnerP = ctx.PD.state.NO_WINNER;
+  ctx.PD.state.clearPrompt(s);
 
   const view = ctx.PD.ui.newView();
 
@@ -1332,13 +1331,13 @@ test("ui: debug pause latch survives long opponent delay and clears on first non
 test("debug: Next/Reset preserve autofocus pause latch across debugReset", async () => {
   const ctx = await loadSrcIntoVm();
 
-  ctx.PD.debugReset();
+  ctx.PD.debug.reset();
   const v0 = ctx.PD.debug.view;
   assert.ok(v0 && v0.ux);
   assert.equal(v0.ux.autoFocusPausedByDebug, false);
 
   // NextScenario should recreate the view but keep the latch on.
-  ctx.PD.debugNextScenario();
+  ctx.PD.debug.nextScenario();
   const v1 = ctx.PD.debug.view;
   assert.notEqual(v1, v0, "expected debugNextScenario to recreate the view");
   assert.ok(v1 && v1.ux);
@@ -1346,7 +1345,7 @@ test("debug: Next/Reset preserve autofocus pause latch across debugReset", async
 
   // A plain debugReset should preserve a previously latched pause.
   v1.ux.autoFocusPausedByDebug = true;
-  ctx.PD.debugReset();
+  ctx.PD.debug.reset();
   const v2 = ctx.PD.debug.view;
   assert.notEqual(v2, v1, "expected debugReset to recreate the view");
   assert.ok(v2 && v2.ux);
@@ -1357,13 +1356,13 @@ test("ui: deck-empty style empty-hand nudges End once on turn start, but does no
   const ctx = await loadSrcIntoVm();
   ctx.PD.config.debug.enabled = true;
 
-  const s = ctx.PD.newGame({ seedU32: 1 });
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
   // Simulate: player turn just started, but no hand cards.
   s.activeP = 0;
   s.playsLeft = 3;
   s.players[0].hand = [];
-  s.winnerP = ctx.PD.NO_WINNER;
-  ctx.PD.clearPrompt(s);
+  s.winnerP = ctx.PD.state.NO_WINNER;
+  ctx.PD.state.clearPrompt(s);
 
   const view = ctx.PD.ui.newView();
   // Make the transition visible to the focus rule.
@@ -1393,12 +1392,12 @@ test("ui: empty-hand invalid action can nudge back to End (error-triggered)", as
   const ctx = await loadSrcIntoVm();
   ctx.PD.config.debug.enabled = true;
 
-  const s = ctx.PD.newGame({ seedU32: 1 });
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
   s.players[0].hand = [];
-  s.winnerP = ctx.PD.NO_WINNER;
-  ctx.PD.clearPrompt(s);
+  s.winnerP = ctx.PD.state.NO_WINNER;
+  ctx.PD.state.clearPrompt(s);
 
   const view = ctx.PD.ui.newView();
   // Start browsing on Reset.
@@ -1424,11 +1423,11 @@ test("ui: empty-hand invalid action can nudge back to End (error-triggered)", as
 
 test("ui: hold-A on rent card enters quick targeting and defaults to playRent", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
 
-  const uid = s.players[0].hand.find((u) => ctx.PD.defByUid(s, u).id === "rent_mo");
+  const uid = s.players[0].hand.find((u) => ctx.PD.state.defByUid(s, u).id === "rent_mo");
   assert.ok(uid, "expected rent_mo in hand");
   const i = s.players[0].hand.indexOf(uid);
   assert.ok(i >= 0);
@@ -1448,11 +1447,11 @@ test("ui: hold-A on rent card enters quick targeting and defaults to playRent", 
 
 test("ui: hold-A quick targeting on rent card can cycle to bank option", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
 
-  const uid = s.players[0].hand.find((u) => ctx.PD.defByUid(s, u).id === "rent_mo");
+  const uid = s.players[0].hand.find((u) => ctx.PD.state.defByUid(s, u).id === "rent_mo");
   assert.ok(uid);
   const i = s.players[0].hand.indexOf(uid);
 
@@ -1479,11 +1478,11 @@ test("ui: hold-A quick targeting on rent card can cycle to bank option", async (
 
 test("ui: hold-A on House enters quick targeting and defaults to playHouse when Build is legal", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ scenarioId: "houseBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "houseBasic", seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
 
-  const uid = s.players[0].hand.find((u) => ctx.PD.defByUid(s, u).id === "house");
+  const uid = s.players[0].hand.find((u) => ctx.PD.state.defByUid(s, u).id === "house");
   assert.ok(uid, "expected house in hand");
   const i = s.players[0].hand.indexOf(uid);
   assert.ok(i >= 0);
@@ -1501,7 +1500,7 @@ test("ui: hold-A on House enters quick targeting and defaults to playHouse when 
 
 test("ui: menu includes Cancel/Source as last item", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
 

@@ -1,3 +1,4 @@
+// Card/game definitions: enums + static data tables (treated as read-only).
 PD.Color = {
   Cyan: 0,
   Magenta: 1,

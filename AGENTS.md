@@ -25,7 +25,7 @@ This repo commits `game.js` as a generated artifact.
 - **Config knobs**: if a value is a gameplay/UI tuning knob (timings, thresholds, scoring weights, layout constants that might need tweaking), prefer putting it in `src/05_config.js` under `PD.config.*` rather than hard-coding module-level constants.
   - Example: directional navigation cone weights should live in `PD.config.ui.navConeKLeftRight` / `PD.config.ui.navConeKUpDown`.
 
-- **Config validation (avoid runtime fallbacks)**: prefer **validating required `PD.config.*` keys in tests** (see `test/05_config_sanity.test.mjs`) over adding runtime “if missing, default to …” fallbacks in the cartridge.
+- **Config validation (avoid runtime fallbacks)**: prefer **validating required `PD.config.*` keys in tests** (see config sanity tests) over adding runtime “if missing, default to …” fallbacks in the cartridge.
   - Goal: keep `game.js` lean, and fail fast in CI when a knob is missing/invalid.
 
 - **Numeric coercion (`|0`, `>>>0`)**: keep bitwise coercion **localized**.

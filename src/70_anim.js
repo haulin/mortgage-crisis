@@ -1,4 +1,4 @@
-// Phase 05c: animation plumbing extracted from PD.ui.
+// PD.anim: UI-owned animation plumbing (turn events into timed, input-locking “watch moments”).
 // This module owns view.anim queue/steps, but still manipulates UI view state
 // (mode/menu/targeting) because animations are a UI-owned “watch” moment.
 

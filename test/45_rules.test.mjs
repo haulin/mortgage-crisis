@@ -24,7 +24,7 @@ function cardRefInActiveHand(state, uid) {
 
 test("placeBasic scenario: can play property to new set and existing set; playsLeft decrements", async () => {
   const ctx = await loadSrcIntoVm();
-  const state = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const state = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   assert.equal(state.activeP, 0);
   assert.equal(state.players[0].sets.length, 1);
 
@@ -32,7 +32,7 @@ test("placeBasic scenario: can play property to new set and existing set; playsL
   assert.ok(u1 && u2, "expected 2 orange properties in hand");
 
   // Play first orange to a new set.
-  let res = ctx.PD.applyCommand(state, {
+  let res = ctx.PD.engine.applyCommand(state, {
     kind: "playProp",
     card: cardRefInActiveHand(state, u1),
     dest: { newSet: true }
@@ -42,7 +42,7 @@ test("placeBasic scenario: can play property to new set and existing set; playsL
   assert.equal(state.playsLeft, 2);
 
   // Play second orange into the original set (setI=0).
-  res = ctx.PD.applyCommand(state, {
+  res = ctx.PD.engine.applyCommand(state, {
     kind: "playProp",
     card: cardRefInActiveHand(state, u2),
     dest: { setI: 0 }
@@ -53,14 +53,14 @@ test("placeBasic scenario: can play property to new set and existing set; playsL
 
 test("bank command moves bankable card from hand to bank and decrements playsLeft", async () => {
   const ctx = await loadSrcIntoVm();
-  const state = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const state = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   const [m1] = findUidsInHandByDefId(ctx, state, "money_1");
   assert.ok(m1, "expected money_1 in hand");
 
   const beforeHand = state.players[0].hand.length;
   const beforeBank = state.players[0].bank.length;
 
-  ctx.PD.applyCommand(state, { kind: "bank", card: cardRefInActiveHand(state, m1) });
+  ctx.PD.engine.applyCommand(state, { kind: "bank", card: cardRefInActiveHand(state, m1) });
 
   assert.equal(state.players[0].hand.length, beforeHand - 1);
   assert.equal(state.players[0].bank.length, beforeBank + 1);
@@ -69,12 +69,12 @@ test("bank command moves bankable card from hand to bank and decrements playsLef
 
 test("wildBasic scenario: can play wild with chosen color; illegal color throws", async () => {
   const ctx = await loadSrcIntoVm();
-  const state = ctx.PD.newGame({ scenarioId: "wildBasic", seedU32: 1 });
+  const state = ctx.PD.state.newGame({ scenarioId: "wildBasic", seedU32: 1 });
   const [w] = findUidsInHandByDefId(ctx, state, "wild_mo");
   assert.ok(w, "expected wild_mo in hand");
 
   // Legal: choose Orange and start new set.
-  ctx.PD.applyCommand(state, {
+  ctx.PD.engine.applyCommand(state, {
     kind: "playProp",
     card: cardRefInActiveHand(state, w),
     dest: { newSet: true },
@@ -84,10 +84,10 @@ test("wildBasic scenario: can play wild with chosen color; illegal color throws"
   assert.equal(state.players[0].sets[0].props[0][1], ctx.PD.Color.Orange);
 
   // Fresh scenario for illegal test.
-  const state2 = ctx.PD.newGame({ scenarioId: "wildBasic", seedU32: 1 });
+  const state2 = ctx.PD.state.newGame({ scenarioId: "wildBasic", seedU32: 1 });
   const [w2] = findUidsInHandByDefId(ctx, state2, "wild_mo");
   assert.throws(() => {
-    ctx.PD.applyCommand(state2, {
+    ctx.PD.engine.applyCommand(state2, {
       kind: "playProp",
       card: cardRefInActiveHand(state2, w2),
       dest: { newSet: true },
@@ -98,12 +98,12 @@ test("wildBasic scenario: can play wild with chosen color; illegal color throws"
 
 test("houseBasic scenario: house allowed on complete set only; max 1 house per set", async () => {
   const ctx = await loadSrcIntoVm();
-  const state = ctx.PD.newGame({ scenarioId: "houseBasic", seedU32: 1 });
+  const state = ctx.PD.state.newGame({ scenarioId: "houseBasic", seedU32: 1 });
   const houses = findUidsInHandByDefId(ctx, state, "house");
   assert.equal(houses.length, 2);
 
   // setI=0 is complete Cyan, setI=1 is incomplete Black.
-  ctx.PD.applyCommand(state, {
+  ctx.PD.engine.applyCommand(state, {
     kind: "playHouse",
     card: cardRefInActiveHand(state, houses[0]),
     dest: { setI: 0 }
@@ -112,7 +112,7 @@ test("houseBasic scenario: house allowed on complete set only; max 1 house per s
 
   // Second house onto same set should throw.
   assert.throws(() => {
-    ctx.PD.applyCommand(state, {
+    ctx.PD.engine.applyCommand(state, {
       kind: "playHouse",
       card: cardRefInActiveHand(state, houses[1]),
       dest: { setI: 0 }
@@ -120,10 +120,10 @@ test("houseBasic scenario: house allowed on complete set only; max 1 house per s
   });
 
   // New scenario: house onto incomplete set throws.
-  const state2 = ctx.PD.newGame({ scenarioId: "houseBasic", seedU32: 1 });
+  const state2 = ctx.PD.state.newGame({ scenarioId: "houseBasic", seedU32: 1 });
   const [h] = findUidsInHandByDefId(ctx, state2, "house");
   assert.throws(() => {
-    ctx.PD.applyCommand(state2, {
+    ctx.PD.engine.applyCommand(state2, {
       kind: "playHouse",
       card: cardRefInActiveHand(state2, h),
       dest: { setI: 1 }
@@ -133,12 +133,12 @@ test("houseBasic scenario: house allowed on complete set only; max 1 house per s
 
 test("endTurn swaps active player, draws 2, resets playsLeft", async () => {
   const ctx = await loadSrcIntoVm();
-  const state = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const state = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   const p0 = state.activeP;
   const p1 = p0 ^ 1;
 
   const before = state.players[p1].hand.length;
-  const res = ctx.PD.applyCommand(state, { kind: "endTurn" });
+  const res = ctx.PD.engine.applyCommand(state, { kind: "endTurn" });
 
   assert.equal(state.activeP, p1);
   // In this scenario, the incoming player starts with an empty hand, so they draw 5 instead of 2.
@@ -149,7 +149,7 @@ test("endTurn swaps active player, draws 2, resets playsLeft", async () => {
 
 test("startTurn draws 2 when the incoming player hand is non-empty", async () => {
   const ctx = await loadSrcIntoVm();
-  const state = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const state = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   const p0 = state.activeP;
   const p1 = p0 ^ 1;
 
@@ -158,7 +158,7 @@ test("startTurn draws 2 when the incoming player hand is non-empty", async () =>
   state.players[p1].hand.push(uid);
   const before = state.players[p1].hand.length;
 
-  ctx.PD.applyCommand(state, { kind: "endTurn" });
+  ctx.PD.engine.applyCommand(state, { kind: "endTurn" });
 
   assert.equal(state.activeP, p1);
   assert.equal(state.players[p1].hand.length, before + 2);
@@ -167,7 +167,7 @@ test("startTurn draws 2 when the incoming player hand is non-empty", async () =>
 
 test("endTurn enters discardDown prompt when active hand is over 7 (then discarding completes endTurn)", async () => {
   const ctx = await loadSrcIntoVm();
-  const state = ctx.PD.newGame({ seedU32: 1 });
+  const state = ctx.PD.state.newGame({ seedU32: 1 });
   const p = state.activeP;
   const o = p ^ 1;
 
@@ -175,11 +175,11 @@ test("endTurn enters discardDown prompt when active hand is over 7 (then discard
   state.players[p].hand.push(state.deck.pop());
   assert.ok(state.players[p].hand.length > 7, "expected active hand > 7");
 
-  const moves = ctx.PD.legalMoves(state);
+  const moves = ctx.PD.engine.legalMoves(state);
   assert.ok(moves.some((m) => m.kind === "endTurn"), "expected endTurn to be legal even when hand > 7");
 
   const playsBefore = state.playsLeft;
-  ctx.PD.applyCommand(state, { kind: "endTurn" });
+  ctx.PD.engine.applyCommand(state, { kind: "endTurn" });
 
   // Turn does not pass yet; we enter a forced discard prompt instead.
   assert.equal(state.activeP, p);
@@ -189,7 +189,7 @@ test("endTurn enters discardDown prompt when active hand is over 7 (then discard
   assert.equal(state.prompt.p, p);
 
   // While prompt is active, only discard moves are returned.
-  const m2 = ctx.PD.legalMoves(state);
+  const m2 = ctx.PD.engine.legalMoves(state);
   assert.ok(m2.length > 0, "expected discard moves during prompt");
   assert.ok(
     m2.every((m) => m.kind === "discard" || m.kind === "cancelPrompt"),
@@ -198,8 +198,8 @@ test("endTurn enters discardDown prompt when active hand is over 7 (then discard
 
   // Discard until prompt clears; this auto-finishes endTurn and starts opponent turn.
   while (state.prompt) {
-    const mv = ctx.PD.legalMoves(state).find((m) => m.kind === "discard");
-    ctx.PD.applyCommand(state, mv);
+    const mv = ctx.PD.engine.legalMoves(state).find((m) => m.kind === "discard");
+    ctx.PD.engine.applyCommand(state, mv);
   }
 
   assert.equal(state.activeP, o);
@@ -208,33 +208,33 @@ test("endTurn enters discardDown prompt when active hand is over 7 (then discard
 
 test("cancelPrompt cancels discardDown only before any discard", async () => {
   const ctx = await loadSrcIntoVm();
-  const state = ctx.PD.newGame({ seedU32: 1 });
+  const state = ctx.PD.state.newGame({ seedU32: 1 });
   const p = state.activeP;
 
   // Force prompt via endTurn attempt.
   state.players[p].hand.push(state.deck.pop());
-  ctx.PD.applyCommand(state, { kind: "endTurn" });
+  ctx.PD.engine.applyCommand(state, { kind: "endTurn" });
   assert.ok(state.prompt && state.prompt.kind === "discardDown");
 
   // Cancel immediately (no discards yet).
-  ctx.PD.applyCommand(state, { kind: "cancelPrompt" });
+  ctx.PD.engine.applyCommand(state, { kind: "cancelPrompt" });
   assert.equal(state.prompt, null);
   assert.equal(state.activeP, p);
 
   // Re-enter prompt, discard once, then cancel should be rejected.
-  ctx.PD.applyCommand(state, { kind: "endTurn" });
+  ctx.PD.engine.applyCommand(state, { kind: "endTurn" });
   assert.ok(state.prompt && state.prompt.kind === "discardDown");
 
-  const mv = ctx.PD.legalMoves(state).find((m) => m.kind === "discard");
+  const mv = ctx.PD.engine.legalMoves(state).find((m) => m.kind === "discard");
   assert.ok(mv, "expected discard move");
-  ctx.PD.applyCommand(state, mv);
+  ctx.PD.engine.applyCommand(state, mv);
 
-  assert.throws(() => ctx.PD.applyCommand(state, { kind: "cancelPrompt" }));
+  assert.throws(() => ctx.PD.engine.applyCommand(state, { kind: "cancelPrompt" }));
 });
 
 test("drawToHand reshuffles discard into deck when needed (continues drawing)", async () => {
   const ctx = await loadSrcIntoVm();
-  const state = ctx.PD.newGame({ seedU32: 1 });
+  const state = ctx.PD.state.newGame({ seedU32: 1 });
   const p = state.activeP;
 
   // Move almost the entire deck into discard so a draw must reshuffle.
@@ -244,7 +244,7 @@ test("drawToHand reshuffles discard into deck when needed (continues drawing)", 
 
   const before = state.players[p].hand.length;
   const events = [];
-  ctx.PD.drawToHand(state, p, 5, events);
+  ctx.PD.state.drawToHand(state, p, 5, events);
 
   assert.equal(state.players[p].hand.length, before + 5);
   assert.equal(state.discard.length, 0, "expected discard to be consumed into deck during reshuffle");
@@ -253,7 +253,7 @@ test("drawToHand reshuffles discard into deck when needed (continues drawing)", 
 
 test("drawToHand draws partially when the deck is short (no throw)", async () => {
   const ctx = await loadSrcIntoVm();
-  const state = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const state = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   const p0 = state.activeP;
   const p1 = p0 ^ 1;
 
@@ -263,7 +263,7 @@ test("drawToHand draws partially when the deck is short (no throw)", async () =>
   state.discard = [];
 
   const before = state.players[p1].hand.length; // 0 in this scenario
-  const res = ctx.PD.applyCommand(state, { kind: "endTurn" });
+  const res = ctx.PD.engine.applyCommand(state, { kind: "endTurn" });
 
   assert.equal(state.activeP, p1);
   assert.equal(state.players[p1].hand.length, before + 2);
@@ -275,8 +275,8 @@ test("drawToHand draws partially when the deck is short (no throw)", async () =>
 
 test("winCheck scenario: evaluateWin detects winner", async () => {
   const ctx = await loadSrcIntoVm();
-  const state = ctx.PD.newGame({ scenarioId: "winCheck", seedU32: 1 });
-  assert.equal(ctx.PD.evaluateWin(state), 0);
+  const state = ctx.PD.state.newGame({ scenarioId: "winCheck", seedU32: 1 });
+  assert.equal(ctx.PD.rules.evaluateWin(state), 0);
   assert.equal(state.winnerP, 0);
 });
 
@@ -288,22 +288,22 @@ test("legalMoves only returns commands that applyCommand accepts", async () => {
   }
 
   const cases = [
-    { label: "default newGame", build: () => ctx.PD.newGame({ seedU32: 1 }) },
-    { label: "scenario placeBasic", build: () => ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 }) },
-    { label: "scenario wildBasic", build: () => ctx.PD.newGame({ scenarioId: "wildBasic", seedU32: 1 }) },
-    { label: "scenario houseBasic", build: () => ctx.PD.newGame({ scenarioId: "houseBasic", seedU32: 1 }) },
-    { label: "scenario winCheck (game over)", build: () => ctx.PD.newGame({ scenarioId: "winCheck", seedU32: 1 }) }
+    { label: "default newGame", build: () => ctx.PD.state.newGame({ seedU32: 1 }) },
+    { label: "scenario placeBasic", build: () => ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 }) },
+    { label: "scenario wildBasic", build: () => ctx.PD.state.newGame({ scenarioId: "wildBasic", seedU32: 1 }) },
+    { label: "scenario houseBasic", build: () => ctx.PD.state.newGame({ scenarioId: "houseBasic", seedU32: 1 }) },
+    { label: "scenario winCheck (game over)", build: () => ctx.PD.state.newGame({ scenarioId: "winCheck", seedU32: 1 }) }
   ];
 
   for (const tcase of cases) {
     const state = tcase.build();
-    const moves = ctx.PD.legalMoves(state);
+    const moves = ctx.PD.engine.legalMoves(state);
     assert.ok(Array.isArray(moves), `${tcase.label}: expected legalMoves to return an array`);
 
     for (const move of moves) {
       const copy = cloneState(state);
       assert.doesNotThrow(
-        () => ctx.PD.applyCommand(copy, move),
+        () => ctx.PD.engine.applyCommand(copy, move),
         `${tcase.label}: expected move kind=${move && move.kind} to be applyable`
       );
     }
@@ -312,25 +312,25 @@ test("legalMoves only returns commands that applyCommand accepts", async () => {
 
 test("Phase 06: prompt actor is prompt.p (can act even if activeP differs)", async () => {
   const ctx = await loadSrcIntoVm();
-  const state = ctx.PD.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
+  const state = ctx.PD.state.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
 
   // Force mismatch: prompt actor is P0, but active turn is P1.
   assert.ok(state.prompt && state.prompt.kind === "payDebt");
   assert.equal(state.prompt.p, 0);
   state.activeP = 1;
 
-  const moves = ctx.PD.legalMoves(state);
+  const moves = ctx.PD.engine.legalMoves(state);
   assert.ok(moves.length > 0, "expected payDebt moves");
   assert.ok(moves.every((m) => m.kind === "payDebt"), "expected only payDebt moves during payDebt prompt");
 
   // Applying a legal prompt move should succeed even though activeP is different.
   const mv = moves[0];
-  assert.doesNotThrow(() => ctx.PD.applyCommand(state, mv));
+  assert.doesNotThrow(() => ctx.PD.engine.applyCommand(state, mv));
 });
 
 test("Phase 06: house-pay-first enforced (cannot pay property from housed set)", async () => {
   const ctx = await loadSrcIntoVm();
-  const state = ctx.PD.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
+  const state = ctx.PD.state.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
 
   const set0 = state.players[0].sets[0];
   assert.ok(set0.houseUid, "expected housed set");
@@ -338,7 +338,7 @@ test("Phase 06: house-pay-first enforced (cannot pay property from housed set)",
 
   // Engine rejects paying a property from the housed set.
   assert.throws(() => {
-    ctx.PD.applyCommand(state, {
+    ctx.PD.engine.applyCommand(state, {
       kind: "payDebt",
       card: { uid: propUid, loc: { p: 0, zone: "setProps", setI: 0, i: 0 } }
     });
@@ -347,14 +347,14 @@ test("Phase 06: house-pay-first enforced (cannot pay property from housed set)",
 
 test("Phase 06: paying house can overpay and resolves debt; house goes to recipient bank", async () => {
   const ctx = await loadSrcIntoVm();
-  const state = ctx.PD.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
+  const state = ctx.PD.state.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
 
   const before = state.players[1].bank.length;
   const houseUid = state.players[0].sets[0].houseUid;
   assert.ok(houseUid, "expected house uid");
 
   // Pay with the house.
-  const res = ctx.PD.applyCommand(state, {
+  const res = ctx.PD.engine.applyCommand(state, {
     kind: "payDebt",
     card: { uid: houseUid, loc: { p: 0, zone: "setHouse", setI: 0 } }
   });
@@ -368,28 +368,28 @@ test("Phase 06: paying house can overpay and resolves debt; house goes to recipi
 
 test("Phase 06: placeReceived allows placing from recvProps without consuming plays", async () => {
   const ctx = await loadSrcIntoVm();
-  const state = ctx.PD.newGame({ scenarioId: "placeReceived", seedU32: 1 });
+  const state = ctx.PD.state.newGame({ scenarioId: "placeReceived", seedU32: 1 });
   assert.ok(state.prompt && state.prompt.kind === "placeReceived");
   assert.equal(state.prompt.p, 0);
 
   const playsBefore = state.playsLeft;
-  const mv = ctx.PD.legalMoves(state).find((m) => m.kind === "playProp" && m.card && m.card.loc && m.card.loc.zone === "recvProps");
+  const mv = ctx.PD.engine.legalMoves(state).find((m) => m.kind === "playProp" && m.card && m.card.loc && m.card.loc.zone === "recvProps");
   assert.ok(mv, "expected a playProp move from recvProps");
 
-  ctx.PD.applyCommand(state, mv);
+  ctx.PD.engine.applyCommand(state, mv);
   assert.equal(state.playsLeft, playsBefore, "expected playsLeft unchanged during placement prompt");
 });
 
 test("Rent: playRent discards rent card, decrements plays, and creates payDebt prompt for opponent (when payable)", async () => {
   const ctx = await loadSrcIntoVm();
-  const state = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const state = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
 
   // Find rent card uid in active hand.
   const rents = findUidsInHandByDefId(ctx, state, "rent_mo");
   assert.equal(rents.length, 1);
   const uid = rents[0];
 
-  const moves = ctx.PD.legalMoves(state);
+  const moves = ctx.PD.engine.legalMoves(state);
   const mv = moves.find((m) => m.kind === "playRent" && m.card && m.card.uid === uid);
   assert.ok(mv, "expected a playRent move");
 
@@ -397,7 +397,7 @@ test("Rent: playRent discards rent card, decrements plays, and creates payDebt p
   const handBefore = state.players[0].hand.length;
   const discBefore = state.discard.length;
 
-  ctx.PD.applyCommand(state, mv);
+  ctx.PD.engine.applyCommand(state, mv);
 
   assert.equal(state.playsLeft, playsBefore - 1);
   assert.equal(state.players[0].hand.length, handBefore - 1, "expected rent card removed from hand");

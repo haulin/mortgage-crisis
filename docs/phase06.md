@@ -9,7 +9,7 @@ Key idea: prompts are **rules-owned** and can bind to a player via `prompt.p` in
 ### Prompt actor separation
 
 - Prompts are bound to an **actor** `prompt.p`.
-- `PD.applyCommand` and `PD.legalMoves` both treat `prompt.p` as the acting player for prompt commands.
+- Command application and move generation both treat `prompt.p` as the acting player for prompt commands.
 - This is intentionally decoupled from `state.activeP`.
 
 ### New prompt kinds
@@ -58,7 +58,7 @@ Key idea: prompts are **rules-owned** and can bind to a player via `prompt.p` in
 Rent cards are now playable:
 
 - Engine:
-  - New command `playRent` charges rent from a chosen set and triggers `PD.beginDebt(opponent, you, amount)`.
+  - New command `playRent` charges rent from a chosen set and triggers the debt/payment prompt flow for the payer.
   - Amount is computed from set size (capped at required size) plus House bonus when applicable.
 - UI:
   - Rent cards show a **Rent** menu option when at least one eligible set exists.
@@ -66,33 +66,14 @@ Rent cards are now playable:
 - Harness note:
   - During Phase 06 development, the debug harness temporarily auto-resolved opponent `payDebt` prompts for playtesting; this is superseded by Phase 07’s simple AI loop.
 
-## Files changed
+## Tests
 
-- `src/40_state.js`
-  - prompt shapes now preserve extra fields
-  - `PD.beginDebt` + `PD.hasAnyPayables`
-- `src/45_rules.js`
-  - prompt actor separation (`prompt.p`)
-  - `payDebt` / `placeReceived` prompt handling
-  - `payDebt` command + placement from `recvProps`
-  - `playRent` command + rent amount helper
-- `src/65_ui.js`
-  - prompt toast text for `payDebt` / `placeReceived`
-  - prompt-mode handling for `payDebt` / `placeReceived`
-  - faux-hand rendering + additional `loc` wiring for selectable bank/set items
-- `src/50_scenarios.js`
-  - scenario renames + optional titles/descriptions (`PD.SCENARIO_INFO`)
-  - minimal Phase 06 scenarios: `debtHouseFirst`, `placeReceived`
-- `test/40_state.test.mjs`, `test/45_rules.test.mjs`, `test/65_ui_controls.test.mjs`
-  - invariants updated to include prompt buffers
-  - new tests for prompt actor, house-first, placement UX
+- Prompt flow tests cover prompt actor separation, house-pay-first enforcement, and received-property placement.
+- UI/control tests cover prompt-mode UX and the “faux-hand” placement interaction.
 
-## Scenarios (current IDs)
+## Scenarios
 
-- `placeBasic`, `wildBasic`, `houseBasic`, `winCheck`, `bankScrollShuffle`
-- Phase 06:
-  - `debtHouseFirst`: payDebt prompt where House must be paid first (designed to overpay and resolve without entering placement).
-  - `placeReceived`: placeReceived prompt with a fixed property + a Wild.
+The scenario catalog includes baseline setups plus targeted debt/placement scenarios for smoke testing the prompt pipeline (see the in-game scenario picker/debug harness).
 
 ## Debugging the rent/debt cycle
 

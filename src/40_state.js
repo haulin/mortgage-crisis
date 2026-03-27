@@ -1,12 +1,13 @@
-PD.NO_COLOR = -1;
-PD.NO_WINNER = -1;
-PD.HAND_MAX = 7;
+// PD.state: game state constructors + uid bookkeeping + prompt helpers (no UI/render).
+PD.state.NO_COLOR = -1;
+PD.state.NO_WINNER = -1;
+PD.state.HAND_MAX = 7;
 
-PD.clearPrompt = function (state) {
+PD.state.clearPrompt = function (state) {
   state.prompt = null;
 };
 
-PD.setPrompt = function (state, prompt) {
+PD.state.setPrompt = function (state, prompt) {
   if (prompt == null) {
     state.prompt = null;
     return;
@@ -47,7 +48,7 @@ PD.setPrompt = function (state, prompt) {
   throw new Error("unknown_prompt_kind:" + k);
 };
 
-PD.hasAnyPayables = function (state, p) {
+PD.state.hasAnyPayables = function (state, p) {
   var pl = state.players[p];
   if (pl.bank.length) return true;
   var sets = pl.sets;
@@ -60,40 +61,36 @@ PD.hasAnyPayables = function (state, p) {
   return false;
 };
 
-PD.beginDebt = function (state, fromP, toP, amount) {
+PD.state.beginDebt = function (state, fromP, toP, amount) {
   if (!(amount > 0)) return;
-  if (!PD.hasAnyPayables(state, fromP)) return;
-  PD.setPrompt(state, { kind: "payDebt", p: fromP, toP: toP, rem: amount, buf: [] });
+  if (!PD.state.hasAnyPayables(state, fromP)) return;
+  PD.state.setPrompt(state, { kind: "payDebt", p: fromP, toP: toP, rem: amount, buf: [] });
 };
 
-PD.otherPlayer = function (p) {
+PD.rules.otherPlayer = function (p) {
   return (p ^ 1) & 1;
 };
 
-PD.getSetColor = function (props) {
-  if (!props || props.length === 0) return PD.NO_COLOR;
+PD.rules.getSetColor = function (props) {
+  if (!props || props.length === 0) return PD.state.NO_COLOR;
   return props[0][1];
 };
 
-PD.isBankableDef = function (def) {
+PD.rules.isBankableDef = function (def) {
   if (!def) return false;
   return def.kind === PD.CardKind.Money || def.kind === PD.CardKind.Action || def.kind === PD.CardKind.House;
 };
 
-PD.isWildDef = function (def) {
+PD.rules.isWildDef = function (def) {
   return !!(def && def.kind === PD.CardKind.Property && def.wildColors && def.wildColors.length);
 };
 
-PD.wildAllowsColor = function (def, color) {
-  if (!PD.isWildDef(def)) return false;
+PD.rules.wildAllowsColor = function (def, color) {
+  if (!PD.rules.isWildDef(def)) return false;
   return def.wildColors[0] === color || def.wildColors[1] === color;
 };
 
-PD.shuffleUidsInPlace = function (state, arr) {
-  return PD.shuffleByNextInt(arr, function (n) { return PD.rngNextInt(state, n); });
-};
-
-PD.buildAllUids = function (state) {
+PD.state.buildAllUids = function (state) {
   var uidToDefI = [0];
   var uid = 1;
   var di;
@@ -110,12 +107,12 @@ PD.buildAllUids = function (state) {
   state.totalUids = uidToDefI.length - 1;
 };
 
-PD.defByUid = function (state, uid) {
+PD.state.defByUid = function (state, uid) {
   var di = state.uidToDefI[uid];
   return PD.CARD_DEFS[di];
 };
 
-PD.newEmptySet = function () {
+PD.state.newEmptySet = function () {
   return {
     // Properties are tuples: [uid, color]
     props: [],
@@ -124,10 +121,8 @@ PD.newEmptySet = function () {
   };
 };
 
-PD.drawToHand = function (state, p, n, events) {
+PD.state.drawToHand = function (state, p, n, events) {
   if (n <= 0) return;
-  if (!state.deck) state.deck = [];
-  if (!state.discard) state.discard = [];
 
   var uids = [];
   while (n > 0) {
@@ -139,7 +134,7 @@ PD.drawToHand = function (state, p, n, events) {
       var i;
       for (i = 0; i < nDisc; i++) state.deck.push(state.discard[i]);
       state.discard = [];
-      PD.shuffleUidsInPlace(state, state.deck);
+      PD.shuffle.inPlaceWithStateRng(state, state.deck);
       if (events) events.push({ kind: "reshuffle", from: "discard", to: "deck", n: nDisc });
       nAvail = state.deck.length;
       if (nAvail <= 0) break;
@@ -159,22 +154,21 @@ PD.drawToHand = function (state, p, n, events) {
   if (events && uids.length > 0) events.push({ kind: "draw", p: p, uids: uids });
 };
 
-PD.startTurn = function (state, events) {
+PD.state.startTurn = function (state, events) {
   state.playsLeft = 3;
-  PD.clearPrompt(state);
+  PD.state.clearPrompt(state);
   var p = state.activeP;
   var nDraw = 2;
   if (state.players[p].hand.length === 0) nDraw = 5;
-  PD.drawToHand(state, p, nDraw, events);
+  PD.state.drawToHand(state, p, nDraw, events);
   if (events) events.push({ kind: "plays", p: state.activeP, playsLeft: state.playsLeft });
 };
 
-PD.newGame = function (opts) {
-  var seedU32 = opts.seedU32 == null ? PD.computeSeed() : (opts.seedU32 >>> 0);
-  if (!seedU32) seedU32 = 1;
+PD.state.newGame = function (opts) {
+  var seedU32 = (opts.seedU32 == null) ? PD.seed.computeSeedU32() : PD.rng.u32NonZero(opts.seedU32);
 
   var state = {
-    rngS: seedU32 >>> 0,
+    rngS: seedU32,
     uidToDefI: null,
     totalUids: 0,
 
@@ -189,13 +183,13 @@ PD.newGame = function (opts) {
     activeP: 0,
     playsLeft: 0,
     prompt: null,
-    winnerP: PD.NO_WINNER
+    winnerP: PD.state.NO_WINNER
   };
 
-  PD.buildAllUids(state);
+  PD.state.buildAllUids(state);
 
   if (opts.scenarioId) {
-    PD.applyScenario(state, String(opts.scenarioId));
+    PD.scenarios.applyScenario(state, String(opts.scenarioId));
     return state;
   }
 
@@ -203,22 +197,22 @@ PD.newGame = function (opts) {
   // then start their turn (draw 2, playsLeft=3).
   var uid;
   for (uid = 1; uid <= state.totalUids; uid++) state.deck.push(uid);
-  PD.shuffleUidsInPlace(state, state.deck);
+  PD.shuffle.inPlaceWithStateRng(state, state.deck);
 
-  PD.drawToHand(state, 0, 5, null);
-  PD.drawToHand(state, 1, 5, null);
+  PD.state.drawToHand(state, 0, 5, null);
+  PD.state.drawToHand(state, 1, 5, null);
 
-  state.activeP = PD.rngNextInt(state, 2);
+  state.activeP = PD.rng.nextIntInState(state, 2);
   var events = [];
   events.push({ kind: "turn", activeP: state.activeP });
-  PD.startTurn(state, events);
+  PD.state.startTurn(state, events);
   // Default newGame doesn't expose events, but tests may call startTurn/endTurn directly.
 
   return state;
 };
 
 // Scenario/test helpers (defId-first).
-PD.cardPoolInit = function (state) {
+PD.state.cardPoolInit = function (state) {
   var pool = {};
   var uid;
   for (uid = 1; uid <= state.totalUids; uid++) {
@@ -235,8 +229,8 @@ PD.cardPoolInit = function (state) {
   return pool;
 };
 
-PD.takeUid = function (state, defId) {
-  if (!state._pool) PD.cardPoolInit(state);
+PD.state.takeUid = function (state, defId) {
+  if (!state._pool) PD.state.cardPoolInit(state);
   var a = state._pool[defId];
   if (!a || a.length === 0) throw new Error("pool_exhausted:" + defId);
   return a.pop();

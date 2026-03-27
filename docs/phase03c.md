@@ -19,10 +19,12 @@ Note: the current engine allows **partial draws** if the deck is short. This is 
 
 ### End-turn legality (hand cap)
 
-- You **cannot end the turn** while your hand is **> 7**.
-- In the rules engine this is enforced in both places:
-  - `legalMoves` does not offer `endTurn` when hand > 7
-  - `applyCommand(endTurn)` throws if called anyway
+- You **cannot complete an end-of-turn** while your hand is **> 7**.
+
+Implementation note (current codebase):
+
+- Later phases implement this as a rules-owned **discard-down prompt** that you enter when you try to end the turn while over the cap.
+- The stable contract/invariant is the same: you can’t pass the turn until you’re at \(<= 7\).
 
 Phase 05 will implement the actual discard-down-to-7 prompt/UI (including the “forced discard before ending turn” experience).
 
@@ -35,22 +37,17 @@ Phase 05 will implement the actual discard-down-to-7 prompt/UI (including the �
 ### Render + debug HUD polish (dev-only)
 
 - Fix: opponent wild property orientation now keeps the **assigned** color on the **owner-facing** half (also when flipped for opponent).
-  - Regression test added in `test/60_render.test.mjs`.
+  - Covered by a render regression test.
 - Restore: DebugText selection line for Wilds shows current assignment:
   - e.g. `Wild:Cyan/Black As:Black`
 - Clarify: DebugText bank line shows both **count** and **value total**:
   - e.g. `Bank P0/P1: 8($13)/6($19)`
 - Code hygiene: keep DebugText harness readable (avoid spreading noisy `|0` coercions).
 
-## Files changed
+## Tests
 
-- `src/40_state.js`: start-of-turn draw (2 vs 5) + partial draw behavior
-- `src/45_rules.js`: end-turn hand cap enforcement
-- `src/90_debug.js`: move stepping (prefers stacking into existing sets) + clearer bank/debug lines
-- `src/60_render.js`: wild rendering orientation fix + debug selection details
-- `test/45_rules.test.mjs`: updated + new tests for the above
-- `test/60_render.test.mjs`: add opponent-wild regression test
-- `docs/plan.md`: spec updated to include the draw-5 rule and the end-turn cap
+- Rules tests cover the draw-5 rule and the hand-cap invariant.
+- Render tests include a regression check for opponent Wild orientation/assignment presentation.
 
 ## Definition of Done
 

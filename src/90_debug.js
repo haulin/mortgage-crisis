@@ -1,32 +1,31 @@
-PD.debug = PD.debug || {
-  scenarioI: 0,
-  scenarios: null,
-  state: null,
-  view: null,
-  ctrl: null,
-  lastCmd: "",
-  lastEvents: [],
-  lastRaw: null,
-  lastUiActions: null,
-  lastUiIntentSummary: ""
-};
+// PD.debug: dev harness (scenario cycling/reset/step) + main tick wiring for playtesting.
+PD.debug.scenarioI = 0;
+PD.debug.scenarios = ["default"].concat(PD.scenarios.IDS);
+PD.debug.state = null;
+PD.debug.view = PD.ui.newView();
+PD.debug.ctrl = PD.controls.newState();
+PD.debug.ai = { wait: 0 };
+PD.debug.lastCmd = "";
+PD.debug.lastEvents = [];
+PD.debug.lastRaw = null;
+PD.debug.lastUiActions = null;
+PD.debug.lastUiIntentSummary = "";
 
-PD.debug.scenarios = ["default"].concat(PD.SCENARIO_IDS);
-
-PD.debugReset = function (opts) {
+PD.debug.reset = function (opts) {
   var d = PD.debug;
-  var prevPaused = !!(d.view && d.view.ux && d.view.ux.autoFocusPausedByDebug);
+  var prevPaused = !!d.view.ux.autoFocusPausedByDebug;
   var shouldPause = !!(opts && opts.pauseAutoFocus) || prevPaused;
-  var seedU32 = PD.computeSeed();
+  var seedU32 = PD.seed.computeSeedU32();
   var scenarioId = d.scenarios[d.scenarioI];
   if (scenarioId === "default") {
-    d.state = PD.newGame({ seedU32: seedU32 >>> 0 });
+    d.state = PD.state.newGame({ seedU32: seedU32 });
   } else {
-    d.state = PD.newGame({ seedU32: seedU32 >>> 0, scenarioId: scenarioId });
+    d.state = PD.state.newGame({ seedU32: seedU32, scenarioId: scenarioId });
   }
   d.view = PD.ui.newView();
-  if (shouldPause && d.view && d.view.ux) d.view.ux.autoFocusPausedByDebug = true;
+  if (shouldPause) d.view.ux.autoFocusPausedByDebug = true;
   d.ctrl = PD.controls.newState();
+  d.ai = { wait: 0 };
   d.lastCmd = "";
   d.lastEvents = [];
   d.lastRaw = null;
@@ -34,48 +33,27 @@ PD.debugReset = function (opts) {
   d.lastUiIntentSummary = "";
 };
 
-PD.debugNextScenario = function () {
+PD.debug.nextScenario = function () {
   var d = PD.debug;
   d.scenarioI = (d.scenarioI + 1) % d.scenarios.length;
-  PD.debugReset({ pauseAutoFocus: true });
+  PD.debug.reset({ pauseAutoFocus: true });
 };
 
-PD.debugPickMove = function (moves) {
+PD.debug.step = function () {
   var d = PD.debug;
   var state = d.state;
-  if (!moves || moves.length === 0) return null;
-
-  // Heuristic for dev stepping: prefer adding properties to existing sets when possible.
-  // This keeps the harness closer to typical play without changing actual legality/rules.
-  var propToExisting = [];
-  var i;
-  for (i = 0; i < moves.length; i++) {
-    var m = moves[i];
-    if (m && m.kind === "playProp" && m.dest && m.dest.setI != null) propToExisting.push(m);
-  }
-  if (propToExisting.length > 0) {
-    var j = PD.rngNextInt(state, propToExisting.length);
-    return propToExisting[j];
-  }
-
-  var idx = PD.rngNextInt(state, moves.length);
-  return moves[idx];
-};
-
-PD.debugStep = function () {
-  var d = PD.debug;
-  if (!d.state) PD.debugReset();
-  var state = d.state;
-  var moves = PD.legalMoves(state);
-  var cmd = PD.debugPickMove(moves);
+  var moves = PD.engine.legalMoves(state);
+  var p = PD.ai.actor(state);
+  var policy = PD.ai.policyForP(p);
+  var cmd = PD.ai.pickMove(state, moves, policy);
   if (!cmd) return;
 
-  var res = PD.applyCommand(state, cmd);
+  var res = PD.engine.applyCommand(state, cmd);
   d.lastCmd = cmd.kind;
   d.lastEvents = (res && res.events) ? res.events : [];
 };
 
-PD.debugEventsToLine = function (events) {
+PD.debug.eventsToLine = function (events) {
   if (!events || events.length === 0) return "(none)";
   var parts = [];
   var i;
@@ -85,15 +63,14 @@ PD.debugEventsToLine = function (events) {
   return parts.join(",");
 };
 
-PD.debugTick = function () {
+PD.debug.tickTextMode = function () {
   var d = PD.debug;
-  if (!d.state) PD.debugReset();
 
   if (typeof btnp === "function") {
     // A: step, B: next scenario, X: reset
-    if (btnp(4)) PD.debugStep();
-    if (btnp(5)) PD.debugNextScenario();
-    if (btnp(6)) PD.debugReset({ pauseAutoFocus: true });
+    if (btnp(4)) PD.debug.step();
+    if (btnp(5)) PD.debug.nextScenario();
+    if (btnp(6)) PD.debug.reset({ pauseAutoFocus: true });
   }
 
   var s = d.state;
@@ -129,9 +106,9 @@ PD.debugTick = function () {
       var handLen = hand.length;
       var nDiscarded = pr.nDiscarded;
       // Stable target count: initialHand - HAND_MAX.
-      var nToDiscard = (handLen + nDiscarded) - PD.HAND_MAX;
+      var nToDiscard = (handLen + nDiscarded) - PD.state.HAND_MAX;
       if (nToDiscard < 0) nToDiscard = 0;
-      var left = handLen - PD.HAND_MAX;
+      var left = handLen - PD.state.HAND_MAX;
       if (left < 0) left = 0;
       return "Prompt:discardDown to:" + nToDiscard + " left:" + left;
     }
@@ -147,11 +124,11 @@ PD.debugTick = function () {
 
   printSmall("Phase 02 Debug", x, y, 12); y += step;
   var sid = d.scenarios[d.scenarioI];
-  var info = (PD.SCENARIO_INFO && sid) ? PD.SCENARIO_INFO[String(sid)] : null;
+  var info = (PD.scenarios.INFO && sid) ? PD.scenarios.INFO[String(sid)] : null;
   var title = (info && info.title) ? String(info.title) : String(sid);
   printSmall("Scenario:" + title, x, y, 12); y += step;
   var pendingDesc = (info && info.desc) ? String(info.desc) : "";
-  printSmall("Seed:" + (PD.computeSeed() >>> 0), x, y, 12); y += step;
+  printSmall("Seed:" + PD.seed.computeSeedU32(), x, y, 12); y += step;
 
   if (PD.render && PD.render.debug && typeof PD.render.debug.selectedLines === "function") {
     var sel = PD.render.debug.selectedLines(d);
@@ -164,24 +141,24 @@ PD.debugTick = function () {
   printSmall("Active:P" + s.activeP + " Plays:" + s.playsLeft, x, y, 12); y += step;
   printSmall(promptLine(s), x, y, 12); y += step;
   var w = s.winnerP;
-  if (w !== PD.NO_WINNER) { printSmall("Winner:P" + w, x, y, 11); y += step; }
+  if (w !== PD.state.NO_WINNER) { printSmall("Winner:P" + w, x, y, 11); y += step; }
 
   printSmall("Deck:" + s.deck.length + " Disc:" + s.discard.length, x, y, 12); y += step;
   printSmall("Hand0/1:" + s.players[0].hand.length + "/" + s.players[1].hand.length, x, y, 12); y += step;
   printSmall(
     "Bank0/1:" +
-    s.players[0].bank.length + "($" + PD.bankValueTotal(s, 0) + ")/" +
-    s.players[1].bank.length + "($" + PD.bankValueTotal(s, 1) + ")",
+    s.players[0].bank.length + "($" + PD.util.bankValueTotal(s, 0) + ")/" +
+    s.players[1].bank.length + "($" + PD.util.bankValueTotal(s, 1) + ")",
     x,
     y,
     12
   ); y += step;
   printSmall("Sets0/1:" + s.players[0].sets.length + "/" + s.players[1].sets.length, x, y, 12); y += step;
 
-  var moves = PD.legalMoves(s);
+  var moves = PD.engine.legalMoves(s);
   printSmall("Legal:" + moves.length, x, y, 12); y += step;
   printSmall("LastCmd:" + (d.lastCmd || "(none)"), x, y, 12); y += step;
-  printSmall("Events:" + PD.debugEventsToLine(d.lastEvents), x, y, 12); y += step;
+  printSmall("Events:" + PD.debug.eventsToLine(d.lastEvents), x, y, 12); y += step;
 
   // Long focus rule ids don't fit well in the right column; render them full-width here.
   var vFocus = d.view;
@@ -271,20 +248,17 @@ PD.debugTick = function () {
 
 PD.mainTick = function () {
   // Modes: 0=DebugText, 1=Render
-  if (PD._mainMode == null) PD._mainMode = 0;
   if (typeof btnp === "function" && btnp(7)) PD._mainMode = PD._mainMode ? 0 : 1;
 
   if (PD._mainMode === 0) {
-    PD.debugTick();
+    if (PD.debug.state == null) PD.debug.reset(null);
+    PD.debug.tickTextMode();
     return;
   }
 
   // Render mode
-  if (!PD.debug || !PD.debug.state) PD.debugReset();
   var d = PD.debug;
-  if (!d.view) d.view = PD.ui.newView();
-  if (!d.ctrl) d.ctrl = PD.controls.newState();
-  if (!d.ai) d.ai = { wait: 0 };
+  if (d.state == null) PD.debug.reset(null);
 
   {
     function summarizeUiIntent(intent) {
@@ -308,7 +282,7 @@ PD.mainTick = function () {
 
     if (actor === 0 && intent && intent.kind === "applyCmd" && intent.cmd) {
       try {
-        var res = PD.applyCommand(d.state, intent.cmd);
+        var res = PD.engine.applyCommand(d.state, intent.cmd);
         d.lastCmd = intent.cmd.kind;
         d.lastEvents = (res && res.events) ? res.events : [];
         PD.anim.onEvents(d.state, d.view, d.lastEvents);
@@ -321,11 +295,11 @@ PD.mainTick = function () {
       }
     } else if (actor === 0 && intent && intent.kind === "debug") {
       if (intent.action === "step") {
-        PD.debugStep();
+        PD.debug.step();
         PD.anim.onEvents(d.state, d.view, d.lastEvents);
       }
-      else if (intent.action === "reset") PD.debugReset({ pauseAutoFocus: true });
-      else if (intent.action === "nextScenario") PD.debugNextScenario();
+      else if (intent.action === "reset") PD.debug.reset({ pauseAutoFocus: true });
+      else if (intent.action === "nextScenario") PD.debug.nextScenario();
     }
 
     // Phase 07: AI pacing loop (one command per step, with fixed delay).
@@ -340,7 +314,7 @@ PD.mainTick = function () {
             PD.ui.toastPush(d.view, { id: "ai:narrate", kind: "ai", text: txt, frames: PD.config.ui.aiNarrateToastFrames });
           }
           try {
-            var resAi = PD.applyCommand(d.state, cmdAi);
+            var resAi = PD.engine.applyCommand(d.state, cmdAi);
             d.lastCmd = "ai:" + cmdAi.kind;
             d.lastEvents = (resAi && resAi.events) ? resAi.events : [];
             PD.anim.onEvents(d.state, d.view, d.lastEvents);
@@ -366,4 +340,6 @@ PD.mainTick = function () {
     PD.render.drawFrame({ state: d.state, view: d.view, computed: computed });
   }
 };
+
+PD._mainMode = 0;
 

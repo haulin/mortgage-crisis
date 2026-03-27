@@ -4,9 +4,9 @@ import { loadSrcIntoVm } from "./helpers/loadSrcIntoVm.mjs";
 
 test("moves: placeCmdsForUid orders existing sets then newSet", async () => {
   const ctx = await loadSrcIntoVm();
-  const state = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const state = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
 
-  const moves = ctx.PD.legalMoves(state);
+  const moves = ctx.PD.engine.legalMoves(state);
   const byUid = new Map();
   for (const m of moves) {
     if (!m || m.kind !== "playProp") continue;
@@ -30,11 +30,11 @@ test("moves: placeCmdsForUid orders existing sets then newSet", async () => {
   }
   assert.ok(uidPick, "expected a playProp uid with both set and newSet destinations");
 
-  const def = ctx.PD.defByUid(state, uidPick);
+  const def = ctx.PD.state.defByUid(state, uidPick);
   assert.ok(def && def.kind === ctx.PD.CardKind.Property);
-  assert.ok(!ctx.PD.isWildDef(def), "expected a non-wild property for this scenario");
+  assert.ok(!ctx.PD.rules.isWildDef(def), "expected a non-wild property for this scenario");
 
-  const cmds = ctx.PD.moves.placeCmdsForUid(state, uidPick, def, ctx.PD.NO_COLOR);
+  const cmds = ctx.PD.moves.placeCmdsForUid(state, uidPick, def, ctx.PD.state.NO_COLOR);
   assert.ok(cmds.length >= 2);
 
   // All set destinations come before any newSet destination.
@@ -51,12 +51,12 @@ test("moves: placeCmdsForUid orders existing sets then newSet", async () => {
 
 test("moves: defaultWildColorForPlace returns one of wildColors", async () => {
   const ctx = await loadSrcIntoVm();
-  const state = ctx.PD.newGame({ scenarioId: "wildBasic", seedU32: 1 });
+  const state = ctx.PD.state.newGame({ scenarioId: "wildBasic", seedU32: 1 });
 
   const hand = state.players[0].hand;
-  const uid = hand.find((u) => ctx.PD.isWildDef(ctx.PD.defByUid(state, u)));
+  const uid = hand.find((u) => ctx.PD.rules.isWildDef(ctx.PD.state.defByUid(state, u)));
   assert.ok(uid, "expected a wild property uid in hand");
-  const def = ctx.PD.defByUid(state, uid);
+  const def = ctx.PD.state.defByUid(state, uid);
 
   const c = ctx.PD.moves.defaultWildColorForPlace(state, uid, def);
   assert.ok(def.wildColors.includes(c), "expected chosen color to be one of def.wildColors");
@@ -67,7 +67,7 @@ test("moves: destForCmd maps cmd kinds to board destinations", async () => {
 
   // Bank
   {
-    const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+    const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
     const uid = s.players[0].hand[0];
     const bank = ctx.PD.moves.bankCmdsForUid(s, uid)[0];
     if (bank) {
@@ -79,8 +79,8 @@ test("moves: destForCmd maps cmd kinds to board destinations", async () => {
 
   // Place: newSet + existing set
   {
-    const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
-    const moves = ctx.PD.legalMoves(s).filter((m) => m && m.kind === "playProp");
+    const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+    const moves = ctx.PD.engine.legalMoves(s).filter((m) => m && m.kind === "playProp");
     const newSet = moves.find((m) => m.dest && m.dest.newSet);
     assert.ok(newSet, "expected a playProp move with newSet destination");
     {
@@ -103,8 +103,8 @@ test("moves: destForCmd maps cmd kinds to board destinations", async () => {
 
   // Build
   {
-    const s = ctx.PD.newGame({ scenarioId: "houseBasic", seedU32: 1 });
-    const mv = ctx.PD.legalMoves(s).find((m) => m && m.kind === "playHouse");
+    const s = ctx.PD.state.newGame({ scenarioId: "houseBasic", seedU32: 1 });
+    const mv = ctx.PD.engine.legalMoves(s).find((m) => m && m.kind === "playHouse");
     assert.ok(mv, "expected a playHouse move");
     {
       const d = ctx.PD.moves.destForCmd(mv);
@@ -117,8 +117,8 @@ test("moves: destForCmd maps cmd kinds to board destinations", async () => {
 
   // Rent
   {
-    const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
-    const mv = ctx.PD.legalMoves(s).find((m) => m && m.kind === "playRent");
+    const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+    const mv = ctx.PD.engine.legalMoves(s).find((m) => m && m.kind === "playRent");
     assert.ok(mv, "expected a playRent move");
     {
       const d = ctx.PD.moves.destForCmd(mv);
@@ -140,35 +140,35 @@ test("moves: destForCmd maps cmd kinds to board destinations", async () => {
 
 test("moves: sortRentMovesByAmount uses p (not hardcoded 0)", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ seedU32: 1 });
-  ctx.PD.resetForScenario(s);
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
+  ctx.PD.scenarios.resetForScenario(s);
 
   // Build two sets for P1 such that setI=1 has higher rent than setI=0.
   // If the sort mistakenly uses p=0 (no sets), it will fall back to setI order and fail.
-  const setC = ctx.PD.newEmptySet();
-  ctx.PD.setAddPropByDefId(s, setC, "prop_cyan", ctx.PD.NO_COLOR);
-  ctx.PD.setAddPropByDefId(s, setC, "prop_cyan", ctx.PD.NO_COLOR);
+  const setC = ctx.PD.state.newEmptySet();
+  ctx.PD.scenarios.setAddPropByDefId(s, setC, "prop_cyan", ctx.PD.state.NO_COLOR);
+  ctx.PD.scenarios.setAddPropByDefId(s, setC, "prop_cyan", ctx.PD.state.NO_COLOR);
   s.players[1].sets.push(setC); // setI=0 (lower rent)
 
-  const setB = ctx.PD.newEmptySet();
-  ctx.PD.setAddPropByDefId(s, setB, "prop_black", ctx.PD.NO_COLOR);
-  ctx.PD.setAddPropByDefId(s, setB, "prop_black", ctx.PD.NO_COLOR);
-  ctx.PD.setAddPropByDefId(s, setB, "prop_black", ctx.PD.NO_COLOR);
-  ctx.PD.setAddPropByDefId(s, setB, "prop_black", ctx.PD.NO_COLOR);
+  const setB = ctx.PD.state.newEmptySet();
+  ctx.PD.scenarios.setAddPropByDefId(s, setB, "prop_black", ctx.PD.state.NO_COLOR);
+  ctx.PD.scenarios.setAddPropByDefId(s, setB, "prop_black", ctx.PD.state.NO_COLOR);
+  ctx.PD.scenarios.setAddPropByDefId(s, setB, "prop_black", ctx.PD.state.NO_COLOR);
+  ctx.PD.scenarios.setAddPropByDefId(s, setB, "prop_black", ctx.PD.state.NO_COLOR);
   s.players[1].sets.push(setB); // setI=1 (higher rent)
 
   // Give P1 a rent-any card and make them active.
-  s.players[1].hand.push(ctx.PD.takeUid(s, "rent_any"));
+  s.players[1].hand.push(ctx.PD.state.takeUid(s, "rent_any"));
   s.activeP = 1;
   s.playsLeft = 3;
-  s.winnerP = ctx.PD.NO_WINNER;
+  s.winnerP = ctx.PD.state.NO_WINNER;
 
   const uid = s.players[1].hand[0];
   const rentMoves = ctx.PD.moves.rentMovesForUid(s, uid);
   assert.ok(rentMoves.length >= 2, "expected >=2 rent moves");
 
-  const a0 = ctx.PD.rentAmountForSet(s, 1, 0);
-  const a1 = ctx.PD.rentAmountForSet(s, 1, 1);
+  const a0 = ctx.PD.rules.rentAmountForSet(s, 1, 0);
+  const a1 = ctx.PD.rules.rentAmountForSet(s, 1, 1);
   assert.ok(a1 > a0, "expected setI=1 to have higher rent than setI=0");
 
   ctx.PD.moves.sortRentMovesByAmount(s, 1, rentMoves);
@@ -177,10 +177,10 @@ test("moves: sortRentMovesByAmount uses p (not hardcoded 0)", async () => {
 
 test("moves: cmdsForTargeting(place) returns cmds + wildColor and includes Source for hand loc", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ scenarioId: "wildBasic", seedU32: 1 });
-  const uid = s.players[0].hand.find((u) => ctx.PD.isWildDef(ctx.PD.defByUid(s, u)));
+  const s = ctx.PD.state.newGame({ scenarioId: "wildBasic", seedU32: 1 });
+  const uid = s.players[0].hand.find((u) => ctx.PD.rules.isWildDef(ctx.PD.state.defByUid(s, u)));
   assert.ok(uid, "expected wild uid in hand");
-  const def = ctx.PD.defByUid(s, uid);
+  const def = ctx.PD.state.defByUid(s, uid);
   const loc = { p: 0, zone: "hand", i: 0 };
 
   const r = ctx.PD.moves.cmdsForTargeting(s, "place", uid, loc);

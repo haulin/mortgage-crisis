@@ -1,5 +1,4 @@
-// Centralized focus policy (autofocus + selection preservation).
-// Note: This file is concatenated after `src/65_ui.js`; callers only invoke it at runtime from PD.ui.step().
+// PD.ui.focus: centralized focus policy (autofocus + selection preservation).
 
 PD.ui.focus = {};
 
@@ -173,7 +172,7 @@ PD.ui.focus.rules = [
   {
     id: "OnGameOverEntered_Reset",
     enabled: function (ctx) { return !!(PD.config && PD.config.debug && PD.config.debug.enabled); },
-    when: function (ctx) { return (ctx.view.ux.lastWinnerP === PD.NO_WINNER && ctx.state.winnerP !== PD.NO_WINNER); },
+    when: function (ctx) { return (ctx.view.ux.lastWinnerP === PD.state.NO_WINNER && ctx.state.winnerP !== PD.state.NO_WINNER); },
     pick: function (ctx) {
       return PD.ui.focus._pickCenterBtn(ctx.computed, "reset");
     }
@@ -182,7 +181,7 @@ PD.ui.focus.rules = [
     id: "OnInvalidActionGameOver_Reset",
     enabled: function (ctx) { return !!(PD.config && PD.config.debug && PD.config.debug.enabled); },
     when: function (ctx) {
-      if (ctx.state.winnerP === PD.NO_WINNER) return false;
+      if (ctx.state.winnerP === PD.state.NO_WINNER) return false;
       if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
       return (ctx.view.ux.pendingFocusErrorCode === "game_over");
     },
@@ -195,7 +194,7 @@ PD.ui.focus.rules = [
     id: "OnPlaysExhausted_End",
     enabled: function () { return true; },
     when: function (ctx) {
-      if (ctx.state.winnerP !== PD.NO_WINNER) return false;
+      if (ctx.state.winnerP !== PD.state.NO_WINNER) return false;
       if (ctx.state.activeP !== 0) return false;
       if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
       return (ctx.view.ux.lastActiveP === 0 && ctx.view.ux.lastPlaysLeft > 0 && ctx.state.playsLeft <= 0);
@@ -208,7 +207,7 @@ PD.ui.focus.rules = [
     id: "OnHandBecameEmpty_End",
     enabled: function () { return true; },
     when: function (ctx) {
-      if (ctx.state.winnerP !== PD.NO_WINNER) return false;
+      if (ctx.state.winnerP !== PD.state.NO_WINNER) return false;
       if (ctx.state.activeP !== 0) return false;
       if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
       if (ctx.state.prompt) return false;
@@ -223,7 +222,7 @@ PD.ui.focus.rules = [
     id: "OnPlayerTurnStart_FocusHandOrEnd",
     enabled: function () { return true; },
     when: function (ctx) {
-      if (ctx.state.winnerP !== PD.NO_WINNER) return false;
+      if (ctx.state.winnerP !== PD.state.NO_WINNER) return false;
       if (ctx.state.activeP !== 0) return false;
       if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
       if (ctx.state.prompt && ctx.state.prompt.p === 0) return false;
@@ -241,7 +240,7 @@ PD.ui.focus.rules = [
     id: "OnInvalidActionWhileHandEmpty_End",
     enabled: function () { return true; },
     when: function (ctx) {
-      if (ctx.state.winnerP !== PD.NO_WINNER) return false;
+      if (ctx.state.winnerP !== PD.state.NO_WINNER) return false;
       if (ctx.state.activeP !== 0) return false;
       if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
       if (ctx.state.prompt) return false;
@@ -273,7 +272,7 @@ PD.ui.focus.rules = [
     id: "OnExitPlaceReceivedPrompt_End",
     enabled: function () { return true; },
     when: function (ctx) {
-      if (ctx.state.winnerP !== PD.NO_WINNER) return false;
+      if (ctx.state.winnerP !== PD.state.NO_WINNER) return false;
       var pr = ctx.state.prompt;
       var cur = !!(pr && pr.kind === "placeReceived" && pr.p === 0);
       var exited = (ctx.view.ux.lastPromptForP0 && ctx.view.ux.lastPromptKind === "placeReceived" && !cur);

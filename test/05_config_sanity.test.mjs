@@ -143,6 +143,7 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
 
   assert.equal(typeof PD.config.controls, "object", "expected PD.config.controls");
   assert.equal(typeof PD.config.ui, "object", "expected PD.config.ui");
+  assert.equal(typeof PD.config.ai, "object", "expected PD.config.ai");
 
   const requirePosNum = (obj, key) => {
     assert.equal(typeof obj[key], "number", `expected ${key} to be a number`);
@@ -167,6 +168,16 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   requirePosNum(PD.config.ui, "shuffleToastFrames");
   requirePosNum(PD.config.ui, "aiStepDelayFrames");
   requirePosNum(PD.config.ui, "aiNarrateToastFrames");
+
+  // AI policy knobs.
+  assert.ok(Array.isArray(PD.config.ai.policyByP), "expected PD.config.ai.policyByP array");
+  assert.equal(PD.config.ai.policyByP.length, 2, "expected PD.config.ai.policyByP length=2");
+  assert.equal(typeof PD.config.ai.policyByP[0], "string");
+  assert.ok(PD.config.ai.policyByP[0].length > 0);
+  assert.equal(typeof PD.config.ai.policyByP[1], "string");
+  assert.ok(PD.config.ai.policyByP[1].length > 0);
+  requirePosNum(PD.config.ai, "biasExistingSetK");
+  requirePosNum(PD.config.ai, "biasPlayRentK");
 });
 
 test("config sanity: rule notes are configured", async () => {
@@ -181,7 +192,7 @@ test("config sanity: rule notes are configured", async () => {
 
 test("sanity: scenarios are registered after full load", async () => {
   const ctx = await loadSrcIntoVm();
-  assert.ok(Array.isArray(ctx.PD.SCENARIO_IDS), "expected PD.SCENARIO_IDS to be an array");
-  assert.ok(ctx.PD.SCENARIO_IDS.length > 0, "expected PD.SCENARIO_IDS to be non-empty");
+  assert.ok(Array.isArray(ctx.PD.scenarios.IDS), "expected PD.scenarios.IDS to be an array");
+  assert.ok(ctx.PD.scenarios.IDS.length > 0, "expected PD.scenarios.IDS to be non-empty");
 });
 

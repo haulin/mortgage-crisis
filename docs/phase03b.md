@@ -12,7 +12,7 @@ Phase 03b fixes those issues while keeping rendering **read-only** (rules/comman
 
 - Rework Row 3 into a real **Deck/Discard + selection preview** center HUD.
 - Improve **card backs** (opponent hand + deck) using a fast sprite-based back.
-- Unify **seed usage**: Debug/Render uses the same seed source as the rest of the codebase (`PD.computeSeed()` → `PD.config.seedBase`).
+- Unify **seed usage**: Debug/Render resets use the same seed source as the rest of the codebase (the configurable base seed).
 - Keep Phase 03 invariants: **row bands stay locked**, navigation + camera stay deterministic, tests remain green.
 
 ## What Phase 03b implements
@@ -62,13 +62,11 @@ Debug-only reveal behavior (gated by config):
 
 ## Tweak points (single source of truth)
 
-All Phase 03b tweak knobs live in `src/05_config.js`:
+All Phase 03b tweak knobs live in configuration:
 
-- `PD.config.seedBase`: seed used by Debug/Render resets
-- `PD.config.debug.enabled`: gates debug-only reveal behavior in preview
-- `PD.config.render.spr.cardBackTL`: top-left tile of a **2×3** (16×24) card-back sprite
-- `PD.config.render.layout.*`: geometry + positions (including center row placement knobs like `centerDeckX`, `centerPreviewX`, etc.)
-- `PD.config.render.style.*`: colors + anchors (including pile outline colors)
+- base seed used by Debug/Render resets
+- debug flag gating “reveal” behavior in preview
+- render knobs for center-row geometry, pile styling, and card-back sprite IDs
 
 ## Definition of Done
 

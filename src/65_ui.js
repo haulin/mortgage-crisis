@@ -1,3 +1,4 @@
+// PD.ui: controller UX view-state machine + model computation (drives commands; does not author rules).
 PD.ui.newView = function () {
   return {
     // View-only state (cursor/camera/menu focus). This is intentionally not part of GameState.
@@ -25,8 +26,8 @@ PD.ui.newView = function () {
       // source: { uid, loc }
       card: null,
       // for wilds
-      wildColor: PD.NO_COLOR,
-      // list of concrete engine commands (subset of PD.legalMoves)
+      wildColor: PD.state.NO_COLOR,
+      // list of concrete engine commands (subset of PD.engine.legalMoves)
       cmds: [],
       cmdI: 0
     },
@@ -60,7 +61,7 @@ PD.ui.newView = function () {
       lastActiveP: null,
       lastPlaysLeft: null,
       lastHandLenP0: null,
-      lastWinnerP: PD.NO_WINNER,
+      lastWinnerP: PD.state.NO_WINNER,
       lastPromptKind: "",
       lastPromptForP0: false,
       lastCenterBtnPressedId: "",
@@ -104,7 +105,7 @@ PD.ui.toastsTick = function (view) {
 
 PD.ui.syncPromptToast = function (state, view) {
   // Game over: hide prompt toast so Winner toast can take over.
-  if (state && state.winnerP !== PD.NO_WINNER) {
+  if (state && state.winnerP !== PD.state.NO_WINNER) {
     var iGo;
     for (iGo = 0; iGo < view.toasts.length; iGo++) {
       var tGo = view.toasts[iGo];
@@ -129,7 +130,7 @@ PD.ui.syncPromptToast = function (state, view) {
 
   var txt = "";
   if (pr.kind === "discardDown") {
-    var over = state.players[0].hand.length - PD.HAND_MAX;
+    var over = state.players[0].hand.length - PD.state.HAND_MAX;
     txt = "Too many cards. Discard " + over;
   } else if (pr.kind === "payDebt") {
     txt = "Pay debt: $" + pr.rem + " left";
@@ -154,7 +155,7 @@ PD.ui.syncPromptToast = function (state, view) {
 
 PD.ui.syncWinnerToast = function (state, view) {
   if (!state || !view) return;
-  var has = (state.winnerP !== PD.NO_WINNER);
+  var has = (state.winnerP !== PD.state.NO_WINNER);
   var i;
   var idx = -1;
   for (i = 0; i < view.toasts.length; i++) {
@@ -405,7 +406,7 @@ PD.ui.layoutHint = function (state, view) {
     if (!it || !src || !src.uid) return hint;
 
     var uid = src.uid;
-    var def = PD.defByUid(state, uid);
+    var def = PD.state.defByUid(state, uid);
     var cmdsM = [];
     var isRent = (it.id === "rent");
 
@@ -413,7 +414,7 @@ PD.ui.layoutHint = function (state, view) {
       cmdsM = PD.moves.bankCmdsForUid(state, uid);
     } else if (it.id === "place") {
       if (def && def.kind === PD.CardKind.Property) {
-        var wildColorM = (def && PD.isWildDef(def)) ? PD.moves.defaultWildColorForPlace(state, uid, def) : PD.NO_COLOR;
+        var wildColorM = (def && PD.rules.isWildDef(def)) ? PD.moves.defaultWildColorForPlace(state, uid, def) : PD.state.NO_COLOR;
         cmdsM = PD.moves.placeCmdsForUid(state, uid, def, wildColorM);
       }
     } else if (it.id === "build") {
@@ -741,12 +742,12 @@ PD.ui.buildRowItems = function (state, view, row, hint) {
       }
 
       // End is always available on your turn; if hand > HAND_MAX the engine enters a discard-down prompt.
-      var endDisabled = (state.winnerP !== PD.NO_WINNER) || (state.activeP !== 0);
+      var endDisabled = (state.winnerP !== PD.state.NO_WINNER) || (state.activeP !== 0);
       pushBtn("endTurn", "End", stripY0, endDisabled);
       if (dbgEnabled) {
         // Game over: Step would attempt to mutate state via debugStep and can throw.
         // Keep Reset/Next available for recovery.
-        pushBtn("step", "Step", stripY0 + 11, (state.winnerP !== PD.NO_WINNER));
+        pushBtn("step", "Step", stripY0 + 11, (state.winnerP !== PD.state.NO_WINNER));
         pushBtn("reset", "Reset", stripY0 + 22, false);
         pushBtn("nextScenario", "Next", stripY0 + 33, false);
       }
@@ -892,7 +893,7 @@ PD.ui.computeRowModels = function (state, view) {
       var slotP = slotForCmd(cmd, srcSlot);
       if (!slotP) return;
       var colP = null;
-      if (def && PD.isWildDef(def)) colP = (cmd.color != null) ? cmd.color : wildColor;
+      if (def && PD.rules.isWildDef(def)) colP = (cmd.color != null) ? cmd.color : wildColor;
       setFocus(slotP, uid, colP, "playProp");
       return;
     }
@@ -928,7 +929,7 @@ PD.ui.computeRowModels = function (state, view) {
     if (k === "source") {
       if (!srcSlot) return;
       var colS = null;
-      if (def && PD.isWildDef(def)) colS = wildColor;
+      if (def && PD.rules.isWildDef(def)) colS = wildColor;
       setFocus(srcSlot, uid, colS, "source");
       return;
     }
@@ -1011,8 +1012,8 @@ PD.ui.computeRowModels = function (state, view) {
     var uidM = (srcM && srcM.uid) ? srcM.uid : 0;
     var cm = (hint && hint.menuHoverCmd) ? hint.menuHoverCmd : null;
     if (uidM && cm) {
-      var defM = PD.defByUid(state, uidM);
-      setFocusForCmd(cm, null, { uid: uidM, def: defM, wildColor: (defM && PD.isWildDef(defM)) ? cm.color : null });
+      var defM = PD.state.defByUid(state, uidM);
+      setFocusForCmd(cm, null, { uid: uidM, def: defM, wildColor: (defM && PD.rules.isWildDef(defM)) ? cm.color : null });
     }
 
     // When menu hover produces a preview of the same uid (or Rent preview where the preview card differs),
@@ -1108,7 +1109,7 @@ PD.ui.updateCameras = function (state, view, computed) {
 
 PD.ui.menuOpenForSelection = function (state, view, sel) {
   if (!view || !view.menu) return;
-  if (state && state.winnerP !== PD.NO_WINNER) return;
+  if (state && state.winnerP !== PD.state.NO_WINNER) return;
   view.menu.items = [];
   view.menu.i = 0;
   view.menu.src = sel ? { row: sel.row, i: view.cursor.i, uid: sel.uid, loc: sel.loc || null } : null;
@@ -1119,12 +1120,12 @@ PD.ui.menuOpenForSelection = function (state, view, sel) {
   if (sel.loc.p !== 0) return;
 
   var uid = sel.uid;
-  var def = PD.defByUid(state, uid);
+  var def = PD.state.defByUid(state, uid);
   if (!def) return;
 
   // Build/Place actions are only meaningful for the currently implemented rules.
   if (def.kind === PD.CardKind.Property) {
-    var wildColor = (def && PD.isWildDef(def)) ? PD.moves.defaultWildColorForPlace(state, uid, def) : PD.NO_COLOR;
+    var wildColor = (def && PD.rules.isWildDef(def)) ? PD.moves.defaultWildColorForPlace(state, uid, def) : PD.state.NO_COLOR;
     var placeCmds = PD.moves.placeCmdsForUid(state, uid, def, wildColor);
     view.menu.items.push({ id: "place", label: PD.fmt.menuLabelForCmds("Place", state, placeCmds) });
   }
@@ -1141,7 +1142,7 @@ PD.ui.menuOpenForSelection = function (state, view, sel) {
       view.menu.items.push({ id: "rent", label: PD.fmt.menuLabelForRentMoves(state, rentMoves) });
     }
   }
-  if (PD.isBankableDef(def)) {
+  if (PD.rules.isBankableDef(def)) {
     view.menu.items.push({ id: "bank", label: "Bank" });
   }
 
@@ -1160,7 +1161,7 @@ PD.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
   t.cmds = [];
   t.cmdI = 0;
 
-  var def = PD.defByUid(state, uid);
+  var def = PD.state.defByUid(state, uid);
   t.card = { uid: uid, loc: loc || null, def: def || null };
 
   var r = PD.moves.cmdsForTargeting(state, t.kind, uid, t.card ? t.card.loc : null);
@@ -1170,8 +1171,8 @@ PD.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
     return;
   }
 
-  t.cmds = r.cmds || [];
-  t.wildColor = (r.wildColor != null) ? r.wildColor : PD.NO_COLOR;
+  t.cmds = r.cmds;
+  t.wildColor = (r.wildColor != null) ? r.wildColor : PD.state.NO_COLOR;
   t.cmdI = 0; // default always-existing if any
 
   // Unknown targeting kind.
@@ -1188,7 +1189,7 @@ PD.ui.targetingRetargetWild = function (state, view, dir) {
   if (!view || !view.targeting || !view.targeting.active) return;
   var t = view.targeting;
   if (t.kind !== "place") return;
-  if (!t.card || !t.card.def || !PD.isWildDef(t.card.def)) return;
+  if (!t.card || !t.card.def || !PD.rules.isWildDef(t.card.def)) return;
 
   var def = t.card.def;
   var c0 = def.wildColors[0];
@@ -1232,9 +1233,9 @@ PD.ui.step = function (state, view, actions) {
   PD.ui.syncWinnerToast(state, view);
   PD.anim.tick(state, view);
 
-  var gameOver = (state.winnerP !== PD.NO_WINNER);
-  var prevWinner = (view.ux && view.ux.lastWinnerP != null) ? view.ux.lastWinnerP : PD.NO_WINNER;
-  var justEnded = (gameOver && prevWinner === PD.NO_WINNER);
+  var gameOver = (state.winnerP !== PD.state.NO_WINNER);
+  var prevWinner = (view.ux && view.ux.lastWinnerP != null) ? view.ux.lastWinnerP : PD.state.NO_WINNER;
+  var justEnded = (gameOver && prevWinner === PD.state.NO_WINNER);
 
   // Game over: close overlays and allow free navigation/inspect.
   if (gameOver) {
@@ -1705,14 +1706,14 @@ PD.ui.step = function (state, view, actions) {
     var selGrab = currentSelection();
     if (selGrab && selGrab.loc && selGrab.loc.zone === "hand" && selGrab.loc.p === 0) {
       var uidGrab = selGrab.uid;
-      var defGrab = PD.defByUid(state, uidGrab);
+      var defGrab = PD.state.defByUid(state, uidGrab);
       if (defGrab && defGrab.kind === PD.CardKind.Property) {
         PD.ui.targetingEnter(state, view, "place", true, uidGrab, selGrab.loc);
         return null;
       } else if (defGrab && (defGrab.kind === PD.CardKind.House || (defGrab.kind === PD.CardKind.Action && defGrab.actionKind === PD.ActionKind.Rent))) {
         PD.ui.targetingEnter(state, view, "quick", true, uidGrab, selGrab.loc);
         return null;
-      } else if (defGrab && PD.isBankableDef(defGrab)) {
+      } else if (defGrab && PD.rules.isBankableDef(defGrab)) {
         PD.ui.targetingEnter(state, view, "bank", true, uidGrab, selGrab.loc);
         return null;
       }

@@ -1,4 +1,4 @@
-// Shared layout/geometry helpers (UI + renderer). Pure; reads PD.config.
+// PD.layout: shared layout/geometry helpers (UI + renderer). Pure; reads PD.config.
 
 PD.layout.rowY0 = function (row) {
   return PD.config.render.layout.rowY[row];

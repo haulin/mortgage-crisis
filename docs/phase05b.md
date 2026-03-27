@@ -18,8 +18,8 @@ This keeps future “draw/reveal mid-turn” mechanics viable without special ca
 
 Pressing **End** when your hand is too large no longer hard-fails; instead it enters a rules-owned prompt:
 
-- `state.prompt = { kind: "discardDown", p: <player>, nDiscarded }`
-- UI switches into `view.mode = "prompt"` (hand-only navigation)
+- Rules enter a **discard-down prompt** owned by the engine (prompt has an actor and tracks progress)
+- UI switches into a prompt-focused mode (hand-only navigation)
 - `A` discards the highlighted hand card
 - once hand \(<= 7\), the engine automatically completes the pending end-turn (passes the turn + starts the next player’s turn)
 
@@ -49,18 +49,10 @@ To keep centering predictable, toast text is rendered in **fixed-width** mode.
   - when banking is previewed, the existing bank stack shifts left by one stack-stride so the preview can occupy the rightmost “new top” slot.
 - While in **menu mode**, hovering **Place / Build / Bank** shows a destination preview **only when there is exactly 1 real destination** (to keep the UI from getting noisy).
 
-## Files changed
+## Tests
 
-- `src/40_state.js`: reshuffle-on-draw behavior in `PD.drawToHand`
-- `src/45_rules.js`: `discard` + `cancelPrompt`, discardDown prompt flow in `endTurn`/`legalMoves`
-- `src/65_ui.js`: `view.mode="prompt"` handler, prompt toasts, prompt cancel rules, hold-targeting Source destination
-- `src/60_render.js`: stacked toasts renderer + toast fixed-width printing; hide grabbed source card during targeting; bank/menu preview overlays
-
-Tests:
-
-- `test/45_rules.test.mjs`
-- `test/60_render.test.mjs`
-- `test/65_ui_controls.test.mjs`
+- Command/prompt tests cover discard-down behavior and deterministic reshuffles.
+- UI/control tests cover prompt navigation/cancel rules and targeting cancellation via Source.
 
 ## Definition of done
 

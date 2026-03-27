@@ -59,7 +59,7 @@ test("ui: toast contract - push replaces by id, tick decrements frames", async (
 
 test("ui: syncPromptToast inserts/removes persistent prompt toast", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ seedU32: 1 });
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
   const v = ctx.PD.ui.newView();
 
   // No prompt -> no toast.
@@ -67,7 +67,7 @@ test("ui: syncPromptToast inserts/removes persistent prompt toast", async () => 
   assert.equal(v.toasts.length, 0);
 
   // Add a prompt and sync -> prompt toast at top.
-  ctx.PD.setPrompt(s, { kind: "payDebt", p: 0, toP: 1, rem: 7, buf: [] });
+  ctx.PD.state.setPrompt(s, { kind: "payDebt", p: 0, toP: 1, rem: 7, buf: [] });
   ctx.PD.ui.syncPromptToast(s, v);
   assert.ok(v.toasts.length >= 1);
   assert.equal(v.toasts[0].id, "prompt");
@@ -75,14 +75,14 @@ test("ui: syncPromptToast inserts/removes persistent prompt toast", async () => 
   assert.ok(String(v.toasts[0].text).includes("$7"));
 
   // Clear prompt -> toast removed.
-  ctx.PD.clearPrompt(s);
+  ctx.PD.state.clearPrompt(s);
   ctx.PD.ui.syncPromptToast(s, v);
   assert.ok(v.toasts.every((t) => t.id !== "prompt"));
 });
 
 test("ui: view numeric invariants stay finite across flows", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ seedU32: 1 });
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
   const v = ctx.PD.ui.newView();
@@ -149,7 +149,7 @@ test("focus policy: rules are well-formed (caller preconditions are tested, no r
 
 test("ui.step calls focus.apply with canonical args", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ seedU32: 1 });
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
   const v = ctx.PD.ui.newView();
 
   let called = false;

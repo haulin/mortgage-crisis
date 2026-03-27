@@ -3,6 +3,8 @@
 // saveid: PropertyDeal
 // generated: do not edit by hand (edit src/* instead)
 // ---- src/00_prelude.js ----
+// Prelude: initialize the global `PD` namespace and module namespaces exactly once.
+// Invariant: other modules attach to these objects (no defensive `PD.x = PD.x || {}`).
 var PD = PD || {};
 
 // Module namespaces: created once here, never defensively elsewhere.
@@ -14,8 +16,18 @@ PD.fmt = {};
 PD.layout = {};
 PD.moves = {};
 PD.ai = {};
+PD.state = {};
+PD.engine = {};
+PD.rules = {};
+PD.util = {};
+PD.shuffle = {};
+PD.rng = {};
+PD.seed = {};
+PD.scenarios = {};
+PD.debug = {};
 
 // ---- src/05_config.js ----
+// PD.config: central gameplay/UI/render tuning knobs (validated in tests; avoid runtime fallbacks).
 PD.config = {
   screenW: 240,
   screenH: 136,
@@ -66,6 +78,20 @@ PD.config.ui = {
   aiStepDelayFrames: 60,
   aiNarrateToastFrames: 60,
  
+};
+
+// AI policy knobs (Phase 07+).
+PD.config.ai = {
+  // Per-player policy IDs (0=player, 1=opponent by default).
+  policyByP: ["defaultHeuristic", "defaultHeuristic"],
+
+  // Weight multiplier for "place property into an existing set" moves.
+  // 1 means no bias (equivalent to uniform random).
+  biasExistingSetK: 8,
+
+  // Weight multiplier for "play Rent" moves (bias asking for rent over banking Rent).
+  // 1 means no bias (equivalent to uniform random).
+  biasPlayRentK: 4
 };
 
 // Rule-note IDs (Phase 05+). These are small display-only annotations in Inspect.
@@ -261,20 +287,9 @@ PD.config.render = {
 };
 
 // ---- src/10_util.js ----
-// Shared tiny utilities (pure helpers; no TIC-80 API usage).
+// PD.util: shared tiny utilities (pure helpers; no TIC-80 API usage).
 
-PD.shuffleByNextInt = function (arr, nextInt) {
-  var i;
-  for (i = arr.length - 1; i > 0; i--) {
-    var j = nextInt(i + 1);
-    var tmp = arr[i];
-    arr[i] = arr[j];
-    arr[j] = tmp;
-  }
-  return arr;
-};
-
-PD.bankValueTotal = function (state, p) {
+PD.util.bankValueTotal = function (state, p) {
   var bank = state.players[p].bank;
   var sum = 0;
   var i;
@@ -288,7 +303,17 @@ PD.bankValueTotal = function (state, p) {
 };
 
 // ---- src/15_rng.js ----
-PD.xorshift32Step = function (sU32) {
+// PD.rng: deterministic PRNG helpers (bitwise coercion stays localized here).
+PD.rng.u32 = function (n) {
+  return (n >>> 0);
+};
+
+PD.rng.u32NonZero = function (n) {
+  var x = (n >>> 0);
+  return x ? x : 1;
+};
+
+PD.rng.xorshift32Step = function (sU32) {
   var x = sU32 >>> 0;
   if (!x) x = 1;
   x ^= x << 13;
@@ -299,46 +324,42 @@ PD.xorshift32Step = function (sU32) {
   return x >>> 0;
 };
 
-PD.RNG = function (seedU32) {
-  var s = (seedU32 >>> 0) || 1;
-  this.s = s >>> 0;
+PD.rng.RNG = function (seedU32) {
+  this.s = PD.rng.u32NonZero(seedU32);
 };
 
 // Standalone RNG instances (handy for tests/utilities; separate from RNG-in-state).
-PD.RNG.prototype.nextU32 = function () {
-  this.s = PD.xorshift32Step(this.s >>> 0);
+PD.rng.RNG.prototype.nextU32 = function () {
+  this.s = PD.rng.xorshift32Step(this.s >>> 0);
   return this.s >>> 0;
 };
 
-PD.RNG.prototype.nextInt = function (n) {
+PD.rng.RNG.prototype.nextInt = function (n) {
   n = n | 0;
   if (n <= 0) return 0;
   return (this.nextU32() % n) | 0;
 };
 
 // RNG-in-state helpers (store evolving state in `state.rngS`).
-PD.rngNextU32 = function (state) {
-  state.rngS = PD.xorshift32Step(state.rngS >>> 0);
+PD.rng.nextU32InState = function (state) {
+  state.rngS = PD.rng.xorshift32Step(state.rngS >>> 0);
   return state.rngS >>> 0;
 };
 
-PD.rngNextInt = function (state, n) {
+PD.rng.nextIntInState = function (state, n) {
   n = n | 0;
   if (n <= 0) return 0;
-  return (PD.rngNextU32(state) % n) | 0;
+  return (PD.rng.nextU32InState(state) % n) | 0;
 };
 
 // ---- src/20_seed.js ----
-PD.computeSeed = function () {
-  var s = (PD.config.seedBase >>> 0) || 1;
-  return s >>> 0;
-};
-
-PD.newGameRng = function () {
-  return new PD.RNG(PD.computeSeed());
+// PD.seed: seed policy for deterministic runs (dev-friendly, reproducible).
+PD.seed.computeSeedU32 = function () {
+  return PD.rng.u32NonZero(PD.config.seedBase);
 };
 
 // ---- src/25_controls.js ----
+// PD.controls: input state machine (injected/pollable controls with repeat + hold/tap detection).
 PD.controls.newState = function () {
   return {
     frame: 0,
@@ -499,11 +520,28 @@ PD.controls.actions = function (st, raw, cfg) {
 };
 
 // ---- src/30_shuffle.js ----
-PD.shuffleInPlace = function (arr, rng) {
-  return PD.shuffleByNextInt(arr, function (n) { return rng.nextInt(n); });
+// PD.shuffle: deterministic shuffling helpers (seeded RNG / state RNG).
+PD.shuffle.byNextInt = function (arr, nextInt) {
+  var i;
+  for (i = arr.length - 1; i > 0; i--) {
+    var j = nextInt(i + 1);
+    var tmp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = tmp;
+  }
+  return arr;
+};
+
+PD.shuffle.inPlaceWithRng = function (arr, rng) {
+  return PD.shuffle.byNextInt(arr, function (n) { return rng.nextInt(n); });
+};
+
+PD.shuffle.inPlaceWithStateRng = function (state, arr) {
+  return PD.shuffle.byNextInt(arr, function (n) { return PD.rng.nextIntInState(state, n); });
 };
 
 // ---- src/35_defs.js ----
+// Card/game definitions: enums + static data tables (treated as read-only).
 PD.Color = {
   Cyan: 0,
   Magenta: 1,
@@ -726,15 +764,16 @@ PD.DEF_INDEX_BY_ID = {};
 })();
 
 // ---- src/40_state.js ----
-PD.NO_COLOR = -1;
-PD.NO_WINNER = -1;
-PD.HAND_MAX = 7;
+// PD.state: game state constructors + uid bookkeeping + prompt helpers (no UI/render).
+PD.state.NO_COLOR = -1;
+PD.state.NO_WINNER = -1;
+PD.state.HAND_MAX = 7;
 
-PD.clearPrompt = function (state) {
+PD.state.clearPrompt = function (state) {
   state.prompt = null;
 };
 
-PD.setPrompt = function (state, prompt) {
+PD.state.setPrompt = function (state, prompt) {
   if (prompt == null) {
     state.prompt = null;
     return;
@@ -775,7 +814,7 @@ PD.setPrompt = function (state, prompt) {
   throw new Error("unknown_prompt_kind:" + k);
 };
 
-PD.hasAnyPayables = function (state, p) {
+PD.state.hasAnyPayables = function (state, p) {
   var pl = state.players[p];
   if (pl.bank.length) return true;
   var sets = pl.sets;
@@ -788,40 +827,36 @@ PD.hasAnyPayables = function (state, p) {
   return false;
 };
 
-PD.beginDebt = function (state, fromP, toP, amount) {
+PD.state.beginDebt = function (state, fromP, toP, amount) {
   if (!(amount > 0)) return;
-  if (!PD.hasAnyPayables(state, fromP)) return;
-  PD.setPrompt(state, { kind: "payDebt", p: fromP, toP: toP, rem: amount, buf: [] });
+  if (!PD.state.hasAnyPayables(state, fromP)) return;
+  PD.state.setPrompt(state, { kind: "payDebt", p: fromP, toP: toP, rem: amount, buf: [] });
 };
 
-PD.otherPlayer = function (p) {
+PD.rules.otherPlayer = function (p) {
   return (p ^ 1) & 1;
 };
 
-PD.getSetColor = function (props) {
-  if (!props || props.length === 0) return PD.NO_COLOR;
+PD.rules.getSetColor = function (props) {
+  if (!props || props.length === 0) return PD.state.NO_COLOR;
   return props[0][1];
 };
 
-PD.isBankableDef = function (def) {
+PD.rules.isBankableDef = function (def) {
   if (!def) return false;
   return def.kind === PD.CardKind.Money || def.kind === PD.CardKind.Action || def.kind === PD.CardKind.House;
 };
 
-PD.isWildDef = function (def) {
+PD.rules.isWildDef = function (def) {
   return !!(def && def.kind === PD.CardKind.Property && def.wildColors && def.wildColors.length);
 };
 
-PD.wildAllowsColor = function (def, color) {
-  if (!PD.isWildDef(def)) return false;
+PD.rules.wildAllowsColor = function (def, color) {
+  if (!PD.rules.isWildDef(def)) return false;
   return def.wildColors[0] === color || def.wildColors[1] === color;
 };
 
-PD.shuffleUidsInPlace = function (state, arr) {
-  return PD.shuffleByNextInt(arr, function (n) { return PD.rngNextInt(state, n); });
-};
-
-PD.buildAllUids = function (state) {
+PD.state.buildAllUids = function (state) {
   var uidToDefI = [0];
   var uid = 1;
   var di;
@@ -838,12 +873,12 @@ PD.buildAllUids = function (state) {
   state.totalUids = uidToDefI.length - 1;
 };
 
-PD.defByUid = function (state, uid) {
+PD.state.defByUid = function (state, uid) {
   var di = state.uidToDefI[uid];
   return PD.CARD_DEFS[di];
 };
 
-PD.newEmptySet = function () {
+PD.state.newEmptySet = function () {
   return {
     // Properties are tuples: [uid, color]
     props: [],
@@ -852,10 +887,8 @@ PD.newEmptySet = function () {
   };
 };
 
-PD.drawToHand = function (state, p, n, events) {
+PD.state.drawToHand = function (state, p, n, events) {
   if (n <= 0) return;
-  if (!state.deck) state.deck = [];
-  if (!state.discard) state.discard = [];
 
   var uids = [];
   while (n > 0) {
@@ -867,7 +900,7 @@ PD.drawToHand = function (state, p, n, events) {
       var i;
       for (i = 0; i < nDisc; i++) state.deck.push(state.discard[i]);
       state.discard = [];
-      PD.shuffleUidsInPlace(state, state.deck);
+      PD.shuffle.inPlaceWithStateRng(state, state.deck);
       if (events) events.push({ kind: "reshuffle", from: "discard", to: "deck", n: nDisc });
       nAvail = state.deck.length;
       if (nAvail <= 0) break;
@@ -887,22 +920,21 @@ PD.drawToHand = function (state, p, n, events) {
   if (events && uids.length > 0) events.push({ kind: "draw", p: p, uids: uids });
 };
 
-PD.startTurn = function (state, events) {
+PD.state.startTurn = function (state, events) {
   state.playsLeft = 3;
-  PD.clearPrompt(state);
+  PD.state.clearPrompt(state);
   var p = state.activeP;
   var nDraw = 2;
   if (state.players[p].hand.length === 0) nDraw = 5;
-  PD.drawToHand(state, p, nDraw, events);
+  PD.state.drawToHand(state, p, nDraw, events);
   if (events) events.push({ kind: "plays", p: state.activeP, playsLeft: state.playsLeft });
 };
 
-PD.newGame = function (opts) {
-  var seedU32 = opts.seedU32 == null ? PD.computeSeed() : (opts.seedU32 >>> 0);
-  if (!seedU32) seedU32 = 1;
+PD.state.newGame = function (opts) {
+  var seedU32 = (opts.seedU32 == null) ? PD.seed.computeSeedU32() : PD.rng.u32NonZero(opts.seedU32);
 
   var state = {
-    rngS: seedU32 >>> 0,
+    rngS: seedU32,
     uidToDefI: null,
     totalUids: 0,
 
@@ -917,13 +949,13 @@ PD.newGame = function (opts) {
     activeP: 0,
     playsLeft: 0,
     prompt: null,
-    winnerP: PD.NO_WINNER
+    winnerP: PD.state.NO_WINNER
   };
 
-  PD.buildAllUids(state);
+  PD.state.buildAllUids(state);
 
   if (opts.scenarioId) {
-    PD.applyScenario(state, String(opts.scenarioId));
+    PD.scenarios.applyScenario(state, String(opts.scenarioId));
     return state;
   }
 
@@ -931,22 +963,22 @@ PD.newGame = function (opts) {
   // then start their turn (draw 2, playsLeft=3).
   var uid;
   for (uid = 1; uid <= state.totalUids; uid++) state.deck.push(uid);
-  PD.shuffleUidsInPlace(state, state.deck);
+  PD.shuffle.inPlaceWithStateRng(state, state.deck);
 
-  PD.drawToHand(state, 0, 5, null);
-  PD.drawToHand(state, 1, 5, null);
+  PD.state.drawToHand(state, 0, 5, null);
+  PD.state.drawToHand(state, 1, 5, null);
 
-  state.activeP = PD.rngNextInt(state, 2);
+  state.activeP = PD.rng.nextIntInState(state, 2);
   var events = [];
   events.push({ kind: "turn", activeP: state.activeP });
-  PD.startTurn(state, events);
+  PD.state.startTurn(state, events);
   // Default newGame doesn't expose events, but tests may call startTurn/endTurn directly.
 
   return state;
 };
 
 // Scenario/test helpers (defId-first).
-PD.cardPoolInit = function (state) {
+PD.state.cardPoolInit = function (state) {
   var pool = {};
   var uid;
   for (uid = 1; uid <= state.totalUids; uid++) {
@@ -963,15 +995,16 @@ PD.cardPoolInit = function (state) {
   return pool;
 };
 
-PD.takeUid = function (state, defId) {
-  if (!state._pool) PD.cardPoolInit(state);
+PD.state.takeUid = function (state, defId) {
+  if (!state._pool) PD.state.cardPoolInit(state);
   var a = state._pool[defId];
   if (!a || a.length === 0) throw new Error("pool_exhausted:" + defId);
   return a.pop();
 };
 
 // ---- src/45_rules.js ----
-PD.evaluateWin = function (state) {
+// PD.rules: pure rule computations. PD.engine: deterministic command application + move generation.
+PD.rules.evaluateWin = function (state) {
   var p;
   for (p = 0; p < 2; p++) {
     var sets = state.players[p].sets;
@@ -980,33 +1013,32 @@ PD.evaluateWin = function (state) {
     for (si = 0; si < sets.length; si++) {
       var set = sets[si];
       if (!set) continue;
-      var color = PD.getSetColor(set.props);
-      if (color === PD.NO_COLOR) continue;
+      var color = PD.rules.getSetColor(set.props);
+      if (color === PD.state.NO_COLOR) continue;
       var req = PD.SET_RULES[color].requiredSize;
       if (set.props.length >= req && req > 0) complete++;
     }
     if (complete >= 3) return p;
   }
-  return PD.NO_WINNER;
+  return PD.state.NO_WINNER;
 };
 
-PD.assertCanApply = function (state) {
-  if (state.winnerP !== PD.NO_WINNER) throw new Error("game_over");
+PD.engine.assertCanApply = function (state) {
+  if (state.winnerP !== PD.state.NO_WINNER) throw new Error("game_over");
 };
 
-PD.locEqZone = function (loc, zone) {
+PD.engine.locEqZone = function (loc, zone) {
   return !!loc && loc.zone === zone;
 };
 
-PD.rentAmountForSet = function (state, p, setI) {
-  if (!state || !state.players || !state.players[p]) return 0;
+PD.rules.rentAmountForSet = function (state, p, setI) {
   var sets = state.players[p].sets;
-  if (!sets || setI < 0 || setI >= sets.length) return 0;
+  if (setI < 0 || setI >= sets.length) return 0;
   var set = sets[setI];
   if (!set || !set.props || set.props.length <= 0) return 0;
 
-  var color = PD.getSetColor(set.props);
-  if (color === PD.NO_COLOR) return 0;
+  var color = PD.rules.getSetColor(set.props);
+  if (color === PD.state.NO_COLOR) return 0;
   var rules = PD.SET_RULES[color];
   if (!rules || !rules.rent || rules.rent.length <= 0) return 0;
 
@@ -1021,7 +1053,7 @@ PD.rentAmountForSet = function (state, p, setI) {
   return base + bonus;
 };
 
-PD.removeHandAtLoc = function (state, card) {
+PD.engine.removeHandAtLoc = function (state, card) {
   var loc = card.loc;
   var p = loc.p;
   var i = loc.i;
@@ -1031,8 +1063,8 @@ PD.removeHandAtLoc = function (state, card) {
   hand.splice(i, 1);
 };
 
-PD.applyCommand = function (state, cmd) {
-  PD.assertCanApply(state);
+PD.engine.applyCommand = function (state, cmd) {
+  PD.engine.assertCanApply(state);
   if (!cmd || !cmd.kind) throw new Error("bad_cmd");
 
   var events = [];
@@ -1046,19 +1078,19 @@ PD.applyCommand = function (state, cmd) {
   }
 
   function applyEndTurn() {
-    state.activeP = PD.otherPlayer(state.activeP);
+    state.activeP = PD.rules.otherPlayer(state.activeP);
     events.push({ kind: "turn", activeP: state.activeP });
-    PD.startTurn(state, events);
+    PD.state.startTurn(state, events);
   }
 
   function applyDiscard(cmdDiscard) {
     var card = cmdDiscard.card;
     if (!card || !card.loc) throw new Error("bad_cmd");
-    if (!PD.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
     if (card.loc.p !== p) throw new Error("not_your_card");
 
     var uid = card.uid;
-    PD.removeHandAtLoc(state, card);
+    PD.engine.removeHandAtLoc(state, card);
     state.discard.push(uid);
 
     events.push({
@@ -1073,8 +1105,8 @@ PD.applyCommand = function (state, cmd) {
     }
 
     // End-turn discard-down prompt: once <= HAND_MAX, finish ending the turn.
-    if (handP.length <= PD.HAND_MAX) {
-      PD.clearPrompt(state);
+    if (handP.length <= PD.state.HAND_MAX) {
+      PD.state.clearPrompt(state);
       applyEndTurn();
     }
   }
@@ -1088,15 +1120,14 @@ PD.applyCommand = function (state, cmd) {
       }
       if (cmd.kind === "cancelPrompt") {
         if (prompt.nDiscarded > 0) throw new Error("prompt_forced");
-        PD.clearPrompt(state);
+        PD.state.clearPrompt(state);
         return { events: events };
       }
       throw new Error("prompt_active");
     }
 
     function payValueForUid(uid) {
-      var def = PD.defByUid(state, uid);
-      if (!def) return 0;
+      var def = PD.state.defByUid(state, uid);
       if (def.kind === PD.CardKind.Property) return def.propertyPayValue != null ? def.propertyPayValue : 0;
       return def.bankValue != null ? def.bankValue : 0;
     }
@@ -1155,14 +1186,14 @@ PD.applyCommand = function (state, cmd) {
       cleanupEmptySetsForPlayer(p);
 
       // Auto-finalize when covered or out of payables.
-      if (prompt.rem > 0 && PD.hasAnyPayables(state, p)) return;
+      if (prompt.rem > 0 && PD.state.hasAnyPayables(state, p)) return;
 
       var toP = prompt.toP;
       var recv = [];
       var i;
       for (i = 0; i < buf.length; i++) {
         var uidT = buf[i];
-        var defT = PD.defByUid(state, uidT);
+        var defT = PD.state.defByUid(state, uidT);
         if (defT && defT.kind === PD.CardKind.Property) {
           recv.push(uidT);
         } else {
@@ -1177,9 +1208,9 @@ PD.applyCommand = function (state, cmd) {
       }
 
       if (recv.length > 0) {
-        PD.setPrompt(state, { kind: "placeReceived", p: toP, uids: recv });
+        PD.state.setPrompt(state, { kind: "placeReceived", p: toP, uids: recv });
       } else {
-        PD.clearPrompt(state);
+        PD.state.clearPrompt(state);
       }
     }
 
@@ -1188,20 +1219,20 @@ PD.applyCommand = function (state, cmd) {
       var dest = cmdProp.dest;
       if (!card || !card.loc || !dest) throw new Error("bad_cmd");
       if (card.loc.p !== p) throw new Error("not_your_card");
-      if (!PD.locEqZone(card.loc, "recvProps")) throw new Error("bad_loc");
+      if (!PD.engine.locEqZone(card.loc, "recvProps")) throw new Error("bad_loc");
 
       var ri = card.loc.i;
       var uids = prompt.uids;
       var uid = card.uid;
       if (!uids[ri] || uids[ri] !== uid) throw new Error("bad_loc");
 
-      var def = PD.defByUid(state, uid);
+      var def = PD.state.defByUid(state, uid);
       if (!def || def.kind !== PD.CardKind.Property) throw new Error("not_property");
 
-      var placedColor = PD.NO_COLOR;
-      if (PD.isWildDef(def)) {
+      var placedColor = PD.state.NO_COLOR;
+      if (PD.rules.isWildDef(def)) {
         placedColor = cmdProp.color;
-        if (!PD.wildAllowsColor(def, placedColor)) throw new Error("wild_color_illegal");
+        if (!PD.rules.wildAllowsColor(def, placedColor)) throw new Error("wild_color_illegal");
       } else {
         placedColor = def.propertyColor;
       }
@@ -1212,7 +1243,7 @@ PD.applyCommand = function (state, cmd) {
       var sets = state.players[p].sets;
       var setI;
       if (dest.newSet) {
-        var newSet = PD.newEmptySet();
+        var newSet = PD.state.newEmptySet();
         setI = sets.length;
         sets.push(newSet);
         events.push({ kind: "createSet", p: p, setI: setI, color: placedColor });
@@ -1220,8 +1251,8 @@ PD.applyCommand = function (state, cmd) {
         setI = dest.setI;
         if (setI < 0 || setI >= sets.length) throw new Error("bad_set");
         var setExisting = sets[setI];
-        var setColor = PD.getSetColor(setExisting.props);
-        if (setColor === PD.NO_COLOR) throw new Error("empty_set");
+        var setColor = PD.rules.getSetColor(setExisting.props);
+        if (setColor === PD.state.NO_COLOR) throw new Error("empty_set");
         if (setColor !== placedColor) throw new Error("set_color_mismatch");
       }
 
@@ -1235,10 +1266,10 @@ PD.applyCommand = function (state, cmd) {
         to: { p: p, zone: "setProps", setI: setI, i: setT.props.length - 1 }
       });
 
-      if (prompt.uids.length === 0) PD.clearPrompt(state);
+      if (prompt.uids.length === 0) PD.state.clearPrompt(state);
 
-      var winner = PD.evaluateWin(state);
-      if (winner !== PD.NO_WINNER) {
+      var winner = PD.rules.evaluateWin(state);
+      if (winner !== PD.state.NO_WINNER) {
         state.winnerP = winner;
         events.push({ kind: "win", winnerP: winner });
       }
@@ -1258,14 +1289,14 @@ PD.applyCommand = function (state, cmd) {
   function applyBank(cmdBank) {
     var card = cmdBank.card;
     if (!card || !card.loc) throw new Error("bad_cmd");
-    if (!PD.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
     if (card.loc.p !== p) throw new Error("not_your_card");
 
     var uid = card.uid;
-    var def = PD.defByUid(state, uid);
-    if (!PD.isBankableDef(def)) throw new Error("not_bankable");
+    var def = PD.state.defByUid(state, uid);
+    if (!PD.rules.isBankableDef(def)) throw new Error("not_bankable");
 
-    PD.removeHandAtLoc(state, card);
+    PD.engine.removeHandAtLoc(state, card);
     state.players[p].bank.push(uid);
 
     events.push({
@@ -1281,17 +1312,17 @@ PD.applyCommand = function (state, cmd) {
     var card = cmdProp.card;
     var dest = cmdProp.dest;
     if (!card || !card.loc || !dest) throw new Error("bad_cmd");
-    if (!PD.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
     if (card.loc.p !== p) throw new Error("not_your_card");
 
     var uid = card.uid;
-    var def = PD.defByUid(state, uid);
+    var def = PD.state.defByUid(state, uid);
     if (!def || def.kind !== PD.CardKind.Property) throw new Error("not_property");
 
-    var placedColor = PD.NO_COLOR;
-    if (PD.isWildDef(def)) {
+    var placedColor = PD.state.NO_COLOR;
+    if (PD.rules.isWildDef(def)) {
       placedColor = cmdProp.color;
-      if (!PD.wildAllowsColor(def, placedColor)) throw new Error("wild_color_illegal");
+      if (!PD.rules.wildAllowsColor(def, placedColor)) throw new Error("wild_color_illegal");
     } else {
       placedColor = def.propertyColor;
     }
@@ -1299,7 +1330,7 @@ PD.applyCommand = function (state, cmd) {
     var sets = state.players[p].sets;
     var setI;
     if (dest.newSet) {
-      var newSet = PD.newEmptySet();
+      var newSet = PD.state.newEmptySet();
       setI = sets.length;
       sets.push(newSet);
       events.push({ kind: "createSet", p: p, setI: setI, color: placedColor });
@@ -1307,12 +1338,12 @@ PD.applyCommand = function (state, cmd) {
       setI = dest.setI;
       if (setI < 0 || setI >= sets.length) throw new Error("bad_set");
       var setExisting = sets[setI];
-      var setColor = PD.getSetColor(setExisting.props);
-      if (setColor === PD.NO_COLOR) throw new Error("empty_set");
+      var setColor = PD.rules.getSetColor(setExisting.props);
+      if (setColor === PD.state.NO_COLOR) throw new Error("empty_set");
       if (setColor !== placedColor) throw new Error("set_color_mismatch");
     }
 
-    PD.removeHandAtLoc(state, card);
+    PD.engine.removeHandAtLoc(state, card);
     var setT = sets[setI];
     setT.props.push([uid, placedColor]);
 
@@ -1324,8 +1355,8 @@ PD.applyCommand = function (state, cmd) {
     });
     decPlays();
 
-    var winner = PD.evaluateWin(state);
-    if (winner !== PD.NO_WINNER) {
+    var winner = PD.rules.evaluateWin(state);
+    if (winner !== PD.state.NO_WINNER) {
       state.winnerP = winner;
       events.push({ kind: "win", winnerP: winner });
     }
@@ -1335,11 +1366,11 @@ PD.applyCommand = function (state, cmd) {
     var card = cmdHouse.card;
     var dest = cmdHouse.dest;
     if (!card || !card.loc || !dest) throw new Error("bad_cmd");
-    if (!PD.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
     if (card.loc.p !== p) throw new Error("not_your_card");
 
     var uid = card.uid;
-    var def = PD.defByUid(state, uid);
+    var def = PD.state.defByUid(state, uid);
     if (!def || def.kind !== PD.CardKind.House) throw new Error("not_house");
 
     var sets = state.players[p].sets;
@@ -1348,12 +1379,12 @@ PD.applyCommand = function (state, cmd) {
     var set = sets[setI];
     if (set.houseUid !== 0) throw new Error("house_already");
 
-    var color = PD.getSetColor(set.props);
-    if (color === PD.NO_COLOR) throw new Error("empty_set");
+    var color = PD.rules.getSetColor(set.props);
+    if (color === PD.state.NO_COLOR) throw new Error("empty_set");
     var req = PD.SET_RULES[color].requiredSize;
     if (set.props.length < req) throw new Error("set_not_complete");
 
-    PD.removeHandAtLoc(state, card);
+    PD.engine.removeHandAtLoc(state, card);
     set.houseUid = uid;
 
     events.push({
@@ -1368,11 +1399,11 @@ PD.applyCommand = function (state, cmd) {
   function applyPlayRent(cmdRent) {
     var card = cmdRent.card;
     if (!card || !card.loc) throw new Error("bad_cmd");
-    if (!PD.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
     if (card.loc.p !== p) throw new Error("not_your_card");
 
     var uid = card.uid;
-    var def = PD.defByUid(state, uid);
+    var def = PD.state.defByUid(state, uid);
     if (!def || def.kind !== PD.CardKind.Action || def.actionKind !== PD.ActionKind.Rent) throw new Error("not_rent");
 
     var setI = cmdRent.setI;
@@ -1381,8 +1412,8 @@ PD.applyCommand = function (state, cmd) {
     var set = sets[setI];
     if (!set || !set.props || set.props.length <= 0) throw new Error("empty_set");
 
-    var color = PD.getSetColor(set.props);
-    if (color === PD.NO_COLOR) throw new Error("empty_set");
+    var color = PD.rules.getSetColor(set.props);
+    if (color === PD.state.NO_COLOR) throw new Error("empty_set");
 
     var allowed = def.rentAllowedColors;
     if (allowed && allowed.length) {
@@ -1392,11 +1423,11 @@ PD.applyCommand = function (state, cmd) {
       if (!ok) throw new Error("rent_color_illegal");
     }
 
-    var amount = PD.rentAmountForSet(state, p, setI);
+    var amount = PD.rules.rentAmountForSet(state, p, setI);
     if (amount <= 0) throw new Error("rent_zero");
 
     // Discard the rent card.
-    PD.removeHandAtLoc(state, card);
+    PD.engine.removeHandAtLoc(state, card);
     state.discard.push(uid);
     events.push({
       kind: "move",
@@ -1407,14 +1438,14 @@ PD.applyCommand = function (state, cmd) {
     decPlays();
 
     // Trigger debt prompt for the opponent (if they have payables).
-    var payer = PD.otherPlayer(p);
-    PD.beginDebt(state, payer, p, amount);
+    var payer = PD.rules.otherPlayer(p);
+    PD.state.beginDebt(state, payer, p, amount);
     events.push({ kind: "rent", p: p, setI: setI, color: color, amount: amount });
   }
 
   if (cmd.kind === "endTurn") {
-    if (handP.length > PD.HAND_MAX) {
-      PD.setPrompt(state, { kind: "discardDown", p: p });
+    if (handP.length > PD.state.HAND_MAX) {
+      PD.state.setPrompt(state, { kind: "discardDown", p: p });
       if (state.prompt) state.prompt.nDiscarded = 0;
       return { events: events };
     }
@@ -1433,8 +1464,43 @@ PD.applyCommand = function (state, cmd) {
   return { events: events };
 };
 
-PD.legalMoves = function (state) {
-  if (state.winnerP !== PD.NO_WINNER) return [];
+PD.engine._pushPlayPropMoves = function (outMoves, state, p, uid, loc, sets) {
+  var def = PD.state.defByUid(state, uid);
+  if (!def || def.kind !== PD.CardKind.Property) return;
+  var cardRef = { uid: uid, loc: loc };
+
+  if (PD.rules.isWildDef(def)) {
+    // New set for each allowed color.
+    outMoves.push({ kind: "playProp", card: cardRef, dest: { p: p, newSet: true }, color: def.wildColors[0] });
+    outMoves.push({ kind: "playProp", card: cardRef, dest: { p: p, newSet: true }, color: def.wildColors[1] });
+    // Existing sets that match allowed colors.
+    var si;
+    for (si = 0; si < sets.length; si++) {
+      var set = sets[si];
+      var setColor = PD.rules.getSetColor(set.props);
+      if (setColor === PD.state.NO_COLOR) continue;
+      if (PD.rules.wildAllowsColor(def, setColor)) {
+        outMoves.push({ kind: "playProp", card: cardRef, dest: { p: p, setI: si }, color: setColor });
+      }
+    }
+    return;
+  }
+
+  var c = def.propertyColor;
+  outMoves.push({ kind: "playProp", card: cardRef, dest: { p: p, newSet: true } });
+  var sj;
+  for (sj = 0; sj < sets.length; sj++) {
+    var setJ = sets[sj];
+    var setColorJ = PD.rules.getSetColor(setJ.props);
+    if (setColorJ === PD.state.NO_COLOR) continue;
+    if (setColorJ === c) {
+      outMoves.push({ kind: "playProp", card: cardRef, dest: { p: p, setI: sj } });
+    }
+  }
+};
+
+PD.engine.legalMoves = function (state) {
+  if (state.winnerP !== PD.state.NO_WINNER) return [];
   if (state.prompt) {
     var pr = state.prompt;
     if (pr.kind === "discardDown") {
@@ -1479,43 +1545,10 @@ PD.legalMoves = function (state) {
       var setsR = state.players[pR].sets;
       var outR = [];
 
-      function pushMovesForUid(uid, loc) {
-        var def = PD.defByUid(state, uid);
-        if (!def || def.kind !== PD.CardKind.Property) return;
-        var cardRef = { uid: uid, loc: loc };
-        if (PD.isWildDef(def)) {
-          // New set for each allowed color.
-          outR.push({ kind: "playProp", card: cardRef, dest: { p: pR, newSet: true }, color: def.wildColors[0] });
-          outR.push({ kind: "playProp", card: cardRef, dest: { p: pR, newSet: true }, color: def.wildColors[1] });
-          // Existing sets that match allowed colors.
-          var si;
-          for (si = 0; si < setsR.length; si++) {
-            var set = setsR[si];
-            var setColor = PD.getSetColor(set.props);
-            if (setColor === PD.NO_COLOR) continue;
-            if (PD.wildAllowsColor(def, setColor)) {
-              outR.push({ kind: "playProp", card: cardRef, dest: { p: pR, setI: si }, color: setColor });
-            }
-          }
-        } else {
-          var c = def.propertyColor;
-          outR.push({ kind: "playProp", card: cardRef, dest: { p: pR, newSet: true } });
-          var sj;
-          for (sj = 0; sj < setsR.length; sj++) {
-            var setJ = setsR[sj];
-            var setColorJ = PD.getSetColor(setJ.props);
-            if (setColorJ === PD.NO_COLOR) continue;
-            if (setColorJ === c) {
-              outR.push({ kind: "playProp", card: cardRef, dest: { p: pR, setI: sj } });
-            }
-          }
-        }
-      }
-
       var iR;
       for (iR = 0; iR < uids.length; iR++) {
         var uidR = uids[iR];
-        pushMovesForUid(uidR, { p: pR, zone: "recvProps", i: iR });
+        PD.engine._pushPlayPropMoves(outR, state, pR, uidR, { p: pR, zone: "recvProps", i: iR }, setsR);
       }
       return outR;
     }
@@ -1536,51 +1569,22 @@ PD.legalMoves = function (state) {
   var i;
   for (i = 0; i < hand.length; i++) {
     var uid = hand[i];
-    var def = PD.defByUid(state, uid);
+    var def = PD.state.defByUid(state, uid);
     var cardRef = { uid: uid, loc: { p: p, zone: "hand", i: i } };
 
-    if (PD.isBankableDef(def)) {
+    if (PD.rules.isBankableDef(def)) {
       moves.push({ kind: "bank", card: cardRef });
     }
 
     if (def.kind === PD.CardKind.Property) {
-      if (PD.isWildDef(def)) {
-        // New set for each allowed color.
-        moves.push({ kind: "playProp", card: cardRef, dest: { p: p, newSet: true }, color: def.wildColors[0] });
-        moves.push({ kind: "playProp", card: cardRef, dest: { p: p, newSet: true }, color: def.wildColors[1] });
-
-        // Existing sets that match allowed colors.
-        var si;
-        for (si = 0; si < sets.length; si++) {
-          var set = sets[si];
-          var setColor = PD.getSetColor(set.props);
-          if (setColor === PD.NO_COLOR) continue;
-          if (PD.wildAllowsColor(def, setColor)) {
-            moves.push({ kind: "playProp", card: cardRef, dest: { p: p, setI: si }, color: setColor });
-          }
-        }
-      } else {
-        var c = def.propertyColor;
-        // New set.
-        moves.push({ kind: "playProp", card: cardRef, dest: { p: p, newSet: true } });
-        // Existing sets of same color.
-        var sj;
-        for (sj = 0; sj < sets.length; sj++) {
-          var setJ = sets[sj];
-          var setColorJ = PD.getSetColor(setJ.props);
-          if (setColorJ === PD.NO_COLOR) continue;
-          if (setColorJ === c) {
-            moves.push({ kind: "playProp", card: cardRef, dest: { p: p, setI: sj } });
-          }
-        }
-      }
+      PD.engine._pushPlayPropMoves(moves, state, p, uid, cardRef.loc, sets);
     } else if (def.kind === PD.CardKind.House) {
       var sh;
       for (sh = 0; sh < sets.length; sh++) {
         var setH = sets[sh];
         if (setH.houseUid !== 0) continue;
-        var col = PD.getSetColor(setH.props);
-        if (col === PD.NO_COLOR) continue;
+        var col = PD.rules.getSetColor(setH.props);
+        if (col === PD.state.NO_COLOR) continue;
         var req = PD.SET_RULES[col].requiredSize;
         if (setH.props.length >= req) {
           moves.push({ kind: "playHouse", card: cardRef, dest: { p: p, setI: sh } });
@@ -1593,15 +1597,15 @@ PD.legalMoves = function (state) {
       for (siR = 0; siR < sets.length; siR++) {
         var setR = sets[siR];
         if (!setR || !setR.props || setR.props.length <= 0) continue;
-        var colR = PD.getSetColor(setR.props);
-        if (colR === PD.NO_COLOR) continue;
+        var colR = PD.rules.getSetColor(setR.props);
+        if (colR === PD.state.NO_COLOR) continue;
         if (allowed && allowed.length) {
           var ok = false;
           var ai;
           for (ai = 0; ai < allowed.length; ai++) if (allowed[ai] === colR) ok = true;
           if (!ok) continue;
         }
-        var amt = PD.rentAmountForSet(state, p, siR);
+        var amt = PD.rules.rentAmountForSet(state, p, siR);
         if (amt <= 0) continue;
         moves.push({ kind: "playRent", card: cardRef, setI: siR });
       }
@@ -1612,7 +1616,8 @@ PD.legalMoves = function (state) {
 };
 
 // ---- src/50_scenarios.js ----
-PD.resetForScenario = function (state) {
+// PD.scenarios: deterministic starting-state builders for testing + debug smoke runs.
+PD.scenarios.resetForScenario = function (state) {
   state.deck = [];
   state.discard = [];
   state.players[0].hand = [];
@@ -1623,31 +1628,31 @@ PD.resetForScenario = function (state) {
   state.players[1].sets = [];
   state.activeP = 0;
   state.playsLeft = 3;
-  PD.clearPrompt(state);
-  state.winnerP = PD.NO_WINNER;
+  PD.state.clearPrompt(state);
+  state.winnerP = PD.state.NO_WINNER;
   // Ensure pool exists.
-  PD.cardPoolInit(state);
+  PD.state.cardPoolInit(state);
 };
 
-PD.setAddFixedProp = function (set, uid, color) {
+PD.scenarios.setAddFixedProp = function (set, uid, color) {
   set.props.push([uid, color]);
 };
 
-PD.setAddPropByDefId = function (state, set, defId, forcedColor) {
-  var uid = PD.takeUid(state, defId);
-  var def = PD.defByUid(state, uid);
-  var color = PD.NO_COLOR;
-  if (PD.isWildDef(def)) {
+PD.scenarios.setAddPropByDefId = function (state, set, defId, forcedColor) {
+  var uid = PD.state.takeUid(state, defId);
+  var def = PD.state.defByUid(state, uid);
+  var color = PD.state.NO_COLOR;
+  if (PD.rules.isWildDef(def)) {
     color = forcedColor;
-    if (!PD.wildAllowsColor(def, color)) throw new Error("scenario_bad_color:" + defId);
+    if (!PD.rules.wildAllowsColor(def, color)) throw new Error("scenario_bad_color:" + defId);
   } else {
     color = def.propertyColor;
   }
-  PD.setAddFixedProp(set, uid, color);
+  PD.scenarios.setAddFixedProp(set, uid, color);
   return uid;
 };
 
-PD.fillDeckFromPool = function (state) {
+PD.scenarios.fillDeckFromPool = function (state) {
   var deck = [];
   var i;
   for (i = 0; i < PD.CARD_DEFS.length; i++) {
@@ -1661,20 +1666,20 @@ PD.fillDeckFromPool = function (state) {
   state.deck = deck;
 };
 
-PD.applyScenario = function (state, scenarioId) {
-  PD.resetForScenario(state);
+PD.scenarios.applyScenario = function (state, scenarioId) {
+  PD.scenarios.resetForScenario(state);
 
-  var fn = PD._scenarioApplyById && PD._scenarioApplyById[scenarioId];
+  var fn = PD.scenarios._applyById[scenarioId];
   if (!fn) throw new Error("unknown_scenario:" + scenarioId);
   fn(state);
 
-  PD.fillDeckFromPool(state);
+  PD.scenarios.fillDeckFromPool(state);
   // Keep deck deterministic for scenarios; callers can shuffle if desired.
   return state;
 };
 
 // Scenario registry (single source of truth).
-PD.SCENARIO_IDS = [
+PD.scenarios.IDS = [
   "placeBasic",
   "wildBasic",
   "houseBasic",
@@ -1682,11 +1687,13 @@ PD.SCENARIO_IDS = [
   "bankScrollShuffle",
   // Phase 06
   "debtHouseFirst",
-  "placeReceived"
+  "placeReceived",
+  // Phase 07+: move generation smoke / AI policy stress
+  "moveStress"
 ];
 
 // Optional metadata for debug UI / docs.
-PD.SCENARIO_INFO = {
+PD.scenarios.INFO = {
   placeBasic: { title: "Place (basic)", desc: "Fixed property placement + Rent play-test (opponent has a small bank payable)." },
   wildBasic: { title: "Wild (basic)", desc: "Wild property placement + discard depth demo." },
   houseBasic: { title: "House (basic)", desc: "Build House on complete set only." },
@@ -1694,79 +1701,80 @@ PD.SCENARIO_INFO = {
   bankScrollShuffle: { title: "Bank+shuffle stress", desc: "Huge bank + reshuffle-on-draw stress case." },
   debtHouseFirst: { title: "Debt: house-first", desc: "Debt prompt where House must be paid before set properties." },
   placeReceived: { title: "Place received", desc: "Faux-turn placement buffer (includes Wild color choice)." },
+  moveStress: { title: "Move stress", desc: "Many partial sets + 9-card hand (props + wilds + rent-any + house) to maximize legalMoves fanout for smoke testing + AI policy tuning." },
 };
 
-PD._scenarioApplyById = {
+PD.scenarios._applyById = {
   placeBasic: function (state) {
     // P0 has 2 orange properties + $1. P0 also has an existing Orange set with 1 property.
-    var setO = PD.newEmptySet();
-    PD.setAddPropByDefId(state, setO, "prop_orange", PD.NO_COLOR);
+    var setO = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setO, "prop_orange", PD.state.NO_COLOR);
     state.players[0].sets.push(setO);
 
-    state.players[0].hand.push(PD.takeUid(state, "prop_orange"));
-    state.players[0].hand.push(PD.takeUid(state, "prop_orange"));
-    state.players[0].hand.push(PD.takeUid(state, "money_1"));
+    state.players[0].hand.push(PD.state.takeUid(state, "prop_orange"));
+    state.players[0].hand.push(PD.state.takeUid(state, "prop_orange"));
+    state.players[0].hand.push(PD.state.takeUid(state, "money_1"));
     // Add a rent card that matches Orange (Magenta/Orange rent).
-    state.players[0].hand.push(PD.takeUid(state, "rent_mo"));
+    state.players[0].hand.push(PD.state.takeUid(state, "rent_mo"));
 
     // Ensure opponent has something payable so Rent triggers payDebt.
-    state.players[1].bank.push(PD.takeUid(state, "money_1"));
+    state.players[1].bank.push(PD.state.takeUid(state, "money_1"));
   },
 
   wildBasic: function (state) {
     // P0 has Wild(M/O) and $1.
-    state.players[0].hand.push(PD.takeUid(state, "wild_mo"));
-    state.players[0].hand.push(PD.takeUid(state, "money_1"));
+    state.players[0].hand.push(PD.state.takeUid(state, "wild_mo"));
+    state.players[0].hand.push(PD.state.takeUid(state, "money_1"));
 
     // Discard demo (depth=3): top card is last.
-    state.discard.push(PD.takeUid(state, "money_2"));
-    state.discard.push(PD.takeUid(state, "money_1"));
-    state.discard.push(PD.takeUid(state, "rent_cb"));
+    state.discard.push(PD.state.takeUid(state, "money_2"));
+    state.discard.push(PD.state.takeUid(state, "money_1"));
+    state.discard.push(PD.state.takeUid(state, "rent_cb"));
   },
 
   houseBasic: function (state) {
     // P0 has two Houses in hand.
-    state.players[0].hand.push(PD.takeUid(state, "house"));
-    state.players[0].hand.push(PD.takeUid(state, "house"));
+    state.players[0].hand.push(PD.state.takeUid(state, "house"));
+    state.players[0].hand.push(PD.state.takeUid(state, "house"));
 
     // One complete Cyan set (2).
-    var setC = PD.newEmptySet();
-    PD.setAddPropByDefId(state, setC, "prop_cyan", PD.NO_COLOR);
-    PD.setAddPropByDefId(state, setC, "prop_cyan", PD.NO_COLOR);
+    var setC = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setC, "prop_cyan", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setC, "prop_cyan", PD.state.NO_COLOR);
     state.players[0].sets.push(setC);
 
     // One incomplete Black set (3/4).
-    var setB = PD.newEmptySet();
-    PD.setAddPropByDefId(state, setB, "prop_black", PD.NO_COLOR);
-    PD.setAddPropByDefId(state, setB, "prop_black", PD.NO_COLOR);
-    PD.setAddPropByDefId(state, setB, "prop_black", PD.NO_COLOR);
+    var setB = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setB, "prop_black", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setB, "prop_black", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setB, "prop_black", PD.state.NO_COLOR);
     state.players[0].sets.push(setB);
 
     // Discard demo (depth=1).
-    state.discard.push(PD.takeUid(state, "money_5"));
+    state.discard.push(PD.state.takeUid(state, "money_5"));
   },
 
   winCheck: function (state) {
     // P0 has 3 complete sets: Cyan(2), Magenta(3), Orange(3).
-    var setC2 = PD.newEmptySet();
-    PD.setAddPropByDefId(state, setC2, "prop_cyan", PD.NO_COLOR);
-    PD.setAddPropByDefId(state, setC2, "prop_cyan", PD.NO_COLOR);
+    var setC2 = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setC2, "prop_cyan", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setC2, "prop_cyan", PD.state.NO_COLOR);
     state.players[0].sets.push(setC2);
 
-    var setM3 = PD.newEmptySet();
-    PD.setAddPropByDefId(state, setM3, "prop_magenta", PD.NO_COLOR);
-    PD.setAddPropByDefId(state, setM3, "prop_magenta", PD.NO_COLOR);
-    PD.setAddPropByDefId(state, setM3, "prop_magenta", PD.NO_COLOR);
+    var setM3 = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setM3, "prop_magenta", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setM3, "prop_magenta", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setM3, "prop_magenta", PD.state.NO_COLOR);
     state.players[0].sets.push(setM3);
 
-    var setO3 = PD.newEmptySet();
-    PD.setAddPropByDefId(state, setO3, "prop_orange", PD.NO_COLOR);
-    PD.setAddPropByDefId(state, setO3, "prop_orange", PD.NO_COLOR);
-    PD.setAddPropByDefId(state, setO3, "prop_orange", PD.NO_COLOR);
+    var setO3 = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setO3, "prop_orange", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setO3, "prop_orange", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setO3, "prop_orange", PD.state.NO_COLOR);
     state.players[0].sets.push(setO3);
 
     state.playsLeft = 0;
-    state.winnerP = PD.evaluateWin(state);
+    state.winnerP = PD.rules.evaluateWin(state);
   },
 
   bankScrollShuffle: function (state) {
@@ -1776,10 +1784,8 @@ PD._scenarioApplyById = {
     // - Leave exactly 1 card in deck so the next draw forces a reshuffle.
     // - Ensure P1 hand is non-empty so endTurn draws 2 (not 5).
 
-    if (!state._pool) PD.cardPoolInit(state);
-
     // Seed P1 hand with 1 property so startTurn draws 2.
-    state.players[1].hand.push(PD.takeUid(state, "prop_cyan"));
+    state.players[1].hand.push(PD.state.takeUid(state, "prop_cyan"));
 
     // Drain pool: bankables -> P0 bank; non-bankables -> discard.
     var di;
@@ -1791,7 +1797,7 @@ PD._scenarioApplyById = {
       if (!a || a.length === 0) continue;
 
       // NOTE: scenario pool contains only uids, so we inspect the def kind here.
-      var bankable = PD.isBankableDef(def);
+      var bankable = PD.rules.isBankableDef(def);
       while (a.length > 0) {
         var uid = a.pop();
         if (bankable) state.players[0].bank.push(uid);
@@ -1803,70 +1809,117 @@ PD._scenarioApplyById = {
     // Prefer taking from discard so the discard->deck reshuffle still has plenty of cards.
     if (state.discard.length > 0) {
       var keepUid = state.discard.pop();
-      var keepDef = PD.defByUid(state, keepUid);
-      var keepId = keepDef && keepDef.id ? String(keepDef.id) : "";
-      if (keepId) {
-        if (!state._pool[keepId]) state._pool[keepId] = [];
-        state._pool[keepId].push(keepUid);
-      } else {
-        // Fallback: if we can't map it, just return it to discard (deck will be empty).
-        state.discard.push(keepUid);
-      }
+      var keepDef = PD.state.defByUid(state, keepUid);
+      var keepId = String(keepDef.id);
+      state._pool[keepId].push(keepUid);
     }
 
     // Keep hand small and end-turn legal.
     state.players[0].hand = [];
     state.activeP = 0;
     state.playsLeft = 0;
-    state.winnerP = PD.NO_WINNER;
+    state.winnerP = PD.state.NO_WINNER;
   },
 
   // Phase 06: prompt-driven debt payment where House must be paid first.
   // Goal: exercise prompt actor separation + house-first redirect + overpay allowed.
   debtHouseFirst: function (state) {
     // P0: complete Cyan set with a House.
-    var setC = PD.newEmptySet();
-    PD.setAddPropByDefId(state, setC, "prop_cyan", PD.NO_COLOR);
-    PD.setAddPropByDefId(state, setC, "prop_cyan", PD.NO_COLOR);
-    setC.houseUid = PD.takeUid(state, "house");
+    var setC = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setC, "prop_cyan", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setC, "prop_cyan", PD.state.NO_COLOR);
+    setC.houseUid = PD.state.takeUid(state, "house");
     state.players[0].sets.push(setC);
 
     // Keep bank empty so the only payable is the House (forces the rule).
     state.players[0].bank = [];
 
     // Add a little hand so the UI isn't empty.
-    state.players[0].hand.push(PD.takeUid(state, "rent_cb"));
+    state.players[0].hand.push(PD.state.takeUid(state, "rent_cb"));
 
     // Pay a small debt to P1; paying the House overpays and resolves immediately.
-    PD.setPrompt(state, { kind: "payDebt", p: 0, toP: 1, rem: 1, buf: [] });
+    PD.state.setPrompt(state, { kind: "payDebt", p: 0, toP: 1, rem: 1, buf: [] });
   },
 
   // Phase 06: recipient faux-turn placement buffer (received properties).
   placeReceived: function (state) {
     // P0 has an existing Orange set to allow placing into existing sets.
-    var setO = PD.newEmptySet();
-    PD.setAddPropByDefId(state, setO, "prop_orange", PD.NO_COLOR);
+    var setO = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setO, "prop_orange", PD.state.NO_COLOR);
     state.players[0].sets.push(setO);
 
     // Prompt buffer: one fixed property + one Wild to place (wild assignment chosen during placement).
     var recv = [];
-    recv.push(PD.takeUid(state, "prop_orange"));
-    recv.push(PD.takeUid(state, "wild_mo"));
-    PD.setPrompt(state, { kind: "placeReceived", p: 0, uids: recv });
+    recv.push(PD.state.takeUid(state, "prop_orange"));
+    recv.push(PD.state.takeUid(state, "wild_mo"));
+    PD.state.setPrompt(state, { kind: "placeReceived", p: 0, uids: recv });
 
     // Keep normal hand visible for the “faux-hand + real hand” row layout.
-    state.players[0].hand.push(PD.takeUid(state, "money_1"));
-    state.players[0].hand.push(PD.takeUid(state, "rent_mo"));
+    state.players[0].hand.push(PD.state.takeUid(state, "money_1"));
+    state.players[0].hand.push(PD.state.takeUid(state, "rent_mo"));
+  },
+
+  // Phase 07+: maximize legalMoves fanout for smoke testing + AI policy tuning.
+  moveStress: function (state) {
+    // Board: P0 has many partial sets so properties/wilds have multiple existing destinations.
+    // Hand: 9 cards including wilds + rent-any + house, so move list gets large.
+    //
+    // Note: hand > HAND_MAX is intentional; endTurn will enter discardDown prompt.
+
+    // 1 complete Cyan set (2) so House has at least one legal build target.
+    var setC = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setC, "prop_cyan", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setC, "prop_cyan", PD.state.NO_COLOR);
+    state.players[0].sets.push(setC);
+
+    // 2 Magenta sets (each 1 prop) so Magenta + wild_mo can target multiple existing sets.
+    var setM0 = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setM0, "prop_magenta", PD.state.NO_COLOR);
+    state.players[0].sets.push(setM0);
+    var setM1 = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setM1, "prop_magenta", PD.state.NO_COLOR);
+    state.players[0].sets.push(setM1);
+
+    // 2 Orange sets (each 1 prop) so Orange + wild_mo can target multiple existing sets.
+    var setO0 = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setO0, "prop_orange", PD.state.NO_COLOR);
+    state.players[0].sets.push(setO0);
+    var setO1 = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setO1, "prop_orange", PD.state.NO_COLOR);
+    state.players[0].sets.push(setO1);
+
+    // 3 Black sets (each 1 prop) so Black + wild_cb can target multiple existing sets.
+    var setB0 = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setB0, "prop_black", PD.state.NO_COLOR);
+    state.players[0].sets.push(setB0);
+    var setB1 = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setB1, "prop_black", PD.state.NO_COLOR);
+    state.players[0].sets.push(setB1);
+    var setB2 = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setB2, "prop_black", PD.state.NO_COLOR);
+    state.players[0].sets.push(setB2);
+
+    // Hand: one of each base property (remaining), both wilds, plus rent-any + house + $1 + one action.
+    state.players[0].hand.push(PD.state.takeUid(state, "prop_magenta"));
+    state.players[0].hand.push(PD.state.takeUid(state, "prop_orange"));
+    state.players[0].hand.push(PD.state.takeUid(state, "prop_black"));
+    state.players[0].hand.push(PD.state.takeUid(state, "wild_mo"));
+    state.players[0].hand.push(PD.state.takeUid(state, "wild_cb"));
+
+    state.players[0].hand.push(PD.state.takeUid(state, "house"));
+    state.players[0].hand.push(PD.state.takeUid(state, "rent_any"));
+    state.players[0].hand.push(PD.state.takeUid(state, "money_1"));
+    state.players[0].hand.push(PD.state.takeUid(state, "sly_deal"));
   },
 };
 
 // ---- src/52_moves.js ----
-// Shared move helpers (rules + UI). Pure-ish: reads state and move lists, no view mutations.
+// PD.moves: shared move helpers (rules + UI). Pure-ish: reads state/move lists, no view mutations.
 
 // Helpers for Place command lists (shared by targeting + menu label tweaks).
 PD.moves.defaultWildColorForPlace = function (state, uid, def) {
-  if (!def || !PD.isWildDef(def)) return PD.NO_COLOR;
-  var moves = PD.legalMoves(state);
+  if (!def || !PD.rules.isWildDef(def)) return PD.state.NO_COLOR;
+  var moves = PD.engine.legalMoves(state);
   var c0 = def.wildColors[0];
   var c1 = def.wildColors[1];
   var has0 = false, has1 = false;
@@ -1882,10 +1935,10 @@ PD.moves.defaultWildColorForPlace = function (state, uid, def) {
 };
 
 PD.moves.placeCmdsForUid = function (state, uid, def, wildColor) {
-  var moves = PD.legalMoves(state);
+  var moves = PD.engine.legalMoves(state);
   var cmds = [];
   var i;
-  var isWild = !!(def && PD.isWildDef(def));
+  var isWild = !!(def && PD.rules.isWildDef(def));
   for (i = 0; i < moves.length; i++) {
     var mf = moves[i];
     if (!mf || mf.kind !== "playProp") continue;
@@ -1911,7 +1964,7 @@ PD.moves.placeCmdsForUid = function (state, uid, def, wildColor) {
 };
 
 PD.moves.buildCmdsForUid = function (state, uid) {
-  var moves = PD.legalMoves(state);
+  var moves = PD.engine.legalMoves(state);
   var buildMoves = [];
   var i;
   for (i = 0; i < moves.length; i++) {
@@ -1922,7 +1975,7 @@ PD.moves.buildCmdsForUid = function (state, uid) {
 };
 
 PD.moves.rentMovesForUid = function (state, uid) {
-  var moves = PD.legalMoves(state);
+  var moves = PD.engine.legalMoves(state);
   var rentMoves = [];
   var i;
   for (i = 0; i < moves.length; i++) {
@@ -1937,8 +1990,8 @@ PD.moves.sortRentMovesByAmount = function (state, p, rentMoves) {
   rentMoves.sort(function (a, b) {
     var ai = (a && a.setI != null) ? a.setI : -1;
     var bi = (b && b.setI != null) ? b.setI : -1;
-    var aa = PD.rentAmountForSet(state, p, ai);
-    var bb = PD.rentAmountForSet(state, p, bi);
+    var aa = PD.rules.rentAmountForSet(state, p, ai);
+    var bb = PD.rules.rentAmountForSet(state, p, bi);
     var d = bb - aa;
     if (d) return d;
     return ai - bi;
@@ -1957,7 +2010,7 @@ PD.moves.locAllowsSource = function (loc) {
 PD.moves.cmdsForTargeting = function (state, kind, uid, loc) {
   kind = String(kind || "");
   var allowSource = PD.moves.locAllowsSource(loc);
-  var out = { cmds: [], wildColor: PD.NO_COLOR };
+  var out = { cmds: [], wildColor: PD.state.NO_COLOR };
 
   if (kind === "bank") {
     out.cmds = PD.moves.bankCmdsForUid(state, uid);
@@ -1989,13 +2042,13 @@ PD.moves.cmdsForTargeting = function (state, kind, uid, loc) {
   }
 
   if (kind === "place") {
-    var def = PD.defByUid(state, uid);
-    if (def && PD.isWildDef(def)) {
+    var def = PD.state.defByUid(state, uid);
+    if (def && PD.rules.isWildDef(def)) {
       out.wildColor = PD.moves.defaultWildColorForPlace(state, uid, def);
       out.cmds = PD.moves.placeCmdsForUid(state, uid, def, out.wildColor);
     } else {
-      out.wildColor = PD.NO_COLOR;
-      out.cmds = PD.moves.placeCmdsForUid(state, uid, def, PD.NO_COLOR);
+      out.wildColor = PD.state.NO_COLOR;
+      out.cmds = PD.moves.placeCmdsForUid(state, uid, def, PD.state.NO_COLOR);
     }
     if (allowSource) out.cmds.push({ kind: "source" });
     return out;
@@ -2030,7 +2083,7 @@ PD.moves.destForCmd = function (cmd) {
 };
 
 PD.moves.bankCmdsForUid = function (state, uid) {
-  var moves = PD.legalMoves(state);
+  var moves = PD.engine.legalMoves(state);
   var cmds = [];
   var i;
   for (i = 0; i < moves.length; i++) {
@@ -2043,57 +2096,119 @@ PD.moves.bankCmdsForUid = function (state, uid) {
 };
 
 // ---- src/53_ai.js ----
-// Phase 07: simple AI helpers (random legal move + short narration).
+// PD.ai: simple playtest AI (pick among legal moves using deterministic RNG + short narration).
 
-PD.ai.actor = function (state) {
-  var pr = state.prompt;
-  if (pr && pr.p != null) return pr.p;
-  return state.activeP;
-};
+PD.ai.policies = {
+  uniform: {
+    id: "uniform",
+    weight: function () { return 1; }
+  },
 
-PD.ai.pickRandomLegalMove = function (state) {
-  var moves = PD.legalMoves(state);
-  if (!moves || moves.length === 0) return null;
-  var idx = PD.rngNextInt(state, moves.length);
-  return moves[idx];
-};
+  biasExistingSet: {
+    id: "biasExistingSet",
+    weight: function (state, move) {
+      // Soft bias: prefer placing properties into existing sets, but still allow anything.
+      // Tuning knob lives in config.
+      var k = PD.config.ai.biasExistingSetK;
+      if (move && move.kind === "playProp" && move.dest && move.dest.setI != null) return k;
+      return 1;
+    }
+  },
 
-PD.ai.describeCmd = function (state, cmd) {
-  var k = String(cmd.kind);
-  if (k === "endTurn") return "Opponent: End turn";
-  if (k === "bank") return "Opponent: Bank";
-  if (k === "playRent") return "Opponent: Rent";
-  if (k === "playHouse") return "Opponent: Build";
-  if (k === "playProp") {
-    var dl = PD.fmt.destLabelForCmd(state, cmd);
-    return dl ? ("Opponent: Place -> " + dl) : "Opponent: Place";
+  biasPlayRent: {
+    id: "biasPlayRent",
+    weight: function (state, move) {
+      // Soft bias: prefer asking for rent rather than banking the Rent card.
+      // Tuning knob lives in config.
+      var k = PD.config.ai.biasPlayRentK;
+      if (move && move.kind === "playRent") return k;
+      return 1;
+    }
   }
-  if (k === "payDebt") return "Opponent: Pay";
-  if (k === "discard") return "Opponent: Discard";
-  if (k === "cancelPrompt") return "Opponent: Cancel";
-  return "Opponent: " + k;
 };
 
-// Phase 07: simple AI (random legal move) helpers.
+PD.ai.composePolicies = function (id, policyIds) {
+  // Compose policies by multiplying their weights.
+  // Contract: each component policy weight is a positive number (1 means neutral).
+  var parts = [];
+  var i;
+  for (i = 0; i < policyIds.length; i++) {
+    var pid = policyIds[i];
+    var p = PD.ai.policies[pid];
+    if (!p) throw new Error("ai_unknown_policy:" + String(pid));
+    parts.push(p);
+  }
+  return {
+    id: id,
+    weight: function (state, move, moves) {
+      var w = 1;
+      var j;
+      for (j = 0; j < parts.length; j++) w *= parts[j].weight(state, move, moves);
+      return w;
+    }
+  };
+};
+
+PD.ai.policies.defaultHeuristic = PD.ai.composePolicies("defaultHeuristic", [
+  "biasExistingSet",
+  "biasPlayRent"
+]);
+
+PD.ai.pickMove = function (state, moves, policy) {
+  if (!moves || moves.length === 0) return null;
+
+  // Fallback to uniform if policy is missing (should be caught by tests).
+  var pol = policy || PD.ai.policies.uniform;
+
+  var weights = [];
+  var total = 0;
+  var i;
+  for (i = 0; i < moves.length; i++) {
+    var w = pol.weight(state, moves[i], moves);
+    if (!(w > 0)) w = 0;
+    else w = Math.floor(w);
+    weights[i] = w;
+    total += w;
+  }
+
+  // Safety: if a policy produces all-zero weights, fall back to uniform.
+  if (!(total > 0)) {
+    var idxU = PD.rng.nextIntInState(state, moves.length);
+    return moves[idxU];
+  }
+
+  var r = PD.rng.nextIntInState(state, total);
+  var acc = 0;
+  for (i = 0; i < moves.length; i++) {
+    acc += weights[i];
+    if (r < acc) return moves[i];
+  }
+
+  // Should be unreachable; keep deterministic behavior.
+  return moves[moves.length - 1];
+};
+
+PD.ai.policyForP = function (p) {
+  return PD.ai.policies[PD.config.ai.policyByP[p]];
+};
 
 PD.ai.actor = function (state) {
-  if (!state) return 0;
   var pr = state.prompt;
   if (pr && pr.p != null) return pr.p;
   return state.activeP;
 };
 
 PD.ai.pickRandomLegalMove = function (state) {
-  var moves = PD.legalMoves(state);
+  var moves = PD.engine.legalMoves(state);
   if (!moves || moves.length === 0) return null;
-  var idx = PD.rngNextInt(state, moves.length);
-  return moves[idx];
+  var p = PD.ai.actor(state);
+  var policy = PD.ai.policyForP(p);
+  return PD.ai.pickMove(state, moves, policy);
 };
 
 PD.ai.describeCmd = function (state, cmd) {
   if (!cmd || !cmd.kind) return "";
   var k = String(cmd.kind);
-
   if (k === "endTurn") return "Opponent: End turn";
   if (k === "bank") return "Opponent: Bank";
   if (k === "playRent") return "Opponent: Rent";
@@ -2109,6 +2224,7 @@ PD.ai.describeCmd = function (state, cmd) {
 };
 
 // ---- src/55_fmt.js ----
+// PD.fmt: shared text formatting helpers (UI/debug narration).
 PD.fmt.colorName = function (c) {
   if (c === PD.Color.Cyan) return "Cyan";
   if (c === PD.Color.Magenta) return "Magenta";
@@ -2174,9 +2290,9 @@ PD.fmt.inspectDescForDef = function (def, selColor) {
   var v = PD.fmt.valueForDef(def);
   var vLine = (v != null && v > 0) ? ("Value: $" + String(v)) : "";
   var usedAs = "";
-  if (PD.isWildDef(def)) {
+  if (PD.rules.isWildDef(def)) {
     var cSel = selColor;
-    if (cSel !== PD.NO_COLOR && def.wildColors && (cSel === def.wildColors[0] || cSel === def.wildColors[1])) {
+    if (cSel !== PD.state.NO_COLOR && def.wildColors && (cSel === def.wildColors[0] || cSel === def.wildColors[1])) {
       usedAs = "Currently used as: " + PD.fmt.colorName(cSel);
     }
   }
@@ -2198,7 +2314,7 @@ PD.fmt.destLabelForCmd = function (state, cmd) {
 
 PD.fmt.setLabelForSetI = function (state, p, setI) {
   var set = state.players[p].sets[setI];
-  var col = set ? PD.getSetColor(set.props) : PD.NO_COLOR;
+  var col = set ? PD.rules.getSetColor(set.props) : PD.state.NO_COLOR;
   return PD.fmt.colorName(col) + " Set";
 };
 
@@ -2248,24 +2364,24 @@ PD.fmt.targetingDestLine = function (state, targeting, cmd) {
     if (cmd.dest && cmd.dest.newSet) out = "Dest: New set";
     else if (cmd.dest && cmd.dest.setI != null) {
       var set = state.players[cmd.dest.p].sets[cmd.dest.setI];
-      var col = set ? PD.getSetColor(set.props) : PD.NO_COLOR;
+      var col = set ? PD.rules.getSetColor(set.props) : PD.state.NO_COLOR;
       out = "Dest: " + PD.fmt.colorName(col) + " set";
     }
-    if (t && t.card && t.card.def && PD.isWildDef(t.card.def)) out += "\nAs: " + PD.fmt.colorName(t.wildColor);
+    if (t && t.card && t.card.def && PD.rules.isWildDef(t.card.def)) out += "\nAs: " + PD.fmt.colorName(t.wildColor);
     return out || "(no destination)";
   }
 
   if (k === "playHouse") {
     var set2 = state.players[cmd.dest.p].sets[cmd.dest.setI];
-    var col2 = set2 ? PD.getSetColor(set2.props) : PD.NO_COLOR;
+    var col2 = set2 ? PD.rules.getSetColor(set2.props) : PD.state.NO_COLOR;
     return "Dest: " + PD.fmt.colorName(col2) + " set";
   }
 
   if (k === "playRent") {
     var p = cmd.card.loc.p;
     var setR = state.players[p].sets[cmd.setI];
-    var colR = setR ? PD.getSetColor(setR.props) : PD.NO_COLOR;
-    var amt = PD.rentAmountForSet(state, p, cmd.setI);
+    var colR = setR ? PD.rules.getSetColor(setR.props) : PD.state.NO_COLOR;
+    var amt = PD.rules.rentAmountForSet(state, p, cmd.setI);
     return "From: " + PD.fmt.colorName(colR) + " set\nAmt: $" + amt;
   }
 
@@ -2278,13 +2394,13 @@ PD.fmt.targetingHelp = function (targeting) {
   var t = targeting || null;
   var kind = t && t.kind ? String(t.kind) : "";
   var help = (kind === "quick") ? "L/R: Option" : ((kind === "rent") ? "L/R: Set" : "L/R: Dest");
-  if (t && t.card && t.card.def && PD.isWildDef(t.card.def)) help += "  U/D: Color";
+  if (t && t.card && t.card.def && PD.rules.isWildDef(t.card.def)) help += "  U/D: Color";
   help += (t && t.hold) ? "\nRelease A: Drop  B:Cancel" : "\nA:Confirm  B:Cancel";
   return help;
 };
 
 // ---- src/56_layout.js ----
-// Shared layout/geometry helpers (UI + renderer). Pure; reads PD.config.
+// PD.layout: shared layout/geometry helpers (UI + renderer). Pure; reads PD.config.
 
 PD.layout.rowY0 = function (row) {
   return PD.config.render.layout.rowY[row];
@@ -2317,6 +2433,7 @@ PD.layout.playerForRow = function (row) {
 };
 
 // ---- src/60_render.js ----
+// PD.render: display-only renderer + TIC-80 draw-call boundary wrappers (no state mutation).
 (function initRenderModule() {
   var R = PD.render;
 
@@ -2625,7 +2742,7 @@ PD.layout.playerForRow = function (row) {
   }
 
   function drawMiniCard(state, uid, xFace, yFace, flip180, assignedColor) {
-    var def = state ? PD.defByUid(state, uid) : null;
+    var def = state ? PD.state.defByUid(state, uid) : null;
     if (!def) {
       drawCardFaceBase(xFace, yFace, R.cfg.colCardInterior);
       return;
@@ -2634,11 +2751,11 @@ PD.layout.playerForRow = function (row) {
     if (def.kind === PD.CardKind.Property) {
       drawCardFaceBase(xFace, yFace, R.cfg.colCardInterior);
       var payV = def.propertyPayValue != null ? def.propertyPayValue : 0;
-      if (PD.isWildDef(def)) {
+      if (PD.rules.isWildDef(def)) {
         // Two halves: top (halfFlip=false), bottom (halfFlip=true). Effective flip is XOR.
         var c0 = def.wildColors[0];
         var c1 = def.wildColors[1];
-        var a = (assignedColor == null) ? PD.NO_COLOR : assignedColor;
+        var a = (assignedColor == null) ? PD.state.NO_COLOR : assignedColor;
         var colHalfFalse = c0;
         var colHalfTrue = c1;
         if (a === c0 || a === c1) {
@@ -2803,7 +2920,7 @@ PD.layout.playerForRow = function (row) {
 
           var enabled = true;
           if (it.id === "endTurn") {
-            enabled = (s.activeP === 0) && (s.players[0].hand.length <= PD.HAND_MAX);
+            enabled = (s.activeP === 0) && (s.players[0].hand.length <= PD.state.HAND_MAX);
           }
 
           var isSel = !!(selectedItem && selectedItem === it);
@@ -2870,7 +2987,7 @@ PD.layout.playerForRow = function (row) {
           if (dbgEnabled && s.deck.length > 0) {
             var topUid = s.deck[s.deck.length - 1];
             drawMiniCard(s, topUid, xPrev, yPrev, false);
-            var defT = PD.defByUid(s, topUid);
+            var defT = PD.state.defByUid(s, topUid);
             if (defT && defT.name) deckDesc += "\nTop: " + String(defT.name);
           }
           printExSafe(deckDesc, xDesc, yDesc, cfg.colText, false, 1, true);
@@ -2882,7 +2999,7 @@ PD.layout.playerForRow = function (row) {
           if (s.discard.length > 0) {
             var topUid2 = s.discard[s.discard.length - 1];
             drawMiniCard(s, topUid2, xPrev, yPrev, false);
-            var defD = PD.defByUid(s, topUid2);
+            var defD = PD.state.defByUid(s, topUid2);
             if (defD && defD.name) discardDesc += "\nTop: " + String(defD.name);
           }
           printExSafe(discardDesc, xDesc, yDesc, cfg.colText, false, 1, true);
@@ -2904,7 +3021,7 @@ PD.layout.playerForRow = function (row) {
       // Card selection.
       if (!sel.uid) return;
       var uid = sel.uid;
-      var def = PD.defByUid(s, uid);
+      var def = PD.state.defByUid(s, uid);
       if (!def) return;
 
       // Opponent hand is hidden unless debug enabled.
@@ -2960,7 +3077,7 @@ PD.layout.playerForRow = function (row) {
     function drawTargetingOverlay() {
       var t = view.targeting;
       if (!t || !t.active) return;
-      if (t.card && t.card.uid) drawMiniCard(s, t.card.uid, xPrev, yPrev, false, (t.wildColor !== PD.NO_COLOR) ? t.wildColor : null);
+      if (t.card && t.card.uid) drawMiniCard(s, t.card.uid, xPrev, yPrev, false, (t.wildColor !== PD.state.NO_COLOR) ? t.wildColor : null);
 
       var cmd = (t.cmds && t.cmds.length) ? t.cmds[t.cmdI % t.cmds.length] : null;
 
@@ -3126,25 +3243,25 @@ PD.layout.playerForRow = function (row) {
         lines.push("Cards:" + s.discard.length);
       } else if (k === "bank0") {
         lines.push("Sel:B0");
-        lines.push("Total:" + PD.bankValueTotal(s, 0));
+        lines.push("Total:" + PD.util.bankValueTotal(s, 0));
       } else if (k === "bank1") {
         lines.push("Sel:B1");
-        lines.push("Total:" + PD.bankValueTotal(s, 1));
+        lines.push("Total:" + PD.util.bankValueTotal(s, 1));
       } else {
         lines.push("Sel:" + String(k || "?"));
         lines.push("");
       }
     } else if (selectedItem && selectedItem.uid) {
       var uid = selectedItem.uid;
-      var def = PD.defByUid(s, uid);
+      var def = PD.state.defByUid(s, uid);
       var defId = def ? def.id : "?";
       lines.push("Sel:" + defId + " uid:" + uid);
 
       var detail = "";
       if (def && def.kind === PD.CardKind.Property) {
-        if (PD.isWildDef(def)) {
+        if (PD.rules.isWildDef(def)) {
           detail = "Wild:" + def.wildColors[0] + "/" + def.wildColors[1];
-          if (selectedItem && selectedItem.color != null && selectedItem.color !== PD.NO_COLOR) {
+          if (selectedItem && selectedItem.color != null && selectedItem.color !== PD.state.NO_COLOR) {
             detail += " As:c" + selectedItem.color;
           }
         }
@@ -3318,7 +3435,7 @@ PD.layout.playerForRow = function (row) {
     }
   }
 
-  R.debug = R.debug || {};
+  R.debug = {};
 
   // DebugText support: summarize current Render selection without drawing.
   R.debug.selectedLines = function (debug) {
@@ -3338,16 +3455,16 @@ PD.layout.playerForRow = function (row) {
 
     if (it.uid) {
       var uid = it.uid;
-      var def = PD.defByUid(debug.state, uid);
+      var def = PD.state.defByUid(debug.state, uid);
       var defId = def ? def.id : "?";
       var line2 = (def && def.name) ? def.name : "";
 
       if (def && def.kind === PD.CardKind.Property) {
-        if (PD.isWildDef(def)) {
+        if (PD.rules.isWildDef(def)) {
           var c0 = def.wildColors[0];
           var c1 = def.wildColors[1];
           line2 = "Wild:" + PD.fmt.colorName(c0) + "/" + PD.fmt.colorName(c1);
-          if (it.color != null && it.color !== PD.NO_COLOR) {
+          if (it.color != null && it.color !== PD.state.NO_COLOR) {
             line2 += " As:" + PD.fmt.colorName(it.color);
           }
         } else {
@@ -3429,6 +3546,7 @@ PD.layout.playerForRow = function (row) {
 })();
 
 // ---- src/65_ui.js ----
+// PD.ui: controller UX view-state machine + model computation (drives commands; does not author rules).
 PD.ui.newView = function () {
   return {
     // View-only state (cursor/camera/menu focus). This is intentionally not part of GameState.
@@ -3456,8 +3574,8 @@ PD.ui.newView = function () {
       // source: { uid, loc }
       card: null,
       // for wilds
-      wildColor: PD.NO_COLOR,
-      // list of concrete engine commands (subset of PD.legalMoves)
+      wildColor: PD.state.NO_COLOR,
+      // list of concrete engine commands (subset of PD.engine.legalMoves)
       cmds: [],
       cmdI: 0
     },
@@ -3491,7 +3609,7 @@ PD.ui.newView = function () {
       lastActiveP: null,
       lastPlaysLeft: null,
       lastHandLenP0: null,
-      lastWinnerP: PD.NO_WINNER,
+      lastWinnerP: PD.state.NO_WINNER,
       lastPromptKind: "",
       lastPromptForP0: false,
       lastCenterBtnPressedId: "",
@@ -3535,7 +3653,7 @@ PD.ui.toastsTick = function (view) {
 
 PD.ui.syncPromptToast = function (state, view) {
   // Game over: hide prompt toast so Winner toast can take over.
-  if (state && state.winnerP !== PD.NO_WINNER) {
+  if (state && state.winnerP !== PD.state.NO_WINNER) {
     var iGo;
     for (iGo = 0; iGo < view.toasts.length; iGo++) {
       var tGo = view.toasts[iGo];
@@ -3560,7 +3678,7 @@ PD.ui.syncPromptToast = function (state, view) {
 
   var txt = "";
   if (pr.kind === "discardDown") {
-    var over = state.players[0].hand.length - PD.HAND_MAX;
+    var over = state.players[0].hand.length - PD.state.HAND_MAX;
     txt = "Too many cards. Discard " + over;
   } else if (pr.kind === "payDebt") {
     txt = "Pay debt: $" + pr.rem + " left";
@@ -3585,7 +3703,7 @@ PD.ui.syncPromptToast = function (state, view) {
 
 PD.ui.syncWinnerToast = function (state, view) {
   if (!state || !view) return;
-  var has = (state.winnerP !== PD.NO_WINNER);
+  var has = (state.winnerP !== PD.state.NO_WINNER);
   var i;
   var idx = -1;
   for (i = 0; i < view.toasts.length; i++) {
@@ -3836,7 +3954,7 @@ PD.ui.layoutHint = function (state, view) {
     if (!it || !src || !src.uid) return hint;
 
     var uid = src.uid;
-    var def = PD.defByUid(state, uid);
+    var def = PD.state.defByUid(state, uid);
     var cmdsM = [];
     var isRent = (it.id === "rent");
 
@@ -3844,7 +3962,7 @@ PD.ui.layoutHint = function (state, view) {
       cmdsM = PD.moves.bankCmdsForUid(state, uid);
     } else if (it.id === "place") {
       if (def && def.kind === PD.CardKind.Property) {
-        var wildColorM = (def && PD.isWildDef(def)) ? PD.moves.defaultWildColorForPlace(state, uid, def) : PD.NO_COLOR;
+        var wildColorM = (def && PD.rules.isWildDef(def)) ? PD.moves.defaultWildColorForPlace(state, uid, def) : PD.state.NO_COLOR;
         cmdsM = PD.moves.placeCmdsForUid(state, uid, def, wildColorM);
       }
     } else if (it.id === "build") {
@@ -4172,12 +4290,12 @@ PD.ui.buildRowItems = function (state, view, row, hint) {
       }
 
       // End is always available on your turn; if hand > HAND_MAX the engine enters a discard-down prompt.
-      var endDisabled = (state.winnerP !== PD.NO_WINNER) || (state.activeP !== 0);
+      var endDisabled = (state.winnerP !== PD.state.NO_WINNER) || (state.activeP !== 0);
       pushBtn("endTurn", "End", stripY0, endDisabled);
       if (dbgEnabled) {
         // Game over: Step would attempt to mutate state via debugStep and can throw.
         // Keep Reset/Next available for recovery.
-        pushBtn("step", "Step", stripY0 + 11, (state.winnerP !== PD.NO_WINNER));
+        pushBtn("step", "Step", stripY0 + 11, (state.winnerP !== PD.state.NO_WINNER));
         pushBtn("reset", "Reset", stripY0 + 22, false);
         pushBtn("nextScenario", "Next", stripY0 + 33, false);
       }
@@ -4323,7 +4441,7 @@ PD.ui.computeRowModels = function (state, view) {
       var slotP = slotForCmd(cmd, srcSlot);
       if (!slotP) return;
       var colP = null;
-      if (def && PD.isWildDef(def)) colP = (cmd.color != null) ? cmd.color : wildColor;
+      if (def && PD.rules.isWildDef(def)) colP = (cmd.color != null) ? cmd.color : wildColor;
       setFocus(slotP, uid, colP, "playProp");
       return;
     }
@@ -4359,7 +4477,7 @@ PD.ui.computeRowModels = function (state, view) {
     if (k === "source") {
       if (!srcSlot) return;
       var colS = null;
-      if (def && PD.isWildDef(def)) colS = wildColor;
+      if (def && PD.rules.isWildDef(def)) colS = wildColor;
       setFocus(srcSlot, uid, colS, "source");
       return;
     }
@@ -4442,8 +4560,8 @@ PD.ui.computeRowModels = function (state, view) {
     var uidM = (srcM && srcM.uid) ? srcM.uid : 0;
     var cm = (hint && hint.menuHoverCmd) ? hint.menuHoverCmd : null;
     if (uidM && cm) {
-      var defM = PD.defByUid(state, uidM);
-      setFocusForCmd(cm, null, { uid: uidM, def: defM, wildColor: (defM && PD.isWildDef(defM)) ? cm.color : null });
+      var defM = PD.state.defByUid(state, uidM);
+      setFocusForCmd(cm, null, { uid: uidM, def: defM, wildColor: (defM && PD.rules.isWildDef(defM)) ? cm.color : null });
     }
 
     // When menu hover produces a preview of the same uid (or Rent preview where the preview card differs),
@@ -4539,7 +4657,7 @@ PD.ui.updateCameras = function (state, view, computed) {
 
 PD.ui.menuOpenForSelection = function (state, view, sel) {
   if (!view || !view.menu) return;
-  if (state && state.winnerP !== PD.NO_WINNER) return;
+  if (state && state.winnerP !== PD.state.NO_WINNER) return;
   view.menu.items = [];
   view.menu.i = 0;
   view.menu.src = sel ? { row: sel.row, i: view.cursor.i, uid: sel.uid, loc: sel.loc || null } : null;
@@ -4550,12 +4668,12 @@ PD.ui.menuOpenForSelection = function (state, view, sel) {
   if (sel.loc.p !== 0) return;
 
   var uid = sel.uid;
-  var def = PD.defByUid(state, uid);
+  var def = PD.state.defByUid(state, uid);
   if (!def) return;
 
   // Build/Place actions are only meaningful for the currently implemented rules.
   if (def.kind === PD.CardKind.Property) {
-    var wildColor = (def && PD.isWildDef(def)) ? PD.moves.defaultWildColorForPlace(state, uid, def) : PD.NO_COLOR;
+    var wildColor = (def && PD.rules.isWildDef(def)) ? PD.moves.defaultWildColorForPlace(state, uid, def) : PD.state.NO_COLOR;
     var placeCmds = PD.moves.placeCmdsForUid(state, uid, def, wildColor);
     view.menu.items.push({ id: "place", label: PD.fmt.menuLabelForCmds("Place", state, placeCmds) });
   }
@@ -4572,7 +4690,7 @@ PD.ui.menuOpenForSelection = function (state, view, sel) {
       view.menu.items.push({ id: "rent", label: PD.fmt.menuLabelForRentMoves(state, rentMoves) });
     }
   }
-  if (PD.isBankableDef(def)) {
+  if (PD.rules.isBankableDef(def)) {
     view.menu.items.push({ id: "bank", label: "Bank" });
   }
 
@@ -4591,7 +4709,7 @@ PD.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
   t.cmds = [];
   t.cmdI = 0;
 
-  var def = PD.defByUid(state, uid);
+  var def = PD.state.defByUid(state, uid);
   t.card = { uid: uid, loc: loc || null, def: def || null };
 
   var r = PD.moves.cmdsForTargeting(state, t.kind, uid, t.card ? t.card.loc : null);
@@ -4601,8 +4719,8 @@ PD.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
     return;
   }
 
-  t.cmds = r.cmds || [];
-  t.wildColor = (r.wildColor != null) ? r.wildColor : PD.NO_COLOR;
+  t.cmds = r.cmds;
+  t.wildColor = (r.wildColor != null) ? r.wildColor : PD.state.NO_COLOR;
   t.cmdI = 0; // default always-existing if any
 
   // Unknown targeting kind.
@@ -4619,7 +4737,7 @@ PD.ui.targetingRetargetWild = function (state, view, dir) {
   if (!view || !view.targeting || !view.targeting.active) return;
   var t = view.targeting;
   if (t.kind !== "place") return;
-  if (!t.card || !t.card.def || !PD.isWildDef(t.card.def)) return;
+  if (!t.card || !t.card.def || !PD.rules.isWildDef(t.card.def)) return;
 
   var def = t.card.def;
   var c0 = def.wildColors[0];
@@ -4663,9 +4781,9 @@ PD.ui.step = function (state, view, actions) {
   PD.ui.syncWinnerToast(state, view);
   PD.anim.tick(state, view);
 
-  var gameOver = (state.winnerP !== PD.NO_WINNER);
-  var prevWinner = (view.ux && view.ux.lastWinnerP != null) ? view.ux.lastWinnerP : PD.NO_WINNER;
-  var justEnded = (gameOver && prevWinner === PD.NO_WINNER);
+  var gameOver = (state.winnerP !== PD.state.NO_WINNER);
+  var prevWinner = (view.ux && view.ux.lastWinnerP != null) ? view.ux.lastWinnerP : PD.state.NO_WINNER;
+  var justEnded = (gameOver && prevWinner === PD.state.NO_WINNER);
 
   // Game over: close overlays and allow free navigation/inspect.
   if (gameOver) {
@@ -5136,14 +5254,14 @@ PD.ui.step = function (state, view, actions) {
     var selGrab = currentSelection();
     if (selGrab && selGrab.loc && selGrab.loc.zone === "hand" && selGrab.loc.p === 0) {
       var uidGrab = selGrab.uid;
-      var defGrab = PD.defByUid(state, uidGrab);
+      var defGrab = PD.state.defByUid(state, uidGrab);
       if (defGrab && defGrab.kind === PD.CardKind.Property) {
         PD.ui.targetingEnter(state, view, "place", true, uidGrab, selGrab.loc);
         return null;
       } else if (defGrab && (defGrab.kind === PD.CardKind.House || (defGrab.kind === PD.CardKind.Action && defGrab.actionKind === PD.ActionKind.Rent))) {
         PD.ui.targetingEnter(state, view, "quick", true, uidGrab, selGrab.loc);
         return null;
-      } else if (defGrab && PD.isBankableDef(defGrab)) {
+      } else if (defGrab && PD.rules.isBankableDef(defGrab)) {
         PD.ui.targetingEnter(state, view, "bank", true, uidGrab, selGrab.loc);
         return null;
       }
@@ -5240,8 +5358,7 @@ PD.ui.step = function (state, view, actions) {
 };
 
 // ---- src/66_focus.js ----
-// Centralized focus policy (autofocus + selection preservation).
-// Note: This file is concatenated after `src/65_ui.js`; callers only invoke it at runtime from PD.ui.step().
+// PD.ui.focus: centralized focus policy (autofocus + selection preservation).
 
 PD.ui.focus = {};
 
@@ -5415,7 +5532,7 @@ PD.ui.focus.rules = [
   {
     id: "OnGameOverEntered_Reset",
     enabled: function (ctx) { return !!(PD.config && PD.config.debug && PD.config.debug.enabled); },
-    when: function (ctx) { return (ctx.view.ux.lastWinnerP === PD.NO_WINNER && ctx.state.winnerP !== PD.NO_WINNER); },
+    when: function (ctx) { return (ctx.view.ux.lastWinnerP === PD.state.NO_WINNER && ctx.state.winnerP !== PD.state.NO_WINNER); },
     pick: function (ctx) {
       return PD.ui.focus._pickCenterBtn(ctx.computed, "reset");
     }
@@ -5424,7 +5541,7 @@ PD.ui.focus.rules = [
     id: "OnInvalidActionGameOver_Reset",
     enabled: function (ctx) { return !!(PD.config && PD.config.debug && PD.config.debug.enabled); },
     when: function (ctx) {
-      if (ctx.state.winnerP === PD.NO_WINNER) return false;
+      if (ctx.state.winnerP === PD.state.NO_WINNER) return false;
       if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
       return (ctx.view.ux.pendingFocusErrorCode === "game_over");
     },
@@ -5437,7 +5554,7 @@ PD.ui.focus.rules = [
     id: "OnPlaysExhausted_End",
     enabled: function () { return true; },
     when: function (ctx) {
-      if (ctx.state.winnerP !== PD.NO_WINNER) return false;
+      if (ctx.state.winnerP !== PD.state.NO_WINNER) return false;
       if (ctx.state.activeP !== 0) return false;
       if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
       return (ctx.view.ux.lastActiveP === 0 && ctx.view.ux.lastPlaysLeft > 0 && ctx.state.playsLeft <= 0);
@@ -5450,7 +5567,7 @@ PD.ui.focus.rules = [
     id: "OnHandBecameEmpty_End",
     enabled: function () { return true; },
     when: function (ctx) {
-      if (ctx.state.winnerP !== PD.NO_WINNER) return false;
+      if (ctx.state.winnerP !== PD.state.NO_WINNER) return false;
       if (ctx.state.activeP !== 0) return false;
       if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
       if (ctx.state.prompt) return false;
@@ -5465,7 +5582,7 @@ PD.ui.focus.rules = [
     id: "OnPlayerTurnStart_FocusHandOrEnd",
     enabled: function () { return true; },
     when: function (ctx) {
-      if (ctx.state.winnerP !== PD.NO_WINNER) return false;
+      if (ctx.state.winnerP !== PD.state.NO_WINNER) return false;
       if (ctx.state.activeP !== 0) return false;
       if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
       if (ctx.state.prompt && ctx.state.prompt.p === 0) return false;
@@ -5483,7 +5600,7 @@ PD.ui.focus.rules = [
     id: "OnInvalidActionWhileHandEmpty_End",
     enabled: function () { return true; },
     when: function (ctx) {
-      if (ctx.state.winnerP !== PD.NO_WINNER) return false;
+      if (ctx.state.winnerP !== PD.state.NO_WINNER) return false;
       if (ctx.state.activeP !== 0) return false;
       if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
       if (ctx.state.prompt) return false;
@@ -5515,7 +5632,7 @@ PD.ui.focus.rules = [
     id: "OnExitPlaceReceivedPrompt_End",
     enabled: function () { return true; },
     when: function (ctx) {
-      if (ctx.state.winnerP !== PD.NO_WINNER) return false;
+      if (ctx.state.winnerP !== PD.state.NO_WINNER) return false;
       var pr = ctx.state.prompt;
       var cur = !!(pr && pr.kind === "placeReceived" && pr.p === 0);
       var exited = (ctx.view.ux.lastPromptForP0 && ctx.view.ux.lastPromptKind === "placeReceived" && !cur);
@@ -5605,7 +5722,7 @@ PD.ui.focus.apply = function (state, view, computed, actions) {
 };
 
 // ---- src/70_anim.js ----
-// Phase 05c: animation plumbing extracted from PD.ui.
+// PD.anim: UI-owned animation plumbing (turn events into timed, input-locking “watch moments”).
 // This module owns view.anim queue/steps, but still manipulates UI view state
 // (mode/menu/targeting) because animations are a UI-owned “watch” moment.
 
@@ -5927,35 +6044,34 @@ PD.anim.present = function (state, view, computed) {
 };
 
 // ---- src/90_debug.js ----
-PD.debug = PD.debug || {
-  scenarioI: 0,
-  scenarios: null,
-  state: null,
-  view: null,
-  ctrl: null,
-  lastCmd: "",
-  lastEvents: [],
-  lastRaw: null,
-  lastUiActions: null,
-  lastUiIntentSummary: ""
-};
+// PD.debug: dev harness (scenario cycling/reset/step) + main tick wiring for playtesting.
+PD.debug.scenarioI = 0;
+PD.debug.scenarios = ["default"].concat(PD.scenarios.IDS);
+PD.debug.state = null;
+PD.debug.view = PD.ui.newView();
+PD.debug.ctrl = PD.controls.newState();
+PD.debug.ai = { wait: 0 };
+PD.debug.lastCmd = "";
+PD.debug.lastEvents = [];
+PD.debug.lastRaw = null;
+PD.debug.lastUiActions = null;
+PD.debug.lastUiIntentSummary = "";
 
-PD.debug.scenarios = ["default"].concat(PD.SCENARIO_IDS);
-
-PD.debugReset = function (opts) {
+PD.debug.reset = function (opts) {
   var d = PD.debug;
-  var prevPaused = !!(d.view && d.view.ux && d.view.ux.autoFocusPausedByDebug);
+  var prevPaused = !!d.view.ux.autoFocusPausedByDebug;
   var shouldPause = !!(opts && opts.pauseAutoFocus) || prevPaused;
-  var seedU32 = PD.computeSeed();
+  var seedU32 = PD.seed.computeSeedU32();
   var scenarioId = d.scenarios[d.scenarioI];
   if (scenarioId === "default") {
-    d.state = PD.newGame({ seedU32: seedU32 >>> 0 });
+    d.state = PD.state.newGame({ seedU32: seedU32 });
   } else {
-    d.state = PD.newGame({ seedU32: seedU32 >>> 0, scenarioId: scenarioId });
+    d.state = PD.state.newGame({ seedU32: seedU32, scenarioId: scenarioId });
   }
   d.view = PD.ui.newView();
-  if (shouldPause && d.view && d.view.ux) d.view.ux.autoFocusPausedByDebug = true;
+  if (shouldPause) d.view.ux.autoFocusPausedByDebug = true;
   d.ctrl = PD.controls.newState();
+  d.ai = { wait: 0 };
   d.lastCmd = "";
   d.lastEvents = [];
   d.lastRaw = null;
@@ -5963,48 +6079,27 @@ PD.debugReset = function (opts) {
   d.lastUiIntentSummary = "";
 };
 
-PD.debugNextScenario = function () {
+PD.debug.nextScenario = function () {
   var d = PD.debug;
   d.scenarioI = (d.scenarioI + 1) % d.scenarios.length;
-  PD.debugReset({ pauseAutoFocus: true });
+  PD.debug.reset({ pauseAutoFocus: true });
 };
 
-PD.debugPickMove = function (moves) {
+PD.debug.step = function () {
   var d = PD.debug;
   var state = d.state;
-  if (!moves || moves.length === 0) return null;
-
-  // Heuristic for dev stepping: prefer adding properties to existing sets when possible.
-  // This keeps the harness closer to typical play without changing actual legality/rules.
-  var propToExisting = [];
-  var i;
-  for (i = 0; i < moves.length; i++) {
-    var m = moves[i];
-    if (m && m.kind === "playProp" && m.dest && m.dest.setI != null) propToExisting.push(m);
-  }
-  if (propToExisting.length > 0) {
-    var j = PD.rngNextInt(state, propToExisting.length);
-    return propToExisting[j];
-  }
-
-  var idx = PD.rngNextInt(state, moves.length);
-  return moves[idx];
-};
-
-PD.debugStep = function () {
-  var d = PD.debug;
-  if (!d.state) PD.debugReset();
-  var state = d.state;
-  var moves = PD.legalMoves(state);
-  var cmd = PD.debugPickMove(moves);
+  var moves = PD.engine.legalMoves(state);
+  var p = PD.ai.actor(state);
+  var policy = PD.ai.policyForP(p);
+  var cmd = PD.ai.pickMove(state, moves, policy);
   if (!cmd) return;
 
-  var res = PD.applyCommand(state, cmd);
+  var res = PD.engine.applyCommand(state, cmd);
   d.lastCmd = cmd.kind;
   d.lastEvents = (res && res.events) ? res.events : [];
 };
 
-PD.debugEventsToLine = function (events) {
+PD.debug.eventsToLine = function (events) {
   if (!events || events.length === 0) return "(none)";
   var parts = [];
   var i;
@@ -6014,15 +6109,14 @@ PD.debugEventsToLine = function (events) {
   return parts.join(",");
 };
 
-PD.debugTick = function () {
+PD.debug.tickTextMode = function () {
   var d = PD.debug;
-  if (!d.state) PD.debugReset();
 
   if (typeof btnp === "function") {
     // A: step, B: next scenario, X: reset
-    if (btnp(4)) PD.debugStep();
-    if (btnp(5)) PD.debugNextScenario();
-    if (btnp(6)) PD.debugReset({ pauseAutoFocus: true });
+    if (btnp(4)) PD.debug.step();
+    if (btnp(5)) PD.debug.nextScenario();
+    if (btnp(6)) PD.debug.reset({ pauseAutoFocus: true });
   }
 
   var s = d.state;
@@ -6058,9 +6152,9 @@ PD.debugTick = function () {
       var handLen = hand.length;
       var nDiscarded = pr.nDiscarded;
       // Stable target count: initialHand - HAND_MAX.
-      var nToDiscard = (handLen + nDiscarded) - PD.HAND_MAX;
+      var nToDiscard = (handLen + nDiscarded) - PD.state.HAND_MAX;
       if (nToDiscard < 0) nToDiscard = 0;
-      var left = handLen - PD.HAND_MAX;
+      var left = handLen - PD.state.HAND_MAX;
       if (left < 0) left = 0;
       return "Prompt:discardDown to:" + nToDiscard + " left:" + left;
     }
@@ -6076,11 +6170,11 @@ PD.debugTick = function () {
 
   printSmall("Phase 02 Debug", x, y, 12); y += step;
   var sid = d.scenarios[d.scenarioI];
-  var info = (PD.SCENARIO_INFO && sid) ? PD.SCENARIO_INFO[String(sid)] : null;
+  var info = (PD.scenarios.INFO && sid) ? PD.scenarios.INFO[String(sid)] : null;
   var title = (info && info.title) ? String(info.title) : String(sid);
   printSmall("Scenario:" + title, x, y, 12); y += step;
   var pendingDesc = (info && info.desc) ? String(info.desc) : "";
-  printSmall("Seed:" + (PD.computeSeed() >>> 0), x, y, 12); y += step;
+  printSmall("Seed:" + PD.seed.computeSeedU32(), x, y, 12); y += step;
 
   if (PD.render && PD.render.debug && typeof PD.render.debug.selectedLines === "function") {
     var sel = PD.render.debug.selectedLines(d);
@@ -6093,24 +6187,24 @@ PD.debugTick = function () {
   printSmall("Active:P" + s.activeP + " Plays:" + s.playsLeft, x, y, 12); y += step;
   printSmall(promptLine(s), x, y, 12); y += step;
   var w = s.winnerP;
-  if (w !== PD.NO_WINNER) { printSmall("Winner:P" + w, x, y, 11); y += step; }
+  if (w !== PD.state.NO_WINNER) { printSmall("Winner:P" + w, x, y, 11); y += step; }
 
   printSmall("Deck:" + s.deck.length + " Disc:" + s.discard.length, x, y, 12); y += step;
   printSmall("Hand0/1:" + s.players[0].hand.length + "/" + s.players[1].hand.length, x, y, 12); y += step;
   printSmall(
     "Bank0/1:" +
-    s.players[0].bank.length + "($" + PD.bankValueTotal(s, 0) + ")/" +
-    s.players[1].bank.length + "($" + PD.bankValueTotal(s, 1) + ")",
+    s.players[0].bank.length + "($" + PD.util.bankValueTotal(s, 0) + ")/" +
+    s.players[1].bank.length + "($" + PD.util.bankValueTotal(s, 1) + ")",
     x,
     y,
     12
   ); y += step;
   printSmall("Sets0/1:" + s.players[0].sets.length + "/" + s.players[1].sets.length, x, y, 12); y += step;
 
-  var moves = PD.legalMoves(s);
+  var moves = PD.engine.legalMoves(s);
   printSmall("Legal:" + moves.length, x, y, 12); y += step;
   printSmall("LastCmd:" + (d.lastCmd || "(none)"), x, y, 12); y += step;
-  printSmall("Events:" + PD.debugEventsToLine(d.lastEvents), x, y, 12); y += step;
+  printSmall("Events:" + PD.debug.eventsToLine(d.lastEvents), x, y, 12); y += step;
 
   // Long focus rule ids don't fit well in the right column; render them full-width here.
   var vFocus = d.view;
@@ -6200,20 +6294,17 @@ PD.debugTick = function () {
 
 PD.mainTick = function () {
   // Modes: 0=DebugText, 1=Render
-  if (PD._mainMode == null) PD._mainMode = 0;
   if (typeof btnp === "function" && btnp(7)) PD._mainMode = PD._mainMode ? 0 : 1;
 
   if (PD._mainMode === 0) {
-    PD.debugTick();
+    if (PD.debug.state == null) PD.debug.reset(null);
+    PD.debug.tickTextMode();
     return;
   }
 
   // Render mode
-  if (!PD.debug || !PD.debug.state) PD.debugReset();
   var d = PD.debug;
-  if (!d.view) d.view = PD.ui.newView();
-  if (!d.ctrl) d.ctrl = PD.controls.newState();
-  if (!d.ai) d.ai = { wait: 0 };
+  if (d.state == null) PD.debug.reset(null);
 
   {
     function summarizeUiIntent(intent) {
@@ -6237,7 +6328,7 @@ PD.mainTick = function () {
 
     if (actor === 0 && intent && intent.kind === "applyCmd" && intent.cmd) {
       try {
-        var res = PD.applyCommand(d.state, intent.cmd);
+        var res = PD.engine.applyCommand(d.state, intent.cmd);
         d.lastCmd = intent.cmd.kind;
         d.lastEvents = (res && res.events) ? res.events : [];
         PD.anim.onEvents(d.state, d.view, d.lastEvents);
@@ -6250,11 +6341,11 @@ PD.mainTick = function () {
       }
     } else if (actor === 0 && intent && intent.kind === "debug") {
       if (intent.action === "step") {
-        PD.debugStep();
+        PD.debug.step();
         PD.anim.onEvents(d.state, d.view, d.lastEvents);
       }
-      else if (intent.action === "reset") PD.debugReset({ pauseAutoFocus: true });
-      else if (intent.action === "nextScenario") PD.debugNextScenario();
+      else if (intent.action === "reset") PD.debug.reset({ pauseAutoFocus: true });
+      else if (intent.action === "nextScenario") PD.debug.nextScenario();
     }
 
     // Phase 07: AI pacing loop (one command per step, with fixed delay).
@@ -6269,7 +6360,7 @@ PD.mainTick = function () {
             PD.ui.toastPush(d.view, { id: "ai:narrate", kind: "ai", text: txt, frames: PD.config.ui.aiNarrateToastFrames });
           }
           try {
-            var resAi = PD.applyCommand(d.state, cmdAi);
+            var resAi = PD.engine.applyCommand(d.state, cmdAi);
             d.lastCmd = "ai:" + cmdAi.kind;
             d.lastEvents = (resAi && resAi.events) ? resAi.events : [];
             PD.anim.onEvents(d.state, d.view, d.lastEvents);
@@ -6296,7 +6387,10 @@ PD.mainTick = function () {
   }
 };
 
+PD._mainMode = 0;
+
 // ---- src/99_main.js ----
+// Cartridge entrypoint: TIC-80 calls `TIC()` once per frame.
 function TIC() {
   PD.mainTick();
 }

@@ -8,72 +8,56 @@ Phase 00 already proved we can generate `game.js` from `src/` and run `node --te
 
 - `Math.random()` is not seedable and is not reproducible by design.
 - We want repeatable runs for debugging and unit tests.
-- TIC-80 provides time sources (e.g. `tstamp()`) we can use later for “release-ish” randomness, but Phase 01 focuses on deterministic dev seeding.
+- TIC-80 provides time sources we can use later for “release-ish” randomness, but Phase 01 focuses on deterministic dev seeding.
 
 ## Decisions locked (from interview)
 
 - PRNG: **xorshift32**
 - Dev seeding (MVP): **constant seed in code** (`PD.config.seedBase`)
-- Release/random seeding: **deferred** (when we add it, `tstamp()`-only is sufficient)
+- Release/random seeding: **deferred** (planned later alongside dev-boot seed UX)
 - Cartridge metadata: add **`// saveid: PropertyDeal`** in generated `game.js` header (future-proofing for `pmem()`)
 
 ## Definition of Done
 
 Phase 01 is done when:
 
-- `PD.RNG` (xorshift32) exists and passes tests
-- We can compute a **32-bit seed** for the current game from `PD.config.seedBase`
-- Deck shuffle helper `PD.shuffleInPlace(array, rng)` exists and is deterministic given a seed
+- A deterministic PRNG (**xorshift32**) exists and passes tests
+- We can compute a **32-bit seed** for the current game from the configured base seed
+- A deterministic in-place **deck shuffle** exists and is stable given a seed
 - `scripts/build.mjs` injects `// saveid: PropertyDeal` into `game.js` header
 - Seed visibility/overlay is **deferred** until we are actually playtesting and need reproducible bug reports
 - `npm test` includes RNG + shuffle tests and passes
 
 ## Scope (what we implement)
 
-### 1) RNG module (`src/15_rng.js`)
+### 1) Deterministic RNG module
 
 Implement a tiny RNG with a 32-bit state:
 
-- `PD.RNG(seedU32)`
-  - stores state as unsigned 32-bit
-  - state must never be `0` (if seed resolves to 0, use 1)
-- `rng.nextU32()` → unsigned 32-bit int
-- `rng.nextInt(n)` → integer in `[0, n)`
-- (optional) `rng.nextBool()` or `rng.pick(array)` convenience methods
+- stores state as unsigned 32-bit
+- state must never be `0` (if seed resolves to 0, use 1)
+- `nextU32()` → unsigned 32-bit int
+- `nextInt(n)` → integer in `[0, n)`
+- (optional) convenience helpers like `nextBool()` or `pick(array)`
 
-Recommended xorshift32:
+Recommended xorshift32 step (per `nextU32()` call):
 
-```js
-PD.RNG = function (seedU32) {
-  var s = (seedU32 >>> 0) || 1;
-  this.s = s >>> 0;
-};
-
-PD.RNG.prototype.nextU32 = function () {
-  var x = this.s >>> 0;
-  x ^= (x << 13); x >>>= 0;
-  x ^= (x >>> 17);
-  x ^= (x << 5);  x >>>= 0;
-  this.s = x >>> 0;
-  return this.s;
-};
-
-PD.RNG.prototype.nextInt = function (n) {
-  return (this.nextU32() % n) | 0;
-};
-```
+- `x ^= x << 13`
+- `x ^= x >>> 17`
+- `x ^= x << 5`
+- keep the internal state as u32 (coerce with `>>> 0` where needed)
 
 Notes:
 
 - Bitwise ops in JS are 32-bit signed, but `>>> 0` coerces back to unsigned.
 - Modulo bias is acceptable for our use (shuffle + AI), given the tiny state and game requirements.
 
-### 2) Seed policy (`src/20_seed.js` or keep in `src/15_rng.js`)
+### 2) Seed policy
 
 Add helpers:
 
-- `PD.computeSeed()` → u32 seed
-- `PD.newGameRng()` → `new PD.RNG(PD.computeSeed())`
+- compute a u32 seed
+- create a new RNG instance from that seed
 
 Rules:
 
@@ -85,18 +69,18 @@ This gives deterministic, memorable sequences and reproducibility by sharing `se
 
 #### Release/random seeding (deferred)
 
-When we need “random-enough” seeds for playtesting/release, we can seed from `tstamp()` (seconds since epoch). Starting multiple new games within <1 second is not a realistic concern.
+We intentionally keep Phase 01 deterministic. Time-based seeding, seed display, and seed override are planned as part of the dev-boot work (see Phase 10 in `docs/plan.md`).
 
-### 3) Shuffle helper (`src/30_shuffle.js` or alongside RNG)
+### 3) Shuffle helper
 
 Implement Fisher–Yates in-place shuffle:
 
-- `PD.shuffleInPlace(arr, rng)`
+- `shuffleInPlace(arr, rng)`
   - for `i = arr.length-1..1`: swap `i` with random `j in [0..i]`
 
 This will be used later for deck shuffling.
 
-### 4) Config changes (`src/05_config.js`)
+### 4) Config changes
 
 Add config fields:
 
@@ -106,11 +90,11 @@ Keep existing:
 
 - screen dimensions
 
-### 5) Seed display in harness (`src/90_debug.js`) (optional)
+### 5) Seed display in harness (optional)
 
 Phase 01 does not require any UI changes. Optionally, we can print the current seed on the boot screen while developing.
 
-### 6) Build header metadata (`scripts/build.mjs`)
+### 6) Build header metadata
 
 Extend `HEADER_LINES` to include:
 
@@ -120,7 +104,7 @@ Reason:
 
 - stabilizes future `pmem()` usage across code edits (without relying on code hash)
 
-### 7) Tests (`test/15_rng.test.mjs`, `test/30_shuffle.test.mjs`)
+### 7) Tests
 
 Add deterministic tests using Node `--test`:
 
@@ -136,23 +120,13 @@ Implementation detail:
 - Tests load `src/*.js` via `vm` (reuse the Phase 00 loader style).
 - Tests should stub TIC-80 globals used by boot code (`cls`, `print`).
 
-## Suggested file list (expected changes)
-
-- `src/05_config.js` (add `seedBase`)
-- `src/90_debug.js` (optional: display seed)
-- `src/15_rng.js` (new)
-- `src/20_seed.js` (new; or fold into `15_rng.js`)
-- `src/30_shuffle.js` (new; or fold into seed/rng module)
-- `scripts/build.mjs` (inject `// saveid: PropertyDeal`)
-- `test/` (new tests: `15_rng.test.mjs`, `30_shuffle.test.mjs`)
-
 ## Notes / future hooks
 
-- Later we can add seed display and time-based seeding once we actually start playtesting.
+- Later we can add seed display/override and time-based seeding once we actually start playtesting (planned Phase 10).
 
 ## Notes for Phase 02 (rules engine + state)
 
-- Keep `src/*` **TIC-safe** (no `import`/`export`). Use `test/helpers/loadSrcIntoVm.mjs` to unit test `PD.*` code from Node.
+- Keep `src/*` **TIC-safe** (no `import`/`export`). Use the VM-based test loader to unit test `PD.*` code from Node.
 - When Phase 02 introduces new TIC-80 globals in `src/*`, stub them in tests (either via `extraGlobals` passed to `loadSrcIntoVm` or default stubs) so tests stay frictionless.
 - `// saveid: PropertyDeal` is now injected into generated `game.js`. If Phase 02+ starts using `pmem()`, reserve and document a small slot range early (e.g. 0–31) so saves/debug state don’t collide.
 - Treat `game.js` as the canonical paste artifact: after any `src/*` change, run `npm run build` before validating behavior in TIC-80.

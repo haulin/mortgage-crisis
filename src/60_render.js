@@ -1,3 +1,4 @@
+// PD.render: display-only renderer + TIC-80 draw-call boundary wrappers (no state mutation).
 (function initRenderModule() {
   var R = PD.render;
 
@@ -306,7 +307,7 @@
   }
 
   function drawMiniCard(state, uid, xFace, yFace, flip180, assignedColor) {
-    var def = state ? PD.defByUid(state, uid) : null;
+    var def = state ? PD.state.defByUid(state, uid) : null;
     if (!def) {
       drawCardFaceBase(xFace, yFace, R.cfg.colCardInterior);
       return;
@@ -315,11 +316,11 @@
     if (def.kind === PD.CardKind.Property) {
       drawCardFaceBase(xFace, yFace, R.cfg.colCardInterior);
       var payV = def.propertyPayValue != null ? def.propertyPayValue : 0;
-      if (PD.isWildDef(def)) {
+      if (PD.rules.isWildDef(def)) {
         // Two halves: top (halfFlip=false), bottom (halfFlip=true). Effective flip is XOR.
         var c0 = def.wildColors[0];
         var c1 = def.wildColors[1];
-        var a = (assignedColor == null) ? PD.NO_COLOR : assignedColor;
+        var a = (assignedColor == null) ? PD.state.NO_COLOR : assignedColor;
         var colHalfFalse = c0;
         var colHalfTrue = c1;
         if (a === c0 || a === c1) {
@@ -484,7 +485,7 @@
 
           var enabled = true;
           if (it.id === "endTurn") {
-            enabled = (s.activeP === 0) && (s.players[0].hand.length <= PD.HAND_MAX);
+            enabled = (s.activeP === 0) && (s.players[0].hand.length <= PD.state.HAND_MAX);
           }
 
           var isSel = !!(selectedItem && selectedItem === it);
@@ -551,7 +552,7 @@
           if (dbgEnabled && s.deck.length > 0) {
             var topUid = s.deck[s.deck.length - 1];
             drawMiniCard(s, topUid, xPrev, yPrev, false);
-            var defT = PD.defByUid(s, topUid);
+            var defT = PD.state.defByUid(s, topUid);
             if (defT && defT.name) deckDesc += "\nTop: " + String(defT.name);
           }
           printExSafe(deckDesc, xDesc, yDesc, cfg.colText, false, 1, true);
@@ -563,7 +564,7 @@
           if (s.discard.length > 0) {
             var topUid2 = s.discard[s.discard.length - 1];
             drawMiniCard(s, topUid2, xPrev, yPrev, false);
-            var defD = PD.defByUid(s, topUid2);
+            var defD = PD.state.defByUid(s, topUid2);
             if (defD && defD.name) discardDesc += "\nTop: " + String(defD.name);
           }
           printExSafe(discardDesc, xDesc, yDesc, cfg.colText, false, 1, true);
@@ -585,7 +586,7 @@
       // Card selection.
       if (!sel.uid) return;
       var uid = sel.uid;
-      var def = PD.defByUid(s, uid);
+      var def = PD.state.defByUid(s, uid);
       if (!def) return;
 
       // Opponent hand is hidden unless debug enabled.
@@ -641,7 +642,7 @@
     function drawTargetingOverlay() {
       var t = view.targeting;
       if (!t || !t.active) return;
-      if (t.card && t.card.uid) drawMiniCard(s, t.card.uid, xPrev, yPrev, false, (t.wildColor !== PD.NO_COLOR) ? t.wildColor : null);
+      if (t.card && t.card.uid) drawMiniCard(s, t.card.uid, xPrev, yPrev, false, (t.wildColor !== PD.state.NO_COLOR) ? t.wildColor : null);
 
       var cmd = (t.cmds && t.cmds.length) ? t.cmds[t.cmdI % t.cmds.length] : null;
 
@@ -807,25 +808,25 @@
         lines.push("Cards:" + s.discard.length);
       } else if (k === "bank0") {
         lines.push("Sel:B0");
-        lines.push("Total:" + PD.bankValueTotal(s, 0));
+        lines.push("Total:" + PD.util.bankValueTotal(s, 0));
       } else if (k === "bank1") {
         lines.push("Sel:B1");
-        lines.push("Total:" + PD.bankValueTotal(s, 1));
+        lines.push("Total:" + PD.util.bankValueTotal(s, 1));
       } else {
         lines.push("Sel:" + String(k || "?"));
         lines.push("");
       }
     } else if (selectedItem && selectedItem.uid) {
       var uid = selectedItem.uid;
-      var def = PD.defByUid(s, uid);
+      var def = PD.state.defByUid(s, uid);
       var defId = def ? def.id : "?";
       lines.push("Sel:" + defId + " uid:" + uid);
 
       var detail = "";
       if (def && def.kind === PD.CardKind.Property) {
-        if (PD.isWildDef(def)) {
+        if (PD.rules.isWildDef(def)) {
           detail = "Wild:" + def.wildColors[0] + "/" + def.wildColors[1];
-          if (selectedItem && selectedItem.color != null && selectedItem.color !== PD.NO_COLOR) {
+          if (selectedItem && selectedItem.color != null && selectedItem.color !== PD.state.NO_COLOR) {
             detail += " As:c" + selectedItem.color;
           }
         }
@@ -999,7 +1000,7 @@
     }
   }
 
-  R.debug = R.debug || {};
+  R.debug = {};
 
   // DebugText support: summarize current Render selection without drawing.
   R.debug.selectedLines = function (debug) {
@@ -1019,16 +1020,16 @@
 
     if (it.uid) {
       var uid = it.uid;
-      var def = PD.defByUid(debug.state, uid);
+      var def = PD.state.defByUid(debug.state, uid);
       var defId = def ? def.id : "?";
       var line2 = (def && def.name) ? def.name : "";
 
       if (def && def.kind === PD.CardKind.Property) {
-        if (PD.isWildDef(def)) {
+        if (PD.rules.isWildDef(def)) {
           var c0 = def.wildColors[0];
           var c1 = def.wildColors[1];
           line2 = "Wild:" + PD.fmt.colorName(c0) + "/" + PD.fmt.colorName(c1);
-          if (it.color != null && it.color !== PD.NO_COLOR) {
+          if (it.color != null && it.color !== PD.state.NO_COLOR) {
             line2 += " As:" + PD.fmt.colorName(it.color);
           }
         } else {

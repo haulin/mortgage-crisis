@@ -1,17 +1,6 @@
-// Shared tiny utilities (pure helpers; no TIC-80 API usage).
+// PD.util: shared tiny utilities (pure helpers; no TIC-80 API usage).
 
-PD.shuffleByNextInt = function (arr, nextInt) {
-  var i;
-  for (i = arr.length - 1; i > 0; i--) {
-    var j = nextInt(i + 1);
-    var tmp = arr[i];
-    arr[i] = arr[j];
-    arr[j] = tmp;
-  }
-  return arr;
-};
-
-PD.bankValueTotal = function (state, p) {
+PD.util.bankValueTotal = function (state, p) {
   var bank = state.players[p].bank;
   var sum = 0;
   var i;

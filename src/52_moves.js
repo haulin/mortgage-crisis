@@ -1,9 +1,9 @@
-// Shared move helpers (rules + UI). Pure-ish: reads state and move lists, no view mutations.
+// PD.moves: shared move helpers (rules + UI). Pure-ish: reads state/move lists, no view mutations.
 
 // Helpers for Place command lists (shared by targeting + menu label tweaks).
 PD.moves.defaultWildColorForPlace = function (state, uid, def) {
-  if (!def || !PD.isWildDef(def)) return PD.NO_COLOR;
-  var moves = PD.legalMoves(state);
+  if (!def || !PD.rules.isWildDef(def)) return PD.state.NO_COLOR;
+  var moves = PD.engine.legalMoves(state);
   var c0 = def.wildColors[0];
   var c1 = def.wildColors[1];
   var has0 = false, has1 = false;
@@ -19,10 +19,10 @@ PD.moves.defaultWildColorForPlace = function (state, uid, def) {
 };
 
 PD.moves.placeCmdsForUid = function (state, uid, def, wildColor) {
-  var moves = PD.legalMoves(state);
+  var moves = PD.engine.legalMoves(state);
   var cmds = [];
   var i;
-  var isWild = !!(def && PD.isWildDef(def));
+  var isWild = !!(def && PD.rules.isWildDef(def));
   for (i = 0; i < moves.length; i++) {
     var mf = moves[i];
     if (!mf || mf.kind !== "playProp") continue;
@@ -48,7 +48,7 @@ PD.moves.placeCmdsForUid = function (state, uid, def, wildColor) {
 };
 
 PD.moves.buildCmdsForUid = function (state, uid) {
-  var moves = PD.legalMoves(state);
+  var moves = PD.engine.legalMoves(state);
   var buildMoves = [];
   var i;
   for (i = 0; i < moves.length; i++) {
@@ -59,7 +59,7 @@ PD.moves.buildCmdsForUid = function (state, uid) {
 };
 
 PD.moves.rentMovesForUid = function (state, uid) {
-  var moves = PD.legalMoves(state);
+  var moves = PD.engine.legalMoves(state);
   var rentMoves = [];
   var i;
   for (i = 0; i < moves.length; i++) {
@@ -74,8 +74,8 @@ PD.moves.sortRentMovesByAmount = function (state, p, rentMoves) {
   rentMoves.sort(function (a, b) {
     var ai = (a && a.setI != null) ? a.setI : -1;
     var bi = (b && b.setI != null) ? b.setI : -1;
-    var aa = PD.rentAmountForSet(state, p, ai);
-    var bb = PD.rentAmountForSet(state, p, bi);
+    var aa = PD.rules.rentAmountForSet(state, p, ai);
+    var bb = PD.rules.rentAmountForSet(state, p, bi);
     var d = bb - aa;
     if (d) return d;
     return ai - bi;
@@ -94,7 +94,7 @@ PD.moves.locAllowsSource = function (loc) {
 PD.moves.cmdsForTargeting = function (state, kind, uid, loc) {
   kind = String(kind || "");
   var allowSource = PD.moves.locAllowsSource(loc);
-  var out = { cmds: [], wildColor: PD.NO_COLOR };
+  var out = { cmds: [], wildColor: PD.state.NO_COLOR };
 
   if (kind === "bank") {
     out.cmds = PD.moves.bankCmdsForUid(state, uid);
@@ -126,13 +126,13 @@ PD.moves.cmdsForTargeting = function (state, kind, uid, loc) {
   }
 
   if (kind === "place") {
-    var def = PD.defByUid(state, uid);
-    if (def && PD.isWildDef(def)) {
+    var def = PD.state.defByUid(state, uid);
+    if (def && PD.rules.isWildDef(def)) {
       out.wildColor = PD.moves.defaultWildColorForPlace(state, uid, def);
       out.cmds = PD.moves.placeCmdsForUid(state, uid, def, out.wildColor);
     } else {
-      out.wildColor = PD.NO_COLOR;
-      out.cmds = PD.moves.placeCmdsForUid(state, uid, def, PD.NO_COLOR);
+      out.wildColor = PD.state.NO_COLOR;
+      out.cmds = PD.moves.placeCmdsForUid(state, uid, def, PD.state.NO_COLOR);
     }
     if (allowSource) out.cmds.push({ kind: "source" });
     return out;
@@ -167,7 +167,7 @@ PD.moves.destForCmd = function (cmd) {
 };
 
 PD.moves.bankCmdsForUid = function (state, uid) {
-  var moves = PD.legalMoves(state);
+  var moves = PD.engine.legalMoves(state);
   var cmds = [];
   var i;
   for (i = 0; i < moves.length; i++) {

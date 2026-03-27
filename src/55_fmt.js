@@ -1,3 +1,4 @@
+// PD.fmt: shared text formatting helpers (UI/debug narration).
 PD.fmt.colorName = function (c) {
   if (c === PD.Color.Cyan) return "Cyan";
   if (c === PD.Color.Magenta) return "Magenta";
@@ -63,9 +64,9 @@ PD.fmt.inspectDescForDef = function (def, selColor) {
   var v = PD.fmt.valueForDef(def);
   var vLine = (v != null && v > 0) ? ("Value: $" + String(v)) : "";
   var usedAs = "";
-  if (PD.isWildDef(def)) {
+  if (PD.rules.isWildDef(def)) {
     var cSel = selColor;
-    if (cSel !== PD.NO_COLOR && def.wildColors && (cSel === def.wildColors[0] || cSel === def.wildColors[1])) {
+    if (cSel !== PD.state.NO_COLOR && def.wildColors && (cSel === def.wildColors[0] || cSel === def.wildColors[1])) {
       usedAs = "Currently used as: " + PD.fmt.colorName(cSel);
     }
   }
@@ -87,7 +88,7 @@ PD.fmt.destLabelForCmd = function (state, cmd) {
 
 PD.fmt.setLabelForSetI = function (state, p, setI) {
   var set = state.players[p].sets[setI];
-  var col = set ? PD.getSetColor(set.props) : PD.NO_COLOR;
+  var col = set ? PD.rules.getSetColor(set.props) : PD.state.NO_COLOR;
   return PD.fmt.colorName(col) + " Set";
 };
 
@@ -137,24 +138,24 @@ PD.fmt.targetingDestLine = function (state, targeting, cmd) {
     if (cmd.dest && cmd.dest.newSet) out = "Dest: New set";
     else if (cmd.dest && cmd.dest.setI != null) {
       var set = state.players[cmd.dest.p].sets[cmd.dest.setI];
-      var col = set ? PD.getSetColor(set.props) : PD.NO_COLOR;
+      var col = set ? PD.rules.getSetColor(set.props) : PD.state.NO_COLOR;
       out = "Dest: " + PD.fmt.colorName(col) + " set";
     }
-    if (t && t.card && t.card.def && PD.isWildDef(t.card.def)) out += "\nAs: " + PD.fmt.colorName(t.wildColor);
+    if (t && t.card && t.card.def && PD.rules.isWildDef(t.card.def)) out += "\nAs: " + PD.fmt.colorName(t.wildColor);
     return out || "(no destination)";
   }
 
   if (k === "playHouse") {
     var set2 = state.players[cmd.dest.p].sets[cmd.dest.setI];
-    var col2 = set2 ? PD.getSetColor(set2.props) : PD.NO_COLOR;
+    var col2 = set2 ? PD.rules.getSetColor(set2.props) : PD.state.NO_COLOR;
     return "Dest: " + PD.fmt.colorName(col2) + " set";
   }
 
   if (k === "playRent") {
     var p = cmd.card.loc.p;
     var setR = state.players[p].sets[cmd.setI];
-    var colR = setR ? PD.getSetColor(setR.props) : PD.NO_COLOR;
-    var amt = PD.rentAmountForSet(state, p, cmd.setI);
+    var colR = setR ? PD.rules.getSetColor(setR.props) : PD.state.NO_COLOR;
+    var amt = PD.rules.rentAmountForSet(state, p, cmd.setI);
     return "From: " + PD.fmt.colorName(colR) + " set\nAmt: $" + amt;
   }
 
@@ -167,7 +168,7 @@ PD.fmt.targetingHelp = function (targeting) {
   var t = targeting || null;
   var kind = t && t.kind ? String(t.kind) : "";
   var help = (kind === "quick") ? "L/R: Option" : ((kind === "rent") ? "L/R: Set" : "L/R: Dest");
-  if (t && t.card && t.card.def && PD.isWildDef(t.card.def)) help += "  U/D: Color";
+  if (t && t.card && t.card.def && PD.rules.isWildDef(t.card.def)) help += "  U/D: Color";
   help += (t && t.hold) ? "\nRelease A: Drop  B:Cancel" : "\nA:Confirm  B:Cancel";
   return help;
 };

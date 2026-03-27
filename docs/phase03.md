@@ -12,7 +12,6 @@ This phase is still **debug-first** and remains **rules-driven**:
 
 ### Harness / mode switching
 
-- Keep `src/90_debug.js` as the main harness module.
 - `Y` cycles **Boot → DebugText → Render → Boot**.
 - Render screen uses the same backing state as debug: `PD.debug.state`.
 
@@ -23,7 +22,7 @@ This phase is still **debug-first** and remains **rules-driven**:
 - `B`: next scenario.
 - `X`: reset scenario (keep existing Phase 02 mapping).
 - `Y`: cycle mode (Boot/DebugText/Render).
-- Controls hint is rendered as a **single-line overlay** (tweak via `PD.config.render.cfg.hudLine*` in `src/05_config.js`).
+- Controls hint is rendered as a **single-line overlay** (tweakable via render config knobs).
 
 ### Seating + opponent mirroring
 
@@ -52,21 +51,18 @@ This phase is still **debug-first** and remains **rules-driven**:
 
 To avoid adding more top-level `PD.*` symbols, Phase 03 code lives under:
 
-- `PD.render` (namespace created once in `src/00_prelude.js`)
+- `PD.render` (namespace created once in the prelude)
 
-The harness calls a small entry point (e.g. `PD.render.tick(state)` or `PD.renderTick()`), but most helpers/constants stay under `PD.render.*`.
+The harness calls a small render entry point, but most helpers/constants stay under `PD.render.*`.
 
 ### Config centralization (what actually shipped)
 
-To make pixel tweaks fast, Phase 03 moved tweakable render knobs into `src/05_config.js`:
+To make pixel tweaks fast, Phase 03 moved tweakable render knobs into configuration:
 
 - `PD.Pal.*`: named Sweetie-16 palette indices (e.g. `PD.Pal.White=12`, `PD.Pal.Yellow=4`)
-- `PD.config.render` (nested):
-  - `PD.config.render.cfg`: layout + color knobs (was `R.cfg`)
-  - `PD.config.render.spr`: sprite ID map (was `R.spr`)
-  - `PD.config.render.moneyBgByValue`: money/action background mapping (was `R.moneyBgByValue`)
+- `PD.config.render`: render-related knobs (layout/geometry, styling/colors, sprite IDs/mappings)
 
-`src/60_render.js` reads these values and **fails loudly** if they’re missing (load order is deterministic by design).
+The renderer reads these values and **fails loudly** if they’re missing (load order is deterministic by design).
 
 ## Layout geometry (locked + tweakable constants)
 
@@ -182,15 +178,6 @@ Even though rendering is visual, we add lightweight tests:
   - Stack stride/shadow placement: next card face is +8px; shadow is at `xFace-1` for fan-right stacks and `xFace+faceW` for fan-left stacks.
   - 180° flip math places opponent glyphs at the expected flipped coordinates.
   - Anchors for dual-color property top-half match the locked coordinates above.
-
-## Expected files (Phase 03)
-
-- New:
-  - `src/60_render.js` (renderer, layout constants, cursor/camera, draw helpers; namespaced under `PD.render.*`)
-  - `test/60_render.test.mjs` (draw-call invariants; file number may vary)
-- Updated:
-  - `src/90_debug.js` (add mode cycling and call render tick; keep debug text mode intact)
-  - `test/helpers/loadSrcIntoVm.mjs` (add TIC-80 API stubs used by render code; optionally provide a record-calls stub for render tests)
 
 ## Definition of Done
 

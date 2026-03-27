@@ -1,9 +1,5 @@
-PD.computeSeed = function () {
-  var s = (PD.config.seedBase >>> 0) || 1;
-  return s >>> 0;
-};
-
-PD.newGameRng = function () {
-  return new PD.RNG(PD.computeSeed());
+// PD.seed: seed policy for deterministic runs (dev-friendly, reproducible).
+PD.seed.computeSeedU32 = function () {
+  return PD.rng.u32NonZero(PD.config.seedBase);
 };
 

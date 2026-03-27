@@ -26,24 +26,12 @@ When the rules emit a `draw` event:
 
 This avoids “2–5 cards appear instantly” and makes draw timing readable.
 
-## Where it lives
+## Architecture notes
 
-- `src/00_prelude.js`
-  - creates the `PD.anim` namespace (module namespaces are initialized once in the prelude)
-- `src/40_state.js`
-  - `PD.drawToHand()` emits `{ kind: "reshuffle", ... }` when it consumes discard into deck
-- `src/70_anim.js`
-  - `PD.anim.onEvents(state, view, events)` converts engine events → animation steps + toasts
-  - `PD.anim.tick(state, view)` advances animations and reveals dealt cards
-  - `PD.anim.present(state, view, computed)` applies animation **presentation** to row models (pile masking, shuffle underlayers, deal overlay, and hiding in‑flight dealt cards)
-  - `PD.anim.feedbackTick/feedbackError` owns the “flash red on disallowed action” feedback effect
-- `src/65_ui.js`
-  - `view.anim` holds queued/active animation steps + hidden dealt cards (canonicalized by `PD.ui.newView()` and enforced in tests)
-  - `PD.ui.step()` locks input while animations are active (via `view.anim.lock`)
-  - `PD.ui.computeRowModels()` calls `PD.anim.present(...)` before returning so render consumes a fully “presented” model
-- `src/60_render.js`
-  - renderer is **oblivious** to `view.anim` and `view.feedback`
-  - consumes presentation hints from `computed` (pile `nVis`/`pileLayers`, `computed.animOverlay`, `computed.highlightCol`)
+- The rules/engine emit **structured events** (`draw`, `reshuffle`, …) as part of normal command application.
+- The UI layer turns those events into **timed animation steps + toasts**, and **locks input** while they run.
+- The animation layer applies **presentation** to the computed row models (pile masking, shuffle underlayers, deal overlays, and hiding in‑flight dealt cards).
+- The renderer stays **display-only** and consumes already-presented `computed` models; it does not need to know about animation state internals.
 
 ## Config knobs
 
@@ -54,7 +42,7 @@ Animation timings are tunable in `PD.config.ui` (frames @ 60fps):
 - `shuffleAnimFrames`
 - `shuffleToastFrames`
 
-These are validated in `test/05_config_sanity.test.mjs`.
+These are validated in config sanity tests.
 
 ## Definition of done
 

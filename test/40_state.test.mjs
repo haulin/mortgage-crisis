@@ -55,7 +55,7 @@ function assertStateInvariants(ctx, state) {
 
 test("newGame expands correct deck composition (defId counts) + invariants", async () => {
   const ctx = await loadSrcIntoVm();
-  const state = ctx.PD.newGame({ seedU32: 1001 });
+  const state = ctx.PD.state.newGame({ seedU32: 1001 });
 
   assertStateInvariants(ctx, state);
 
@@ -92,8 +92,8 @@ test("newGame expands correct deck composition (defId counts) + invariants", asy
 
 test("newGame is deterministic for same seed", async () => {
   const ctx = await loadSrcIntoVm();
-  const a = ctx.PD.newGame({ seedU32: 424242 });
-  const b = ctx.PD.newGame({ seedU32: 424242 });
+  const a = ctx.PD.state.newGame({ seedU32: 424242 });
+  const b = ctx.PD.state.newGame({ seedU32: 424242 });
 
   assert.deepEqual(a.deck, b.deck);
   assert.deepEqual(a.players[0].hand, b.players[0].hand);
@@ -104,7 +104,7 @@ test("newGame is deterministic for same seed", async () => {
 
 test("newGame deals 5 each and draws 2 for the starting player", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.newGame({ seedU32: 1 });
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
   const p = s.activeP;
   const o = p ^ 1;
 

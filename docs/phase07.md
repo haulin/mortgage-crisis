@@ -12,23 +12,30 @@ In practice, Phase 07 also became our “playtest polish” phase: we tightened 
 
 ## Implementation
 
-- `src/53_ai.js`
-  - `PD.ai.actor(state)`: returns `prompt.p` when prompting, else `activeP`
-  - `PD.ai.pickRandomLegalMove(state)`: chooses from `PD.legalMoves(state)` using deterministic RNG (`PD.rngNextInt`)
-  - `PD.ai.describeCmd(state, cmd)`: short, player-facing narration; uses `PD.fmt.destLabelForCmd` for placement
+The AI loop is intentionally simple:
 
-- `src/90_debug.js`
-  - Suppresses player input while the AI is the actor
-  - Runs the pacing loop when not animation-locked
+- Determine the current actor (prompt actor when prompting; otherwise the active player).
+- Generate legal commands, pick **one** using deterministic RNG, and apply it.
+- Emit short narration toasts for readability while playtesting.
+
+Render-mode input is suppressed while the AI is the actor, and the pacing loop runs only when not animation-locked.
+
+## Policy system (future hook)
+
+The AI module is structured around **pluggable policies** so we can evolve beyond “random legal” without rewriting call sites:
+
+- A **policy** assigns a weight/score to each legal command.
+- The picker does a deterministic **weighted choice** (seeded RNG), so runs remain reproducible.
+- Policies can be chosen **per player**, making it possible to run deterministic “policy vs policy” comparisons by replaying the same seed + scenario(s).
 
 ## Focus policy (Phase 07 playtest ergonomics)
 
 We moved autofocus/selection preservation out of scattered UI logic into a single module so it’s easier to tweak, test, and reason about.
 
-- `src/66_focus.js`
-  - `PD.ui.focus.preserve(state, view, computed)`: keeps selection stable across between-tick state churn (e.g. cards moving, stacks changing).
-  - `PD.ui.focus.apply(state, view, computed, actions)`: applies preservation + **event-driven one-shot focus rules**.
-  - Rules are **not** state invariants; they trigger on transitions or specific invalid-action signals to avoid “browsing triggers autofocus”.
+The focus system is centralized so it’s easier to tweak, test, and reason about:
+
+- Preserve selection across state churn.
+- Apply **event-driven one-shot focus nudges** (not “always-on” invariants) so browsing doesn’t trigger autofocus.
 
 ### Debug pause latch (no autofocus after debug buttons)
 
@@ -38,7 +45,7 @@ Playtesting with `Step`/`Next`/`Reset` should not immediately snap the cursor so
 - While latched:
   - no autofocus rules run (and preservation only runs if selection disappears)
   - latch clears on the **first non-debug input** (D-pad, or `A` on a non-debug selection)
-- `src/90_debug.js`: preserves this latch across scenario resets (`Next`) so it doesn’t get dropped when the view is recreated.
+- The latch is preserved across scenario resets (`Next`) so it doesn’t get dropped when the view is recreated.
 
 ### One-shot focus rules we added/updated
 
@@ -68,11 +75,11 @@ To aid future bug reports, DebugText now shows:
   - ghost the source hand card (no “double-highlight”)
 - For **multi-target** `Rent...`, menu-hover does **not** preview a default destination (avoid implying a default choice).
 
-Implementation notes:
+Implementation notes (conceptual):
 
-- `src/55_fmt.js`: adds `...` for multi-target actions.
-- `src/65_ui.js`: menu-hover preview now only activates when unambiguous; and Rent preview ghosts the source.
-- `src/60_render.js`: respects `computed.meta.hideSrc` to suppress drawing/highlighting the source card.
+- Menus signal multi-step actions with an ellipsis (`...`).
+- Hover previews only show when the destination is unambiguous.
+- Rendering can “ghost” a source card during targeting/preview to avoid double-highlights.
 
 ## Endgame UX (winner clarity + safe inputs)
 
@@ -85,12 +92,7 @@ When a win is detected mid-flow (including during prompts like received-property
 
 ## Config knobs
 
-In `src/05_config.js` under `PD.config.ui`:
+AI pacing is controlled by a couple of UI timing knobs (frames @ 60fps): step delay and narration toast duration.
 
-- `aiStepDelayFrames`
-- `aiNarrateToastFrames`
-
-Toast visuals are renderer-owned. The AI narration toast is pushed with `kind: "ai"` and rendered with a distinct background color:
-
-- `PD.config.render.style.colToastBgAi`
+Toast visuals are renderer-owned; AI narration is rendered with a distinct background style.
 

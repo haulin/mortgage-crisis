@@ -7,8 +7,8 @@ This phase focuses on **readability and iteration speed**: make Inspect useful (
 ### Inspect overlay becomes a real panel (with config-driven geometry)
 
 - Inspect (`hold X`) now uses a single **screen-space backing panel** with **panel-driven anchors** (preview + title + description).
-- The panel bounds and internal padding are **explicit config knobs** under `PD.config.render.layout.`* so we can tune quickly.
-- The panel fill color is configurable via `PD.config.render.style.inspectPanelFillCol`.
+- The panel bounds and internal padding are **explicit render config knobs** so we can tune quickly.
+- The panel fill color is configurable via a render style knob.
 - Description text uses **small font** (`smallfont=true`) for density.
 - Deck/Discard and the center button strip remain visible; the panel intentionally occupies most of the center area.
 
@@ -49,17 +49,10 @@ All current `CARD_DEFS` entries have updated `name`/`desc` text with:
 - properties/wilds include required set size + rent tables in text
 - action/house copy upgraded (while keeping Phase 07+ gameplay still deferred)
 
-## Files changed
+## Tests
 
-- `src/05_config.js`: add inspect panel/layout knobs, button strip sizing knobs, pile count offsets, and rules enabled notes
-- `src/35_defs.js`: update `name/desc`, add `ruleNotes`, add `PD.ruleNoteTextById`
-- `src/60_render.js`: render Inspect as a panel, small-font desc, generated Value suffix, rule-note append, pile count offset applied
-- `src/65_ui.js`: keep center buttons visible during Inspect; read button strip sizing from config
-
-Tests:
-
-- `test/05_config_sanity.test.mjs`: validate new required config knobs (including non-empty enabled rule notes)
-- `test/65_ui_controls.test.mjs`: regression test ensuring center buttons remain present during Inspect
+- Config sanity tests validate required knobs are present (and rule-note gating isn’t accidentally empty in MVP builds).
+- UI/control tests include a regression check that the center buttons remain present during Inspect.
 
 ## Definition of Done
 

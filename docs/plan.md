@@ -19,14 +19,14 @@ Documentation convention (for future phases):
 - **Phase 04 ✅**: UI-owned controller UX (menus/targeting/inspect) + injected controls; renderer is display-only (bounded to existing commands). See `docs/phase04.md`.
 - **Phase 05 ✅**: Inspect overlay becomes a real panel (config-driven, small-font desc) + improved card copy + rule-note gating + pile count digit offset. See `docs/phase05.md`.
 - **Phase 05b ✅**: turn loop framing + discard-down-to-7 prompt + deterministic reshuffle + toast/prompt foundation polish. See `docs/phase05b.md`.
-- **Phase 05c ✅**: draw + reshuffle visibility (staged dealing + shuffle toast/animation), plus renderer‑oblivious animation presentation via `PD.anim.present`. See `docs/phase05c.md`.
+- **Phase 05c ✅**: draw + reshuffle visibility (staged dealing + shuffle toast/animation), plus renderer‑oblivious animation presentation. See `docs/phase05c.md`.
 - **Phase 06 ✅**: debt/payment prompt + recipient “faux-turn placement” for received properties (incl. Wild color choice), using prompt actor `prompt.p` (not `activeP`). See `docs/phase06.md`.
 - **Phase 07 ✅**: AI (random legal) + narrated pacing, plus Phase 07 UX/focus polish. See `docs/phase07.md`.
 
 ## Goals + Constraints
 
 - **Platform**: TIC-80 fantasy console, **JavaScript** (duktape)
-- **Cartridge**: single pasted file output `**game.js`**
+- **Cartridge**: single pasted file output **`game.js`**
 - **Constraints**: no DOM/Node/browser APIs, no external libs, 8 banks of 64KB code limit
 - **Target**: **1v1 player vs AI**, controller-first (Google TV couch play)
 - **UI space**: 240×136 usable area
@@ -36,14 +36,14 @@ Documentation convention (for future phases):
 
 - **Namespaces / enums**: PascalCase objects (e.g. `PD.ActionKind`, `PD.CardKind`)
 - **Scalar constants**: ALL_CAPS (e.g. `PD.HOUSE_RENT_BONUS`)
-- **Functions**: camelCase (e.g. `PD.applyCommand`, `PD.legalMoves`)
+- **Functions**: camelCase (avoid baking internal entrypoint names into docs; prefer describing behavior/contracts)
 
 ### Engineering guardrails (cartridge hygiene)
 
 - **No runtime fallbacks**: avoid `x = x || {}`, `|| []`, “should never happen” defaults in runtime code. Prefer canonical constructors/canonicalizers plus tests.
 - **No runtime shape asserts**: don’t ship “assert shape” helpers in `game.js`; enforce invariants in unit tests.
 - **Numeric coercion**: keep `|0` / `>>>0` localized to TIC-80 draw-call boundary wrappers (e.g. `rectSafe`, `sprSafe`) and deterministic engine/RNG hot spots.
-- **Namespaces**: `src/00_prelude.js` creates `PD` and module namespaces once; don’t repeat `PD.ui = PD.ui || {}` in modules.
+- **Namespaces**: module namespaces are created once in the prelude; don’t repeat `PD.ui = PD.ui || {}`-style guards in modules.
 - **Build artifact rule**: after any change in `src/` or `scripts/build.mjs`, run `npm test` and `npm run build` so committed `game.js` stays in sync.
 
 ## Locked MVP1 Rules (Source of Truth)
@@ -258,9 +258,9 @@ Implement a command-driven rules engine so **UI and AI share the same primitives
 
 Core pieces:
 
-- `legalMoves(state)` returns legal commands for the active player (and for prompts like payment/placement).
-- `applyCommand(state, cmd)` mutates state deterministically and emits events/messages for UI.
-- `evaluateWin(state)` checks 3 complete sets for either player.
+- **Move generation** returns legal commands for the current actor (including prompt-driven flows like payment/placement).
+- **Command application** mutates state deterministically and emits events/messages for UI.
+- **Win evaluation** checks “3 complete sets” after state changes that can affect sets.
 
 Command examples (exact naming can vary, but shape should match):
 
@@ -401,7 +401,7 @@ Content expansion readiness:
 ### Phase 07 ✅ — AI (random legal) + narrated pacing + focus/UX polish
 
 - Implement AI as:
-  - `legalMoves(state)` → choose random → enqueue commands
+  - generate legal commands → choose one deterministically (seeded RNG) → apply it
 - Show narrated messages with fixed delay between steps
 
 Additionally in this phase we did a sizable pass of **controller UX and focus policy** to make playtesting and edge cases feel sane. Detailed notes live in `docs/phase07.md`.
@@ -411,14 +411,14 @@ Content expansion readiness:
 - Create a system that will allow future phases to integrate easily
 
 Done:
-- AI (random legal) + narrated pacing (`src/53_ai.js`, `src/90_debug.js`).
+- AI (random legal) + narrated pacing.
 - Updated the middle-panel label to show **Phase 07**.
 - Menu clarity: actions that invoke targeting show `...` (e.g. `Rent...`).
 - Rent UX: tap‑A default Rent preview now highlights the destination set consistently with hold‑A, and the source card is ghosted (no double-highlight).
 - Menu hover previews: only preview when the action is unambiguous (no default highlight for `Rent...` multi-target).
 - Endgame UX: replace stale prompts with a persistent **Winner** toast; keep navigation/inspect; block card tap‑A actions; auto-focus `Reset` (debug).
 - Focus policy refactor:
-  - Centralized in `src/66_focus.js` (event-driven one-shot rules + selection preservation).
+  - Centralized in a dedicated focus module (event-driven one-shot rules + selection preservation).
   - Debug pause latch: after debug buttons (`Step`/`Next`/`Reset`), suppress all autofocus until first non-debug input.
   - Pay-debt prompt default focus + error-triggered refocus (`cant_pay`).
   - One-shot nudges to `End` for key transitions (plays exhausted, hand becomes empty mid-turn, exit PRP with playsLeft<=0, etc.).
@@ -456,7 +456,10 @@ Content expansion readiness:
 
 - Replace dev-only `Y:Mode` hint/toggle with a proper dev entrypoint (e.g. hidden debug menu) or remove for non-dev builds
 - Implement scenario list and boot selection (e.g., hidden title-screen menu)
-- (Optional later) implement seed display and seed override in dev
+- Seed UX for dev/playtesting:
+  - seed **display** (show the current seed so bug reports are reproducible)
+  - seed **override** (type/select a seed so a run is replayable)
+  - default “release-ish” seeding option (time-based seed from TIC-80 time source)
 - Add a scroll-stress scenario to verify row horizontal scrolling/cameras (e.g. 12 cards in hand + lots of money cards in bank + many property stacks)
 - Add a Rules / How-to-play screen (reachable from boot/title screen) so the game is self-explanatory without external docs
 
@@ -474,8 +477,8 @@ Content expansion readiness:
 - Optional vertical area labels explaining the different zones (hand/bank/properties/opponent areas)
 - Continue Inspect overlay polish as needed (still not “big cards”)
 - (Optional later) Reduced motion accessibility toggle:
-  - make `PD.anim.present()` a no-op pass-through
-  - optionally skip/short-circuit `PD.anim.onEvents/tick` so there’s no waiting/locks beyond toasts (or keep only toast pauses)
+  - make animations/presentation a no-op pass-through
+  - optionally skip/short-circuit animation timing so there’s no waiting/locks beyond essential toasts (or keep only toast pauses)
 - Free organization / preparation actions (UI-only; no play cost):
   - Reorder/sort hand, bank, and stacks for readability (purely cosmetic; no rules/commands)
   - Flip a Wild property’s preferred color **in the source** (e.g. via context menu) so you can “pre-set” it before targeting/placing
@@ -495,26 +498,11 @@ Content expansion readiness:
 - Add mouse controls (TIC-80 `mouse()`) layered on top of controller UX
 - Music / sound effects (TIC-80 `music()` / `sfx()`)
 
-## Recommended file layout (after Phase 0)
+## Code organization (durable)
 
-- `src/` (flat, numeric prefixes; deterministic concatenation order)
-  - `00_prelude.js` (`PD` namespace)
-  - `05_config.js` (palette + render config + gameplay/UI knobs)
-  - `10_util.js`
-  - `15_rng.js`, `20_seed.js`, `30_shuffle.js`
-  - `35_defs.js`, `40_state.js`, `45_rules.js`, `50_scenarios.js`
-  - `52_moves.js` (command/move helpers; UI queries)
-  - `53_ai.js` (simple AI helpers for harness playtesting)
-  - `55_fmt.js` (shared formatting/labels)
-  - `56_layout.js` (shared geometry/row policy)
-  - `60_render.js` (renderer; namespaced under `PD.render.`*)
-  - `65_ui.js` (UI state machine + view models; namespaced under `PD.ui.`*)
-- `66_focus.js` (focus policy: selection preservation + event-driven one-shot autofocus rules)
-  - `70_anim.js` (renderer‑oblivious animation presentation)
-  - `90_debug.js` (debug harness + `PD.mainTick`)
-  - `99_main.js` (single `TIC()` entry point)
-
-Module organization is enforced via namespaces (e.g. `PD.render`, future `PD.ui`) rather than subfolders, because the build/test tooling currently only includes top-level `src/*.js`.
+- The source of truth lives in **`src/`** with numeric prefixes for deterministic concatenation order.
+- Module boundaries are enforced via **namespaces** (e.g. `PD.ui`, `PD.render`, `PD.engine`, `PD.rules`) rather than subfolders.
+- Avoid keeping “exact module map” lists in docs (they go stale); prefer describing layers/contracts and let the codebase + git history show where it lives today.
 
 - `scripts/build.mjs` (Node; generates `game.js`)
 - `game.js` (generated, paste into TIC-80)
@@ -523,13 +511,15 @@ Module organization is enforced via namespaces (e.g. `PD.render`, future `PD.ui`
 
 ```mermaid
 flowchart TD
-  ui[UIStateMachine] --> cmds[Commands]
-  ai[AI_RandomLegal] --> cmds
-  cmds --> rules[RulesEngine_applyCommand]
-  rules --> state[GameState]
+  state[GameState] --> moveGen[MoveGeneration]
+  moveGen --> ui[UI]
+  moveGen --> ai[AI]
+  ui --> cmdApply[CommandApplication]
+  ai --> cmdApply
+  cmdApply --> state
+  cmdApply --> events[Events_Prompts]
+  events --> ui
   state --> render[Renderer]
-  rules --> win[WinEvaluator]
-  rules --> legal[LegalMoves]
 ```
 
 

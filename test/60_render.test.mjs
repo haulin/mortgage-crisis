@@ -37,7 +37,7 @@ test("render: highlight is drawn last for selected card", async () => {
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
   const debug = ctx.PD.debug;
-  ctx.PD.debugReset();
+  ctx.PD.debug.reset();
   debug.state.activeP = 0;
   debug.view.cursor.row = ctx.PD.render.ROW_P_HAND;
   debug.view.cursor.i = 0;
@@ -66,7 +66,7 @@ test("render: feedback blink turns highlight red", async () => {
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
-  ctx.PD.debugReset();
+  ctx.PD.debug.reset();
   const s = ctx.PD.debug.state;
   const v = ctx.PD.debug.view;
   s.activeP = 0;
@@ -91,9 +91,9 @@ test("render: stack uses stride=8 and shadow at xFace-1", async () => {
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
   // Create a deterministic table state with at least one stack of 2 cards.
-  ctx.PD.debugReset();
+  ctx.PD.debug.reset();
   // Ensure P0 has a set with 2 props via scenario.
-  const s2 = ctx.PD.newGame({ scenarioId: "houseBasic", seedU32: 1 });
+  const s2 = ctx.PD.state.newGame({ scenarioId: "houseBasic", seedU32: 1 });
   const view = newView(ctx);
   view.cursor.row = ctx.PD.render.ROW_P_TABLE;
   view.cursor.i = 0;
@@ -131,11 +131,11 @@ test("render: rotated digit uses (-4,-2) anchor offsets with rotate=2", async ()
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
   // Put a wild property into opponent table so it's drawn flip180=true.
-  const s = ctx.PD.newGame({ scenarioId: "wildBasic", seedU32: 1 });
-  const wildUid = s.players[0].hand.find((uid) => ctx.PD.defByUid(s, uid).id === "wild_mo");
+  const s = ctx.PD.state.newGame({ scenarioId: "wildBasic", seedU32: 1 });
+  const wildUid = s.players[0].hand.find((uid) => ctx.PD.state.defByUid(s, uid).id === "wild_mo");
   assert.ok(wildUid, "expected wild_mo uid");
 
-  const set = ctx.PD.newEmptySet();
+  const set = ctx.PD.state.newEmptySet();
   set.props.push([wildUid, ctx.PD.Color.Magenta]);
   s.players[1].sets = [set];
   s.players[1].hand = [];
@@ -167,8 +167,8 @@ test("render: rent card draws 2px color bars at bottom", async () => {
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
   // Put a rent(Cyan/Black) card as the only card in player hand.
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
-  const rentUid = s.deck.find((uid) => ctx.PD.defByUid(s, uid).id === "rent_cb");
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const rentUid = s.deck.find((uid) => ctx.PD.state.defByUid(s, uid).id === "rent_cb");
   assert.ok(rentUid, "expected rent_cb uid in deck");
   s.deck = s.deck.filter((uid) => uid !== rentUid);
   s.players[0].hand = [rentUid];
@@ -202,15 +202,15 @@ test("render: opponent table stack shadow is mirrored", async () => {
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
   // Build a state with a 2-card opponent set (fan left).
-  const s = ctx.PD.newGame({ scenarioId: "wildBasic", seedU32: 1 });
-  const uidA = s.deck.find((uid) => ctx.PD.defByUid(s, uid).id === "prop_cyan");
+  const s = ctx.PD.state.newGame({ scenarioId: "wildBasic", seedU32: 1 });
+  const uidA = s.deck.find((uid) => ctx.PD.state.defByUid(s, uid).id === "prop_cyan");
   assert.ok(uidA, "expected prop_cyan uid in deck");
   s.deck = s.deck.filter((uid) => uid !== uidA);
-  const uidB = s.deck.find((uid) => ctx.PD.defByUid(s, uid).id === "prop_cyan");
+  const uidB = s.deck.find((uid) => ctx.PD.state.defByUid(s, uid).id === "prop_cyan");
   assert.ok(uidB, "expected second prop_cyan uid in deck");
   s.deck = s.deck.filter((uid) => uid !== uidB);
 
-  const set = ctx.PD.newEmptySet();
+  const set = ctx.PD.state.newEmptySet();
   set.props.push([uidA, ctx.PD.Color.Cyan]);
   set.props.push([uidB, ctx.PD.Color.Cyan]);
   s.players[1].sets = [set];
@@ -243,11 +243,11 @@ test("render: player bank renders as fanned stack in hand row", async () => {
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
-  const uid1 = s.deck.find((uid) => ctx.PD.defByUid(s, uid).id === "money_2");
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const uid1 = s.deck.find((uid) => ctx.PD.state.defByUid(s, uid).id === "money_2");
   assert.ok(uid1, "expected money_2 uid in deck");
   s.deck = s.deck.filter((uid) => uid !== uid1);
-  const uid2 = s.deck.find((uid) => ctx.PD.defByUid(s, uid).id === "sly_deal");
+  const uid2 = s.deck.find((uid) => ctx.PD.state.defByUid(s, uid).id === "sly_deal");
   assert.ok(uid2, "expected sly_deal uid in deck");
   s.deck = s.deck.filter((uid) => uid !== uid2);
 
@@ -311,11 +311,11 @@ test("render: opponent bank renders as mirrored fanned stack in hand row", async
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
-  const uid1 = s.deck.find((uid) => ctx.PD.defByUid(s, uid).id === "money_2");
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const uid1 = s.deck.find((uid) => ctx.PD.state.defByUid(s, uid).id === "money_2");
   assert.ok(uid1, "expected money_2 uid in deck");
   s.deck = s.deck.filter((uid) => uid !== uid1);
-  const uid2 = s.deck.find((uid) => ctx.PD.defByUid(s, uid).id === "sly_deal");
+  const uid2 = s.deck.find((uid) => ctx.PD.state.defByUid(s, uid).id === "sly_deal");
   assert.ok(uid2, "expected sly_deal uid in deck");
   s.deck = s.deck.filter((uid) => uid !== uid2);
 
@@ -368,12 +368,12 @@ test("render: wild in set uses assigned color for visual top", async () => {
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
-  const s = ctx.PD.newGame({ scenarioId: "wildBasic", seedU32: 1 });
-  const wildUid = s.deck.find((uid) => ctx.PD.defByUid(s, uid).id === "wild_cb");
+  const s = ctx.PD.state.newGame({ scenarioId: "wildBasic", seedU32: 1 });
+  const wildUid = s.deck.find((uid) => ctx.PD.state.defByUid(s, uid).id === "wild_cb");
   assert.ok(wildUid, "expected wild_cb uid in deck");
   s.deck = s.deck.filter((uid) => uid !== wildUid);
 
-  const set = ctx.PD.newEmptySet();
+  const set = ctx.PD.state.newEmptySet();
   set.props.push([wildUid, ctx.PD.Color.Black]); // assign black
   s.players[0].sets = [set];
   s.players[0].hand = [];
@@ -404,12 +404,12 @@ test("render: opponent wild in set keeps assigned color on owner-facing half", a
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
-  const s = ctx.PD.newGame({ scenarioId: "wildBasic", seedU32: 1 });
-  const wildUid = s.deck.find((uid) => ctx.PD.defByUid(s, uid).id === "wild_cb");
+  const s = ctx.PD.state.newGame({ scenarioId: "wildBasic", seedU32: 1 });
+  const wildUid = s.deck.find((uid) => ctx.PD.state.defByUid(s, uid).id === "wild_cb");
   assert.ok(wildUid, "expected wild_cb uid in deck");
   s.deck = s.deck.filter((uid) => uid !== wildUid);
 
-  const set = ctx.PD.newEmptySet();
+  const set = ctx.PD.state.newEmptySet();
   set.props.push([wildUid, ctx.PD.Color.Black]); // assign black
   s.players[1].sets = [set];
   s.players[1].hand = [];
@@ -443,11 +443,11 @@ test("render: no scroll when content fits (opponent hand row)", async () => {
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
-  const uidBank = s.deck.find((uid) => ctx.PD.defByUid(s, uid).id === "money_1");
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const uidBank = s.deck.find((uid) => ctx.PD.state.defByUid(s, uid).id === "money_1");
   assert.ok(uidBank, "expected money_1 uid in deck");
   s.deck = s.deck.filter((uid) => uid !== uidBank);
-  const uidHand = s.deck.find((uid) => ctx.PD.defByUid(s, uid).id === "money_2");
+  const uidHand = s.deck.find((uid) => ctx.PD.state.defByUid(s, uid).id === "money_2");
   assert.ok(uidHand, "expected money_2 uid in deck");
   s.deck = s.deck.filter((uid) => uid !== uidHand);
 
@@ -469,7 +469,7 @@ test("render: opponent hand back sprite origin is aligned for rotate=2", async (
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
-  const s = ctx.PD.newGame({ seedU32: 1 });
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
   assert.ok(s.players[1].hand.length > 0, "expected opponent to have at least 1 card");
   const uid = s.players[1].hand[0];
 
@@ -508,7 +508,7 @@ test("render: center button strip uses dark fill and selected uses highlight fil
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   const view = newView(ctx);
 
   // Move selection to center row. We expect deck, discard, then endTurn button.
@@ -552,7 +552,7 @@ test("render: End button shows green recommendation when out of plays", async ()
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 0;
   // Ensure End is legal (hand size <= 7).
@@ -584,7 +584,7 @@ test("render: shuffle masking shows discard empty while deck shuffles", async ()
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
-  const s = ctx.PD.newGame({ seedU32: 1 });
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
   // Minimal state: no cards drawn on-screen except piles.
   s.players[0].hand = [];
   s.players[1].hand = [];
@@ -713,10 +713,10 @@ test("render: bank targeting draws preview in bank stack", async () => {
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
-  const s = ctx.PD.newGame({ seedU32: 1 });
-  const moneyUid = ctx.PD.takeUid(s, "money_1");
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
+  const moneyUid = ctx.PD.state.takeUid(s, "money_1");
   assert.ok(moneyUid, "expected money_1 uid");
-  const bankUid = ctx.PD.takeUid(s, "money_2");
+  const bankUid = ctx.PD.state.takeUid(s, "money_2");
   assert.ok(bankUid, "expected money_2 uid");
   // Remove uid from any zone it might already be in.
   s.deck = s.deck.filter((u) => u !== moneyUid);
@@ -781,8 +781,8 @@ test("render: bank targeting shows green ghost for bank when Source is selected"
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
-  const s = ctx.PD.newGame({ seedU32: 1 });
-  const moneyUid = ctx.PD.takeUid(s, "money_1");
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
+  const moneyUid = ctx.PD.state.takeUid(s, "money_1");
   // Remove uid from any zone it might already be in.
   s.deck = s.deck.filter((u) => u !== moneyUid);
   s.discard = s.discard.filter((u) => u !== moneyUid);
@@ -825,10 +825,10 @@ test("render: quick targeting bank ghost shifts existing bank stack left", async
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
-  const s = ctx.PD.newGame({ seedU32: 1 });
-  const rentUid = ctx.PD.takeUid(s, "rent_mo");
-  const propUid = ctx.PD.takeUid(s, "prop_orange");
-  const bankUid = ctx.PD.takeUid(s, "money_2");
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
+  const rentUid = ctx.PD.state.takeUid(s, "rent_mo");
+  const propUid = ctx.PD.state.takeUid(s, "prop_orange");
+  const bankUid = ctx.PD.state.takeUid(s, "money_2");
 
   // Remove uids from any zone they might already be in.
   for (const uid of [rentUid, propUid, bankUid]) {
@@ -846,8 +846,8 @@ test("render: quick targeting bank ghost shifts existing bank stack left", async
   }
 
   // One eligible set so Rent has a legal destination.
-  const defProp = ctx.PD.defByUid(s, propUid);
-  const set = ctx.PD.newEmptySet();
+  const defProp = ctx.PD.state.defByUid(s, propUid);
+  const set = ctx.PD.state.newEmptySet();
   set.props.push([propUid, defProp.propertyColor]);
 
   s.players[0].hand = [rentUid];
@@ -903,7 +903,7 @@ test("render: targeting draws ghost outlines and preview overlay", async () => {
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   const view = newView(ctx);
 
   // Select first card in player hand and enter targeting (hold-A grab).
@@ -952,7 +952,7 @@ test("render: menu Place targeting hides source card (no duplicate) and ghosts s
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
   const view = newView(ctx);
@@ -978,7 +978,7 @@ test("render: menu Place targeting hides source card (no duplicate) and ghosts s
 
   // The preview draws the grabbed uid at the destination, so the source-slot spr for that uid should be absent.
   const uid = view.targeting.card.uid | 0;
-  const def = ctx.PD.defByUid(s, uid);
+  const def = ctx.PD.state.defByUid(s, uid);
   const sprId = def ? (def.sprTL | 0) : -1;
   assert.ok(sprId >= 0, "expected a sprite id for grabbed card");
 
@@ -1001,7 +1001,7 @@ test("render: placeReceived targeting hides recvProps source card (no duplicate)
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
-  const s = ctx.PD.newGame({ scenarioId: "placeReceived", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeReceived", seedU32: 1 });
   const view = newView(ctx);
 
   // Enter prompt mode then enter targeting from faux-hand.
@@ -1022,7 +1022,7 @@ test("render: placeReceived targeting hides recvProps source card (no duplicate)
   const yHandFace = L.rowY[ctx.PD.render.ROW_P_HAND] + L.faceInsetY;
 
   const uid = view.targeting.card.uid | 0;
-  const def = ctx.PD.defByUid(s, uid);
+  const def = ctx.PD.state.defByUid(s, uid);
   const sprId = def ? (def.sprTL | 0) : -1;
   assert.ok(sprId >= 0, "expected a sprite id for grabbed card");
 
@@ -1045,7 +1045,7 @@ test("render: plays indicator draws 3 pips (green remaining, red used)", async (
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   const view = newView(ctx);
 
   // Force a known value.
@@ -1075,7 +1075,7 @@ test("render: feedback message draws a screen-top toast with background, border,
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   const view = newView(ctx);
   view.toasts = [{ kind: "error", text: "No actions", frames: 10 }];
 
@@ -1099,7 +1099,7 @@ test("render: ai narration toast uses configured background color", async () => 
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   const view = newView(ctx);
   view.toasts = [{ kind: "ai", text: "Opponent: Rent", frames: 10 }];
 
@@ -1114,7 +1114,7 @@ test("render: toasts stack top-to-bottom (prompt then error)", async () => {
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
-  const s = ctx.PD.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   const view = newView(ctx);
   view.toasts = [
     { kind: "prompt", text: "Discard 1 more (A:Discard)", persistent: true },

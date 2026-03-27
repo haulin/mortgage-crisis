@@ -1,3 +1,4 @@
+// PD.config: central gameplay/UI/render tuning knobs (validated in tests; avoid runtime fallbacks).
 PD.config = {
   screenW: 240,
   screenH: 136,
@@ -48,6 +49,20 @@ PD.config.ui = {
   aiStepDelayFrames: 60,
   aiNarrateToastFrames: 60,
  
+};
+
+// AI policy knobs (Phase 07+).
+PD.config.ai = {
+  // Per-player policy IDs (0=player, 1=opponent by default).
+  policyByP: ["defaultHeuristic", "defaultHeuristic"],
+
+  // Weight multiplier for "place property into an existing set" moves.
+  // 1 means no bias (equivalent to uniform random).
+  biasExistingSetK: 8,
+
+  // Weight multiplier for "play Rent" moves (bias asking for rent over banking Rent).
+  // 1 means no bias (equivalent to uniform random).
+  biasPlayRentK: 4
 };
 
 // Rule-note IDs (Phase 05+). These are small display-only annotations in Inspect.

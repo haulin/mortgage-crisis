@@ -43,23 +43,17 @@ Phase 00 is done when:
 
 Add these paths (Phase 00 starts intentionally small; later phases fill these out):
 
-- `src/`
-  - `00_prelude.js`
-  - `05_config.js`
-  - `90_debug.js`
-  - `99_main.js`
-- `scripts/`
-  - `build.mjs`
-- `test/`
-  - `load.test.mjs`
-- `package.json`
+- `src/` (source modules; concatenated in numeric-prefix order)
+- `scripts/` (build tooling)
+- `test/` (Node `--test` suite)
+- `package.json` (standardize commands)
 - `game.js` (generated output, committed)
 
 ## Source code conventions for `src/` (important)
 
 ### 1) One global namespace only
 
-- `src/00_prelude.js` defines `var PD = PD || {};`
+- The prelude defines `var PD = PD || {};`
 - All other files must attach to it:
   - `PD.config = {...}`
   - `PD.mainTick = function() {...}`
@@ -68,7 +62,7 @@ Avoid defining globals like `state`, `ui`, etc. outside `PD`.
 
 ### 2) Only one `TIC()`
 
-- `function TIC()` is defined in exactly one file: `src/99_main.js`
+- `function TIC()` is defined in exactly one module
 - Everything else is called from there via `PD.*`
 
 ### 3) No ESM syntax in `src/`
@@ -85,7 +79,7 @@ We are concatenating scripts, not bundling modules.
 Only the generated `game.js` gets headers like `// script: js`.
 Keeping headers out of `src/` prevents accidental duplication.
 
-## `scripts/build.mjs` spec (exact behavior)
+## Build script spec (exact behavior)
 
 ### Inputs
 
@@ -107,7 +101,7 @@ Keeping headers out of `src/` prevents accidental duplication.
 
 2) Then append each module in order with a separator:
 
-- `// ---- src/00_prelude.js ----`
+- `// ---- <module> ----`
 - `<file contents>`
 - (newline)
 
@@ -128,21 +122,9 @@ At the end, print:
 - output path
 - output byte count
 
-## Minimal runtime stubs (what each `src/` file does)
+## Minimal runtime stubs
 
-These Phase 00 stubs exist only to prove the pipeline works; they are not a long-term pattern. As the project grows, we keep runtime code lean by avoiding defensive fallbacks and enforcing invariants in tests.
-
-- `src/00_prelude.js`
-  - creates `PD`
-  - creates module namespaces once (e.g. `PD.render`, `PD.ui`, `PD.anim`, `PD.controls`) so individual modules don’t need `PD.* = PD.* || {}` guards
-- `src/05_config.js`
-  - defines `PD.config` (palette, render config, gameplay/UI knobs)
-- `src/90_debug.js`
-  - defines `PD.mainTick` (debug harness modes + render loop)
-- `src/99_main.js`
-  - defines `function TIC() { PD.mainTick(); }`
-
-The cartridge should be runnable immediately after build (i.e. `TIC()` exists and calls into `PD.*`).
+Phase 00 stubs exist only to prove the pipeline works; they are not a long-term pattern. As the project grows, we keep runtime code lean by avoiding defensive fallbacks and enforcing invariants in tests.
 
 ## `package.json` (Phase 00)
 
@@ -161,12 +143,12 @@ Optional (later, not Phase 00):
 
 Not to test gameplay yet—just to validate we can load our code in Node in a way that scales to future unit tests.
 
-### `test/load.test.mjs` spec
+### Bundle load test spec
 
 The test should:
 
 - Create a Node `vm` context with:
-  - `PD` initialized (or allow `src/00_prelude.js` to initialize it)
+  - `PD` initialized (or allow the prelude to initialize it)
   - stub functions for TIC-80 globals used by boot code:
     - `cls`, `print` (no-op is fine)
 - Load every `src/*.js` (same ordering rule as build) into that context
@@ -177,7 +159,7 @@ The test should:
 
 This gives us a foundation for future rule-engine tests without requiring ESM exports.
 
-Additionally, we keep a “compiled-style” test (`test/00_bundle_compiled.test.mjs`) that concatenates `src/*.js` into one big script (like `game.js`) and runs it in a single VM context to catch load-order / concatenation issues early.
+Additionally, we keep a “compiled-style” bundle-load test that concatenates `src/*.js` into one big script (like `game.js`) and runs it in a single VM context to catch load-order / concatenation issues early.
 
 ## Git / committing
 

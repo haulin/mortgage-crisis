@@ -4,7 +4,7 @@ import { loadSrcIntoVm } from "./helpers/loadSrcIntoVm.mjs";
 
 test("xorshift32 produces deterministic sequence", async () => {
   const ctx = await loadSrcIntoVm();
-  const rng = new ctx.PD.RNG(1);
+  const rng = new ctx.PD.rng.RNG(1);
   const got = [
     rng.nextU32() >>> 0,
     rng.nextU32() >>> 0,
@@ -18,7 +18,7 @@ test("xorshift32 produces deterministic sequence", async () => {
 
 test("nextInt(n) stays within [0, n)", async () => {
   const ctx = await loadSrcIntoVm();
-  const rng = new ctx.PD.RNG(123);
+  const rng = new ctx.PD.rng.RNG(123);
   const n = 7;
   for (let i = 0; i < 1000; i++) {
     const v = rng.nextInt(n);

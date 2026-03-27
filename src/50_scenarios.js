@@ -1,4 +1,5 @@
-PD.resetForScenario = function (state) {
+// PD.scenarios: deterministic starting-state builders for testing + debug smoke runs.
+PD.scenarios.resetForScenario = function (state) {
   state.deck = [];
   state.discard = [];
   state.players[0].hand = [];
@@ -9,31 +10,31 @@ PD.resetForScenario = function (state) {
   state.players[1].sets = [];
   state.activeP = 0;
   state.playsLeft = 3;
-  PD.clearPrompt(state);
-  state.winnerP = PD.NO_WINNER;
+  PD.state.clearPrompt(state);
+  state.winnerP = PD.state.NO_WINNER;
   // Ensure pool exists.
-  PD.cardPoolInit(state);
+  PD.state.cardPoolInit(state);
 };
 
-PD.setAddFixedProp = function (set, uid, color) {
+PD.scenarios.setAddFixedProp = function (set, uid, color) {
   set.props.push([uid, color]);
 };
 
-PD.setAddPropByDefId = function (state, set, defId, forcedColor) {
-  var uid = PD.takeUid(state, defId);
-  var def = PD.defByUid(state, uid);
-  var color = PD.NO_COLOR;
-  if (PD.isWildDef(def)) {
+PD.scenarios.setAddPropByDefId = function (state, set, defId, forcedColor) {
+  var uid = PD.state.takeUid(state, defId);
+  var def = PD.state.defByUid(state, uid);
+  var color = PD.state.NO_COLOR;
+  if (PD.rules.isWildDef(def)) {
     color = forcedColor;
-    if (!PD.wildAllowsColor(def, color)) throw new Error("scenario_bad_color:" + defId);
+    if (!PD.rules.wildAllowsColor(def, color)) throw new Error("scenario_bad_color:" + defId);
   } else {
     color = def.propertyColor;
   }
-  PD.setAddFixedProp(set, uid, color);
+  PD.scenarios.setAddFixedProp(set, uid, color);
   return uid;
 };
 
-PD.fillDeckFromPool = function (state) {
+PD.scenarios.fillDeckFromPool = function (state) {
   var deck = [];
   var i;
   for (i = 0; i < PD.CARD_DEFS.length; i++) {
@@ -47,20 +48,20 @@ PD.fillDeckFromPool = function (state) {
   state.deck = deck;
 };
 
-PD.applyScenario = function (state, scenarioId) {
-  PD.resetForScenario(state);
+PD.scenarios.applyScenario = function (state, scenarioId) {
+  PD.scenarios.resetForScenario(state);
 
-  var fn = PD._scenarioApplyById && PD._scenarioApplyById[scenarioId];
+  var fn = PD.scenarios._applyById[scenarioId];
   if (!fn) throw new Error("unknown_scenario:" + scenarioId);
   fn(state);
 
-  PD.fillDeckFromPool(state);
+  PD.scenarios.fillDeckFromPool(state);
   // Keep deck deterministic for scenarios; callers can shuffle if desired.
   return state;
 };
 
 // Scenario registry (single source of truth).
-PD.SCENARIO_IDS = [
+PD.scenarios.IDS = [
   "placeBasic",
   "wildBasic",
   "houseBasic",
@@ -68,11 +69,13 @@ PD.SCENARIO_IDS = [
   "bankScrollShuffle",
   // Phase 06
   "debtHouseFirst",
-  "placeReceived"
+  "placeReceived",
+  // Phase 07+: move generation smoke / AI policy stress
+  "moveStress"
 ];
 
 // Optional metadata for debug UI / docs.
-PD.SCENARIO_INFO = {
+PD.scenarios.INFO = {
   placeBasic: { title: "Place (basic)", desc: "Fixed property placement + Rent play-test (opponent has a small bank payable)." },
   wildBasic: { title: "Wild (basic)", desc: "Wild property placement + discard depth demo." },
   houseBasic: { title: "House (basic)", desc: "Build House on complete set only." },
@@ -80,79 +83,80 @@ PD.SCENARIO_INFO = {
   bankScrollShuffle: { title: "Bank+shuffle stress", desc: "Huge bank + reshuffle-on-draw stress case." },
   debtHouseFirst: { title: "Debt: house-first", desc: "Debt prompt where House must be paid before set properties." },
   placeReceived: { title: "Place received", desc: "Faux-turn placement buffer (includes Wild color choice)." },
+  moveStress: { title: "Move stress", desc: "Many partial sets + 9-card hand (props + wilds + rent-any + house) to maximize legalMoves fanout for smoke testing + AI policy tuning." },
 };
 
-PD._scenarioApplyById = {
+PD.scenarios._applyById = {
   placeBasic: function (state) {
     // P0 has 2 orange properties + $1. P0 also has an existing Orange set with 1 property.
-    var setO = PD.newEmptySet();
-    PD.setAddPropByDefId(state, setO, "prop_orange", PD.NO_COLOR);
+    var setO = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setO, "prop_orange", PD.state.NO_COLOR);
     state.players[0].sets.push(setO);
 
-    state.players[0].hand.push(PD.takeUid(state, "prop_orange"));
-    state.players[0].hand.push(PD.takeUid(state, "prop_orange"));
-    state.players[0].hand.push(PD.takeUid(state, "money_1"));
+    state.players[0].hand.push(PD.state.takeUid(state, "prop_orange"));
+    state.players[0].hand.push(PD.state.takeUid(state, "prop_orange"));
+    state.players[0].hand.push(PD.state.takeUid(state, "money_1"));
     // Add a rent card that matches Orange (Magenta/Orange rent).
-    state.players[0].hand.push(PD.takeUid(state, "rent_mo"));
+    state.players[0].hand.push(PD.state.takeUid(state, "rent_mo"));
 
     // Ensure opponent has something payable so Rent triggers payDebt.
-    state.players[1].bank.push(PD.takeUid(state, "money_1"));
+    state.players[1].bank.push(PD.state.takeUid(state, "money_1"));
   },
 
   wildBasic: function (state) {
     // P0 has Wild(M/O) and $1.
-    state.players[0].hand.push(PD.takeUid(state, "wild_mo"));
-    state.players[0].hand.push(PD.takeUid(state, "money_1"));
+    state.players[0].hand.push(PD.state.takeUid(state, "wild_mo"));
+    state.players[0].hand.push(PD.state.takeUid(state, "money_1"));
 
     // Discard demo (depth=3): top card is last.
-    state.discard.push(PD.takeUid(state, "money_2"));
-    state.discard.push(PD.takeUid(state, "money_1"));
-    state.discard.push(PD.takeUid(state, "rent_cb"));
+    state.discard.push(PD.state.takeUid(state, "money_2"));
+    state.discard.push(PD.state.takeUid(state, "money_1"));
+    state.discard.push(PD.state.takeUid(state, "rent_cb"));
   },
 
   houseBasic: function (state) {
     // P0 has two Houses in hand.
-    state.players[0].hand.push(PD.takeUid(state, "house"));
-    state.players[0].hand.push(PD.takeUid(state, "house"));
+    state.players[0].hand.push(PD.state.takeUid(state, "house"));
+    state.players[0].hand.push(PD.state.takeUid(state, "house"));
 
     // One complete Cyan set (2).
-    var setC = PD.newEmptySet();
-    PD.setAddPropByDefId(state, setC, "prop_cyan", PD.NO_COLOR);
-    PD.setAddPropByDefId(state, setC, "prop_cyan", PD.NO_COLOR);
+    var setC = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setC, "prop_cyan", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setC, "prop_cyan", PD.state.NO_COLOR);
     state.players[0].sets.push(setC);
 
     // One incomplete Black set (3/4).
-    var setB = PD.newEmptySet();
-    PD.setAddPropByDefId(state, setB, "prop_black", PD.NO_COLOR);
-    PD.setAddPropByDefId(state, setB, "prop_black", PD.NO_COLOR);
-    PD.setAddPropByDefId(state, setB, "prop_black", PD.NO_COLOR);
+    var setB = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setB, "prop_black", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setB, "prop_black", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setB, "prop_black", PD.state.NO_COLOR);
     state.players[0].sets.push(setB);
 
     // Discard demo (depth=1).
-    state.discard.push(PD.takeUid(state, "money_5"));
+    state.discard.push(PD.state.takeUid(state, "money_5"));
   },
 
   winCheck: function (state) {
     // P0 has 3 complete sets: Cyan(2), Magenta(3), Orange(3).
-    var setC2 = PD.newEmptySet();
-    PD.setAddPropByDefId(state, setC2, "prop_cyan", PD.NO_COLOR);
-    PD.setAddPropByDefId(state, setC2, "prop_cyan", PD.NO_COLOR);
+    var setC2 = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setC2, "prop_cyan", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setC2, "prop_cyan", PD.state.NO_COLOR);
     state.players[0].sets.push(setC2);
 
-    var setM3 = PD.newEmptySet();
-    PD.setAddPropByDefId(state, setM3, "prop_magenta", PD.NO_COLOR);
-    PD.setAddPropByDefId(state, setM3, "prop_magenta", PD.NO_COLOR);
-    PD.setAddPropByDefId(state, setM3, "prop_magenta", PD.NO_COLOR);
+    var setM3 = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setM3, "prop_magenta", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setM3, "prop_magenta", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setM3, "prop_magenta", PD.state.NO_COLOR);
     state.players[0].sets.push(setM3);
 
-    var setO3 = PD.newEmptySet();
-    PD.setAddPropByDefId(state, setO3, "prop_orange", PD.NO_COLOR);
-    PD.setAddPropByDefId(state, setO3, "prop_orange", PD.NO_COLOR);
-    PD.setAddPropByDefId(state, setO3, "prop_orange", PD.NO_COLOR);
+    var setO3 = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setO3, "prop_orange", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setO3, "prop_orange", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setO3, "prop_orange", PD.state.NO_COLOR);
     state.players[0].sets.push(setO3);
 
     state.playsLeft = 0;
-    state.winnerP = PD.evaluateWin(state);
+    state.winnerP = PD.rules.evaluateWin(state);
   },
 
   bankScrollShuffle: function (state) {
@@ -162,10 +166,8 @@ PD._scenarioApplyById = {
     // - Leave exactly 1 card in deck so the next draw forces a reshuffle.
     // - Ensure P1 hand is non-empty so endTurn draws 2 (not 5).
 
-    if (!state._pool) PD.cardPoolInit(state);
-
     // Seed P1 hand with 1 property so startTurn draws 2.
-    state.players[1].hand.push(PD.takeUid(state, "prop_cyan"));
+    state.players[1].hand.push(PD.state.takeUid(state, "prop_cyan"));
 
     // Drain pool: bankables -> P0 bank; non-bankables -> discard.
     var di;
@@ -177,7 +179,7 @@ PD._scenarioApplyById = {
       if (!a || a.length === 0) continue;
 
       // NOTE: scenario pool contains only uids, so we inspect the def kind here.
-      var bankable = PD.isBankableDef(def);
+      var bankable = PD.rules.isBankableDef(def);
       while (a.length > 0) {
         var uid = a.pop();
         if (bankable) state.players[0].bank.push(uid);
@@ -189,60 +191,107 @@ PD._scenarioApplyById = {
     // Prefer taking from discard so the discard->deck reshuffle still has plenty of cards.
     if (state.discard.length > 0) {
       var keepUid = state.discard.pop();
-      var keepDef = PD.defByUid(state, keepUid);
-      var keepId = keepDef && keepDef.id ? String(keepDef.id) : "";
-      if (keepId) {
-        if (!state._pool[keepId]) state._pool[keepId] = [];
-        state._pool[keepId].push(keepUid);
-      } else {
-        // Fallback: if we can't map it, just return it to discard (deck will be empty).
-        state.discard.push(keepUid);
-      }
+      var keepDef = PD.state.defByUid(state, keepUid);
+      var keepId = String(keepDef.id);
+      state._pool[keepId].push(keepUid);
     }
 
     // Keep hand small and end-turn legal.
     state.players[0].hand = [];
     state.activeP = 0;
     state.playsLeft = 0;
-    state.winnerP = PD.NO_WINNER;
+    state.winnerP = PD.state.NO_WINNER;
   },
 
   // Phase 06: prompt-driven debt payment where House must be paid first.
   // Goal: exercise prompt actor separation + house-first redirect + overpay allowed.
   debtHouseFirst: function (state) {
     // P0: complete Cyan set with a House.
-    var setC = PD.newEmptySet();
-    PD.setAddPropByDefId(state, setC, "prop_cyan", PD.NO_COLOR);
-    PD.setAddPropByDefId(state, setC, "prop_cyan", PD.NO_COLOR);
-    setC.houseUid = PD.takeUid(state, "house");
+    var setC = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setC, "prop_cyan", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setC, "prop_cyan", PD.state.NO_COLOR);
+    setC.houseUid = PD.state.takeUid(state, "house");
     state.players[0].sets.push(setC);
 
     // Keep bank empty so the only payable is the House (forces the rule).
     state.players[0].bank = [];
 
     // Add a little hand so the UI isn't empty.
-    state.players[0].hand.push(PD.takeUid(state, "rent_cb"));
+    state.players[0].hand.push(PD.state.takeUid(state, "rent_cb"));
 
     // Pay a small debt to P1; paying the House overpays and resolves immediately.
-    PD.setPrompt(state, { kind: "payDebt", p: 0, toP: 1, rem: 1, buf: [] });
+    PD.state.setPrompt(state, { kind: "payDebt", p: 0, toP: 1, rem: 1, buf: [] });
   },
 
   // Phase 06: recipient faux-turn placement buffer (received properties).
   placeReceived: function (state) {
     // P0 has an existing Orange set to allow placing into existing sets.
-    var setO = PD.newEmptySet();
-    PD.setAddPropByDefId(state, setO, "prop_orange", PD.NO_COLOR);
+    var setO = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setO, "prop_orange", PD.state.NO_COLOR);
     state.players[0].sets.push(setO);
 
     // Prompt buffer: one fixed property + one Wild to place (wild assignment chosen during placement).
     var recv = [];
-    recv.push(PD.takeUid(state, "prop_orange"));
-    recv.push(PD.takeUid(state, "wild_mo"));
-    PD.setPrompt(state, { kind: "placeReceived", p: 0, uids: recv });
+    recv.push(PD.state.takeUid(state, "prop_orange"));
+    recv.push(PD.state.takeUid(state, "wild_mo"));
+    PD.state.setPrompt(state, { kind: "placeReceived", p: 0, uids: recv });
 
     // Keep normal hand visible for the “faux-hand + real hand” row layout.
-    state.players[0].hand.push(PD.takeUid(state, "money_1"));
-    state.players[0].hand.push(PD.takeUid(state, "rent_mo"));
+    state.players[0].hand.push(PD.state.takeUid(state, "money_1"));
+    state.players[0].hand.push(PD.state.takeUid(state, "rent_mo"));
+  },
+
+  // Phase 07+: maximize legalMoves fanout for smoke testing + AI policy tuning.
+  moveStress: function (state) {
+    // Board: P0 has many partial sets so properties/wilds have multiple existing destinations.
+    // Hand: 9 cards including wilds + rent-any + house, so move list gets large.
+    //
+    // Note: hand > HAND_MAX is intentional; endTurn will enter discardDown prompt.
+
+    // 1 complete Cyan set (2) so House has at least one legal build target.
+    var setC = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setC, "prop_cyan", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setC, "prop_cyan", PD.state.NO_COLOR);
+    state.players[0].sets.push(setC);
+
+    // 2 Magenta sets (each 1 prop) so Magenta + wild_mo can target multiple existing sets.
+    var setM0 = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setM0, "prop_magenta", PD.state.NO_COLOR);
+    state.players[0].sets.push(setM0);
+    var setM1 = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setM1, "prop_magenta", PD.state.NO_COLOR);
+    state.players[0].sets.push(setM1);
+
+    // 2 Orange sets (each 1 prop) so Orange + wild_mo can target multiple existing sets.
+    var setO0 = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setO0, "prop_orange", PD.state.NO_COLOR);
+    state.players[0].sets.push(setO0);
+    var setO1 = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setO1, "prop_orange", PD.state.NO_COLOR);
+    state.players[0].sets.push(setO1);
+
+    // 3 Black sets (each 1 prop) so Black + wild_cb can target multiple existing sets.
+    var setB0 = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setB0, "prop_black", PD.state.NO_COLOR);
+    state.players[0].sets.push(setB0);
+    var setB1 = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setB1, "prop_black", PD.state.NO_COLOR);
+    state.players[0].sets.push(setB1);
+    var setB2 = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setB2, "prop_black", PD.state.NO_COLOR);
+    state.players[0].sets.push(setB2);
+
+    // Hand: one of each base property (remaining), both wilds, plus rent-any + house + $1 + one action.
+    state.players[0].hand.push(PD.state.takeUid(state, "prop_magenta"));
+    state.players[0].hand.push(PD.state.takeUid(state, "prop_orange"));
+    state.players[0].hand.push(PD.state.takeUid(state, "prop_black"));
+    state.players[0].hand.push(PD.state.takeUid(state, "wild_mo"));
+    state.players[0].hand.push(PD.state.takeUid(state, "wild_cb"));
+
+    state.players[0].hand.push(PD.state.takeUid(state, "house"));
+    state.players[0].hand.push(PD.state.takeUid(state, "rent_any"));
+    state.players[0].hand.push(PD.state.takeUid(state, "money_1"));
+    state.players[0].hand.push(PD.state.takeUid(state, "sly_deal"));
   },
 };
 

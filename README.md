@@ -43,8 +43,8 @@ npm test
 ### Testing workflow notes (practical)
 
 - **Regression-first**: when fixing a bug (especially a visual/render bug), add at least one **assertion** or a small **new test** so we don’t re-break it later.
-- **Bundle load test**: `test/00_bundle_compiled.test.mjs` runs a compiled-style “single script” bundle in a VM context to catch load-order/concat issues early.
-- **Renderer tests**: draw-call recording tests stub TIC-80 draw APIs like `rect`, `spr`, etc. and assert call ordering/positions. See `test/60_render.test.mjs`.
+- **Bundle load test**: a compiled-style “single script” bundle runs in a VM context to catch load-order/concat issues early.
+- **Renderer tests**: draw-call recording tests stub TIC-80 draw APIs like `rect`, `spr`, etc. and assert call ordering/positions.
 - **Debug harness controls (dev-only)**:
   - `Y`: toggle DebugText ↔ Render
   - In **DebugText** mode: `A` step, `B` next scenario, `X` reset scenario
@@ -75,7 +75,7 @@ We work in small increments:
 - **No runtime fallbacks**: avoid `x = x || {}`, `|| []`, “should never happen” defaults in runtime code. Prefer canonical constructors/canonicalizers plus tests.
 - **No runtime shape asserts**: don’t ship “assert shape” helpers in `game.js`; enforce invariants in unit tests.
 - **Numeric coercion**: keep `|0` / `>>>0` localized to TIC-80 draw-call boundary wrappers (e.g. `rectSafe`, `sprSafe`) and deterministic engine/RNG hot spots.
-- **Namespaces**: `src/00_prelude.js` creates `PD` and module namespaces once; don’t repeat `PD.ui = PD.ui || {}` in modules.
+- **Namespaces**: module namespaces are created once in the prelude; don’t repeat `PD.ui = PD.ui || {}` in modules.
 - **Build artifact rule**: after any change in `src/` or `scripts/build.mjs`, run `npm test` and `npm run build` so committed `game.js` stays in sync.
 
 ## Key Constraints

@@ -1,3 +1,4 @@
+// PD.controls: input state machine (injected/pollable controls with repeat + hold/tap detection).
 PD.controls.newState = function () {
   return {
     frame: 0,

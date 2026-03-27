@@ -97,7 +97,7 @@ The renderer no longer owns navigation/cameras or reads controller input.
 It draws purely from:
 - `state` (game state)
 - `view` (UI view state)
-- `computed` row models from `PD.ui.computeRowModels(...)`
+- `computed` row models produced by the UI layer (so the renderer stays display-only)
 
 Notable behavior change:
 - The old always-visible center “big preview” is removed; details are shown via **Inspect** or menu/targeting overlays.
@@ -111,17 +111,10 @@ Center-row action widgets:
 - `End` (always)
 - Debug-only (gated by `PD.config.debug.enabled`): `Step`, `Reset`, `Next`
 
-## Files changed / added
+## Tests
 
-- `src/05_config.js`: add `PD.config.controls` tunables
-- `src/25_controls.js`: `PD.controls` (injected input + gestures + repeat)
-- `src/90_debug.js`: Render mode rewired to `PD.controls` + `PD.ui` + display-only `PD.render`
-- `src/60_render.js`: renderer made display-only; add menu/targeting/inspect overlays; remove always-on preview
-- `src/65_ui.js`: full UI view state machine + row model computation + targeting overlays
-
-Tests:
-- `test/60_render.test.mjs`: updated to use `view.cursor`/computed models; adds targeting overlay test
-- `test/65_ui_controls.test.mjs`: controls + UI unit tests
+- Render tests lock key invariants (selection layering, targeting ghosts/previews, etc.).
+- UI/control tests cover injected input handling and the view-state-machine behavior.
 
 ## Definition of Done
 
