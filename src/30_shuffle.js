@@ -1,5 +1,5 @@
-// PD.shuffle: deterministic shuffling helpers (seeded RNG / state RNG).
-PD.shuffle.byNextInt = function (arr, nextInt) {
+// MC.shuffle: deterministic shuffling helpers (seeded RNG / state RNG).
+MC.shuffle.byNextInt = function (arr, nextInt) {
   var i;
   for (i = arr.length - 1; i > 0; i--) {
     var j = nextInt(i + 1);
@@ -10,11 +10,11 @@ PD.shuffle.byNextInt = function (arr, nextInt) {
   return arr;
 };
 
-PD.shuffle.inPlaceWithRng = function (arr, rng) {
-  return PD.shuffle.byNextInt(arr, function (n) { return rng.nextInt(n); });
+MC.shuffle.inPlaceWithRng = function (arr, rng) {
+  return MC.shuffle.byNextInt(arr, function (n) { return rng.nextInt(n); });
 };
 
-PD.shuffle.inPlaceWithStateRng = function (state, arr) {
-  return PD.shuffle.byNextInt(arr, function (n) { return PD.rng.nextIntInState(state, n); });
+MC.shuffle.inPlaceWithStateRng = function (state, arr) {
+  return MC.shuffle.byNextInt(arr, function (n) { return MC.rng.nextIntInState(state, n); });
 };
 

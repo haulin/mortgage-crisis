@@ -18,7 +18,7 @@ Deferred (future phases / later phases):
 
 ## What Phase 04 implements
 
-### Controls layer (`PD.controls`)
+### Controls layer (`MC.controls`)
 
 Render mode input is now injected (testable) rather than polled inside the renderer:
 - D-pad navigation with **repeat** (delay/period configurable)
@@ -27,9 +27,9 @@ Render mode input is now injected (testable) rather than polled inside the rende
   - **Hold A + move** (or fallback hold threshold) → targeting (“grab”)
 - `X` inspect hold with a short delay (~100ms)
 
-All tunables live in `PD.config.controls`.
+All tunables live in `MC.config.controls`.
 
-### UI-owned view state machine (`PD.ui`)
+### UI-owned view state machine (`MC.ui`)
 
 Render mode now has explicit UI modes:
 - `browse`
@@ -52,8 +52,8 @@ Key UX behaviors:
 - Navigation is **screen-space directional** (not row-index stepping), using cone scoring + axis-wrap fallback.
 - Left/Right additionally **prefers staying in the same row** when a same-row target exists in that direction (prevents surprising cross-row jumps when center row has valid deck/discard/button targets).
 - Per-axis tuning knobs:
-  - `PD.config.ui.navConeKLeftRight`
-  - `PD.config.ui.navConeKUpDown`
+  - `MC.config.ui.navConeKLeftRight`
+  - `MC.config.ui.navConeKUpDown`
 
 ### Readability + feedback
 
@@ -83,7 +83,7 @@ When it’s P0’s turn and `playsLeft <= 0`:
 
 ### Config hygiene / avoid runtime fallbacks
 
-- Prefer validating required `PD.config.*` knobs in tests over runtime “default to …” fallbacks in the cartridge.
+- Prefer validating required `MC.config.*` knobs in tests over runtime “default to …” fallbacks in the cartridge.
 - Config sanity tests assert existence/shape of key UI/control knobs.
 
 ### Numeric coercion cleanup (UI/render)
@@ -91,7 +91,7 @@ When it’s P0’s turn and `playsLeft <= 0`:
 - Removed unnecessary bitwise coercion (`|0`) from UI and most render logic.
 - Kept coercion localized to TIC-80 draw-call boundaries (e.g. `rectSafe`, `sprSafe`, `printSafe`) and deterministic engine/RNG hotspots.
 
-### Renderer is display-only (`PD.render`)
+### Renderer is display-only (`MC.render`)
 
 The renderer no longer owns navigation/cameras or reads controller input.
 It draws purely from:
@@ -109,7 +109,7 @@ Render mode loop now runs:
 
 Center-row action widgets:
 - `End` (always)
-- Debug-only (gated by `PD.config.debug.enabled`): `Step`, `Reset`, `Next`
+- Debug-only (gated by `MC.config.debug.enabled`): `Step`, `Reset`, `Next`
 
 ## Tests
 

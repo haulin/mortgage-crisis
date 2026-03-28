@@ -16,7 +16,7 @@ That means **card values, rent amounts, and key iconography** should be rendered
 
 We keep a **single mapping** for these sprite IDs in both:
 
-- **Code** (constants like `PD.SPR_DIGIT_0 = ...`)
+- **Code** (constants like `MC.SPR_DIGIT_0 = ...`)
 - **This doc** (human-readable table)
 
 ## Sprite sheet conventions

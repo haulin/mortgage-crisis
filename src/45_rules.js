@@ -1,5 +1,5 @@
-// PD.rules: pure rule computations. PD.engine: deterministic command application + move generation.
-PD.rules.evaluateWin = function (state) {
+// MC.rules: pure rule computations. MC.engine: deterministic command application + move generation.
+MC.rules.evaluateWin = function (state) {
   var p;
   for (p = 0; p < 2; p++) {
     var sets = state.players[p].sets;
@@ -8,27 +8,27 @@ PD.rules.evaluateWin = function (state) {
     for (si = 0; si < sets.length; si++) {
       var set = sets[si];
       if (!set) continue;
-      var color = PD.rules.getSetColor(set.props);
-      if (color === PD.state.NO_COLOR) continue;
-      var req = PD.SET_RULES[color].requiredSize;
+      var color = MC.rules.getSetColor(set.props);
+      if (color === MC.state.NO_COLOR) continue;
+      var req = MC.SET_RULES[color].requiredSize;
       if (set.props.length >= req && req > 0) complete++;
     }
     if (complete >= 3) return p;
   }
-  return PD.state.NO_WINNER;
+  return MC.state.NO_WINNER;
 };
 
-PD.engine.assertCanApply = function (state) {
-  if (state.winnerP !== PD.state.NO_WINNER) throw new Error("game_over");
+MC.engine.assertCanApply = function (state) {
+  if (state.winnerP !== MC.state.NO_WINNER) throw new Error("game_over");
 };
 
-PD.engine.locEqZone = function (loc, zone) {
+MC.engine.locEqZone = function (loc, zone) {
   return !!loc && loc.zone === zone;
 };
 
-PD.rules.rentAmountForColorCount = function (color, nPropsUncapped, hasHouse) {
-  if (color === PD.state.NO_COLOR) return 0;
-  var rules = PD.SET_RULES[color];
+MC.rules.rentAmountForColorCount = function (color, nPropsUncapped, hasHouse) {
+  if (color === MC.state.NO_COLOR) return 0;
+  var rules = MC.SET_RULES[color];
   if (!rules || !rules.rent || rules.rent.length <= 0) return 0;
 
   var req = rules.requiredSize;
@@ -39,21 +39,21 @@ PD.rules.rentAmountForColorCount = function (color, nPropsUncapped, hasHouse) {
 
   var base = rules.rent[n - 1];
   var bonus = 0;
-  if (hasHouse && req > 0 && nPropsUncapped >= req) bonus = PD.HOUSE_RENT_BONUS;
+  if (hasHouse && req > 0 && nPropsUncapped >= req) bonus = MC.HOUSE_RENT_BONUS;
   return base + bonus;
 };
 
-PD.rules.rentAmountForSet = function (state, p, setI) {
+MC.rules.rentAmountForSet = function (state, p, setI) {
   var sets = state.players[p].sets;
   if (setI < 0 || setI >= sets.length) return 0;
   var set = sets[setI];
   if (!set || !set.props || set.props.length <= 0) return 0;
 
-  var color = PD.rules.getSetColor(set.props);
-  return PD.rules.rentAmountForColorCount(color, set.props.length, !!set.houseUid);
+  var color = MC.rules.getSetColor(set.props);
+  return MC.rules.rentAmountForColorCount(color, set.props.length, !!set.houseUid);
 };
 
-PD.rules.replaceWindowEligibleWildLocs = function (state, p, srcSetI, excludeUid) {
+MC.rules.replaceWindowEligibleWildLocs = function (state, p, srcSetI, excludeUid) {
   // Phase 09: replace-window is offered only when we can remove exactly 1 Wild from
   // the just-played-into set while keeping that source set complete.
   if (!(p === 0 || p === 1)) return [];
@@ -62,9 +62,9 @@ PD.rules.replaceWindowEligibleWildLocs = function (state, p, srcSetI, excludeUid
   var set = sets[srcSetI];
   if (!set || !set.props || set.props.length <= 0) return [];
 
-  var srcColor = PD.rules.getSetColor(set.props);
-  if (srcColor === PD.state.NO_COLOR) return [];
-  var req = PD.SET_RULES[srcColor].requiredSize;
+  var srcColor = MC.rules.getSetColor(set.props);
+  if (srcColor === MC.state.NO_COLOR) return [];
+  var req = MC.SET_RULES[srcColor].requiredSize;
   if (!(req > 0)) return [];
 
   // Need to still be complete after removing exactly 1 property.
@@ -78,14 +78,14 @@ PD.rules.replaceWindowEligibleWildLocs = function (state, p, srcSetI, excludeUid
     if (!tup) continue;
     var uid = tup[0];
     if (uid === excludeUid) continue;
-    var def = PD.state.defByUid(state, uid);
-    if (!PD.rules.isWildDef(def)) continue;
+    var def = MC.state.defByUid(state, uid);
+    if (!MC.rules.isWildDef(def)) continue;
     out.push({ uid: uid, loc: { p: p, zone: "setProps", setI: srcSetI, i: i } });
   }
   return out;
 };
 
-PD.rules.replaceWindowDestinations = function (state, p, srcSetI, placedColor) {
+MC.rules.replaceWindowDestinations = function (state, p, srcSetI, placedColor) {
   // Destinations: other matching-color sets (in setI order) plus newSet (last).
   if (!(p === 0 || p === 1)) return [{ p: p, newSet: true }];
   var sets = state.players[p] ? state.players[p].sets : null;
@@ -95,8 +95,8 @@ PD.rules.replaceWindowDestinations = function (state, p, srcSetI, placedColor) {
   for (si = 0; si < sets.length; si++) {
     if (si === srcSetI) continue;
     var set = sets[si];
-    var col = PD.rules.getSetColor(set ? set.props : null);
-    if (col === PD.state.NO_COLOR) continue;
+    var col = MC.rules.getSetColor(set ? set.props : null);
+    if (col === MC.state.NO_COLOR) continue;
     if (col !== placedColor) continue;
     out.push({ p: p, setI: si });
   }
@@ -104,7 +104,7 @@ PD.rules.replaceWindowDestinations = function (state, p, srcSetI, placedColor) {
   return out;
 };
 
-PD.rules.replaceWindowValidateMove = function (state, prompt, cmdMove, actorP) {
+MC.rules.replaceWindowValidateMove = function (state, prompt, cmdMove, actorP) {
   if (!cmdMove || cmdMove.kind !== "moveWild") return { ok: false, err: "bad_cmd" };
   var card = cmdMove.card;
   var dest = cmdMove.dest;
@@ -125,16 +125,16 @@ PD.rules.replaceWindowValidateMove = function (state, prompt, cmdMove, actorP) {
   var pi = card.loc.i;
   if (!srcSet.props[pi] || srcSet.props[pi][0] !== uid) return { ok: false, err: "bad_loc" };
 
-  var def = PD.state.defByUid(state, uid);
-  if (!PD.rules.isWildDef(def)) return { ok: false, err: "not_wild" };
+  var def = MC.state.defByUid(state, uid);
+  if (!MC.rules.isWildDef(def)) return { ok: false, err: "not_wild" };
 
   var placedColor = cmdMove.color;
-  if (!PD.rules.wildAllowsColor(def, placedColor)) return { ok: false, err: "wild_color_illegal" };
+  if (!MC.rules.wildAllowsColor(def, placedColor)) return { ok: false, err: "wild_color_illegal" };
 
   // Source must remain complete after removing exactly 1 property.
-  var srcColor = PD.rules.getSetColor(srcSet.props);
-  if (srcColor === PD.state.NO_COLOR) return { ok: false, err: "empty_set" };
-  var req = PD.SET_RULES[srcColor].requiredSize;
+  var srcColor = MC.rules.getSetColor(srcSet.props);
+  if (srcColor === MC.state.NO_COLOR) return { ok: false, err: "empty_set" };
+  var req = MC.SET_RULES[srcColor].requiredSize;
   if (!((srcSet.props.length - 1) >= req)) return { ok: false, err: "replace_src_incomplete" };
 
   // Destination: other set (matching color) or new set.
@@ -147,8 +147,8 @@ PD.rules.replaceWindowValidateMove = function (state, prompt, cmdMove, actorP) {
     if (destSetI === srcSetI) return { ok: false, err: "replace_same_set" };
     if (destSetI < 0 || destSetI >= sets.length) return { ok: false, err: "bad_set" };
     var setExisting = sets[destSetI];
-    var setColor = PD.rules.getSetColor(setExisting ? setExisting.props : null);
-    if (setColor === PD.state.NO_COLOR) return { ok: false, err: "empty_set" };
+    var setColor = MC.rules.getSetColor(setExisting ? setExisting.props : null);
+    if (setColor === MC.state.NO_COLOR) return { ok: false, err: "empty_set" };
     if (setColor !== placedColor) return { ok: false, err: "set_color_mismatch" };
   }
 
@@ -163,7 +163,7 @@ PD.rules.replaceWindowValidateMove = function (state, prompt, cmdMove, actorP) {
   };
 };
 
-PD.engine.removeHandAtLoc = function (state, card) {
+MC.engine.removeHandAtLoc = function (state, card) {
   var loc = card.loc;
   var p = loc.p;
   var i = loc.i;
@@ -173,8 +173,8 @@ PD.engine.removeHandAtLoc = function (state, card) {
   hand.splice(i, 1);
 };
 
-PD.engine.applyCommand = function (state, cmd) {
-  PD.engine.assertCanApply(state);
+MC.engine.applyCommand = function (state, cmd) {
+  MC.engine.assertCanApply(state);
   if (!cmd || !cmd.kind) throw new Error("bad_cmd");
 
   var events = [];
@@ -188,19 +188,19 @@ PD.engine.applyCommand = function (state, cmd) {
   }
 
   function applyEndTurn() {
-    state.activeP = PD.rules.otherPlayer(state.activeP);
+    state.activeP = MC.rules.otherPlayer(state.activeP);
     events.push({ kind: "turn", activeP: state.activeP });
-    PD.state.startTurn(state, events);
+    MC.state.startTurn(state, events);
   }
 
   function applyDiscard(cmdDiscard) {
     var card = cmdDiscard.card;
     if (!card || !card.loc) throw new Error("bad_cmd");
-    if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if (!MC.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
     if (card.loc.p !== p) throw new Error("not_your_card");
 
     var uid = card.uid;
-    PD.engine.removeHandAtLoc(state, card);
+    MC.engine.removeHandAtLoc(state, card);
     state.discard.push(uid);
 
     events.push({
@@ -215,8 +215,8 @@ PD.engine.applyCommand = function (state, cmd) {
     }
 
     // End-turn discard-down prompt: once <= HAND_MAX, finish ending the turn.
-    if (handP.length <= PD.state.HAND_MAX) {
-      PD.state.clearPrompt(state);
+    if (handP.length <= MC.state.HAND_MAX) {
+      MC.state.clearPrompt(state);
       applyEndTurn();
     }
   }
@@ -236,10 +236,10 @@ PD.engine.applyCommand = function (state, cmd) {
     // Phase 09: after placing a property into a set, optionally allow moving one Wild
     // out of that same set (excluding the just-played card), but only if the source
     // set remains complete after removal.
-    if (state.winnerP !== PD.state.NO_WINNER) return false;
-    var elig = PD.rules.replaceWindowEligibleWildLocs(state, actorP, srcSetI, excludeUid);
+    if (state.winnerP !== MC.state.NO_WINNER) return false;
+    var elig = MC.rules.replaceWindowEligibleWildLocs(state, actorP, srcSetI, excludeUid);
     if (!elig || elig.length === 0) return false;
-    PD.state.setPrompt(state, {
+    MC.state.setPrompt(state, {
       kind: "replaceWindow",
       p: actorP,
       srcSetI: srcSetI,
@@ -253,7 +253,7 @@ PD.engine.applyCommand = function (state, cmd) {
     if (!(fromP === 0 || fromP === 1)) throw new Error("bad_fromP");
     if (!target || !target.loc) throw new Error("bad_target");
     var loc = target.loc;
-    if (!PD.engine.locEqZone(loc, "setProps")) throw new Error("bad_loc");
+    if (!MC.engine.locEqZone(loc, "setProps")) throw new Error("bad_loc");
 
     var defP = loc.p;
     var setI = loc.setI;
@@ -268,9 +268,9 @@ PD.engine.applyCommand = function (state, cmd) {
     if (!props[pi] || props[pi][0] !== target.uid) throw new Error("bad_loc");
 
     // Sly rule: cannot steal from a complete set (including overfilled).
-    var color = PD.rules.getSetColor(props);
-    if (color === PD.state.NO_COLOR) throw new Error("empty_set");
-    var req = PD.SET_RULES[color].requiredSize;
+    var color = MC.rules.getSetColor(props);
+    if (color === MC.state.NO_COLOR) throw new Error("empty_set");
+    var req = MC.SET_RULES[color].requiredSize;
     if (props.length >= req) throw new Error("sly_full_set");
 
     // Remove from defender set.
@@ -278,7 +278,7 @@ PD.engine.applyCommand = function (state, cmd) {
     cleanupEmptySetsForPlayer(defP);
 
     // Attacker receives the property and must place it.
-    PD.state.setPrompt(state, { kind: "placeReceived", p: fromP, uids: [target.uid] });
+    MC.state.setPrompt(state, { kind: "placeReceived", p: fromP, uids: [target.uid] });
     // Direction: stolen from defender -> attacker.
     events.push({ kind: "slySteal", fromP: defP, toP: fromP, uid: target.uid });
   }
@@ -292,15 +292,15 @@ PD.engine.applyCommand = function (state, cmd) {
       }
       if (cmd.kind === "cancelPrompt") {
         if (prompt.nDiscarded > 0) throw new Error("prompt_forced");
-        PD.state.clearPrompt(state);
+        MC.state.clearPrompt(state);
         return { events: events };
       }
       throw new Error("prompt_active");
     }
 
     function payValueForUid(uid) {
-      var def = PD.state.defByUid(state, uid);
-      if (def.kind === PD.CardKind.Property) return def.propertyPayValue != null ? def.propertyPayValue : 0;
+      var def = MC.state.defByUid(state, uid);
+      if (def.kind === MC.CardKind.Property) return def.propertyPayValue != null ? def.propertyPayValue : 0;
       return def.bankValue != null ? def.bankValue : 0;
     }
 
@@ -347,15 +347,15 @@ PD.engine.applyCommand = function (state, cmd) {
       cleanupEmptySetsForPlayer(p);
 
       // Auto-finalize when covered or out of payables.
-      if (prompt.rem > 0 && PD.state.hasAnyPayables(state, p)) return;
+      if (prompt.rem > 0 && MC.state.hasAnyPayables(state, p)) return;
 
       var toP = prompt.toP;
       var recv = [];
       var i;
       for (i = 0; i < buf.length; i++) {
         var uidT = buf[i];
-        var defT = PD.state.defByUid(state, uidT);
-        if (defT && defT.kind === PD.CardKind.Property) {
+        var defT = MC.state.defByUid(state, uidT);
+        if (defT && defT.kind === MC.CardKind.Property) {
           recv.push(uidT);
         } else {
           state.players[toP].bank.push(uidT);
@@ -369,23 +369,23 @@ PD.engine.applyCommand = function (state, cmd) {
       }
 
       if (recv.length > 0) {
-        PD.state.setPrompt(state, { kind: "placeReceived", p: toP, uids: recv });
+        MC.state.setPrompt(state, { kind: "placeReceived", p: toP, uids: recv });
       } else {
-        PD.state.clearPrompt(state);
+        MC.state.clearPrompt(state);
       }
     }
 
     function applyPlayJustSayNo(cmdJsn) {
       var card = cmdJsn.card;
       if (!card || !card.loc) throw new Error("bad_cmd");
-      if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+      if (!MC.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
       if (card.loc.p !== p) throw new Error("not_your_card");
 
       var uid = card.uid;
-      var def = PD.state.defByUid(state, uid);
-      if (!def || def.kind !== PD.CardKind.Action || def.actionKind !== PD.ActionKind.JustSayNo) throw new Error("not_jsn");
+      var def = MC.state.defByUid(state, uid);
+      if (!def || def.kind !== MC.CardKind.Action || def.actionKind !== MC.ActionKind.JustSayNo) throw new Error("not_jsn");
 
-      PD.engine.removeHandAtLoc(state, card);
+      MC.engine.removeHandAtLoc(state, card);
       state.discard.push(uid);
       events.push({
         kind: "move",
@@ -396,7 +396,7 @@ PD.engine.applyCommand = function (state, cmd) {
 
       // Cancel the active prompt and report the response (single-layer only).
       var src = prompt && prompt.srcAction ? prompt.srcAction : null;
-      PD.state.clearPrompt(state);
+      MC.state.clearPrompt(state);
       events.push({ kind: "jsn", p: p, srcAction: src });
     }
 
@@ -406,7 +406,7 @@ PD.engine.applyCommand = function (state, cmd) {
       if (String(prompt.srcAction.kind || "") !== "slyDeal") throw new Error("bad_srcAction");
       var fromP = prompt.srcAction.fromP;
       var target = prompt.target;
-      PD.state.clearPrompt(state);
+      MC.state.clearPrompt(state);
       applySlySteal(fromP, target);
     }
 
@@ -415,20 +415,20 @@ PD.engine.applyCommand = function (state, cmd) {
       var dest = cmdProp.dest;
       if (!card || !card.loc || !dest) throw new Error("bad_cmd");
       if (card.loc.p !== p) throw new Error("not_your_card");
-      if (!PD.engine.locEqZone(card.loc, "recvProps")) throw new Error("bad_loc");
+      if (!MC.engine.locEqZone(card.loc, "recvProps")) throw new Error("bad_loc");
 
       var ri = card.loc.i;
       var uids = prompt.uids;
       var uid = card.uid;
       if (!uids[ri] || uids[ri] !== uid) throw new Error("bad_loc");
 
-      var def = PD.state.defByUid(state, uid);
-      if (!def || def.kind !== PD.CardKind.Property) throw new Error("not_property");
+      var def = MC.state.defByUid(state, uid);
+      if (!def || def.kind !== MC.CardKind.Property) throw new Error("not_property");
 
-      var placedColor = PD.state.NO_COLOR;
-      if (PD.rules.isWildDef(def)) {
+      var placedColor = MC.state.NO_COLOR;
+      if (MC.rules.isWildDef(def)) {
         placedColor = cmdProp.color;
-        if (!PD.rules.wildAllowsColor(def, placedColor)) throw new Error("wild_color_illegal");
+        if (!MC.rules.wildAllowsColor(def, placedColor)) throw new Error("wild_color_illegal");
       } else {
         placedColor = def.propertyColor;
       }
@@ -439,7 +439,7 @@ PD.engine.applyCommand = function (state, cmd) {
       var sets = state.players[p].sets;
       var setI;
       if (dest.newSet) {
-        var newSet = PD.state.newEmptySet();
+        var newSet = MC.state.newEmptySet();
         setI = sets.length;
         sets.push(newSet);
         events.push({ kind: "createSet", p: p, setI: setI, color: placedColor });
@@ -447,8 +447,8 @@ PD.engine.applyCommand = function (state, cmd) {
         setI = dest.setI;
         if (setI < 0 || setI >= sets.length) throw new Error("bad_set");
         var setExisting = sets[setI];
-        var setColor = PD.rules.getSetColor(setExisting.props);
-        if (setColor === PD.state.NO_COLOR) throw new Error("empty_set");
+        var setColor = MC.rules.getSetColor(setExisting.props);
+        if (setColor === MC.state.NO_COLOR) throw new Error("empty_set");
         if (setColor !== placedColor) throw new Error("set_color_mismatch");
       }
 
@@ -462,12 +462,12 @@ PD.engine.applyCommand = function (state, cmd) {
         to: { p: p, zone: "setProps", setI: setI, i: setT.props.length - 1 }
       });
 
-      var winner = PD.rules.evaluateWin(state);
-      if (winner !== PD.state.NO_WINNER) {
+      var winner = MC.rules.evaluateWin(state);
+      if (winner !== MC.state.NO_WINNER) {
         state.winnerP = winner;
         events.push({ kind: "win", winnerP: winner });
         // Winner: skip replace-window and let UI suppress prompts.
-        if (prompt.uids.length === 0) PD.state.clearPrompt(state);
+        if (prompt.uids.length === 0) MC.state.clearPrompt(state);
         return;
       }
 
@@ -476,7 +476,7 @@ PD.engine.applyCommand = function (state, cmd) {
       var started = tryBeginReplaceWindow(p, setI, uid, resume);
       if (started) return;
 
-      if (prompt.uids.length === 0) PD.state.clearPrompt(state);
+      if (prompt.uids.length === 0) MC.state.clearPrompt(state);
     }
 
     if (prompt.kind === "payDebt") {
@@ -501,9 +501,9 @@ PD.engine.applyCommand = function (state, cmd) {
     if (prompt.kind === "replaceWindow") {
       function resumeOrClearReplaceWindow() {
         if (prompt.resume && String(prompt.resume.kind || "") === "placeReceived") {
-          PD.state.setPrompt(state, { kind: "placeReceived", p: p, uids: prompt.resume.uids.slice() });
+          MC.state.setPrompt(state, { kind: "placeReceived", p: p, uids: prompt.resume.uids.slice() });
         } else {
-          PD.state.clearPrompt(state);
+          MC.state.clearPrompt(state);
         }
       }
 
@@ -513,7 +513,7 @@ PD.engine.applyCommand = function (state, cmd) {
       }
 
       function applyMoveWild(cmdMove) {
-        var v = PD.rules.replaceWindowValidateMove(state, prompt, cmdMove, p);
+        var v = MC.rules.replaceWindowValidateMove(state, prompt, cmdMove, p);
         if (!v.ok) throw new Error(v.err);
 
         var uid = v.uid;
@@ -529,7 +529,7 @@ PD.engine.applyCommand = function (state, cmd) {
         // Apply the move (mutating state) now that validation has passed.
         srcSet.props.splice(pi, 1);
         if (isNewSet) {
-          var newSet = PD.state.newEmptySet();
+          var newSet = MC.state.newEmptySet();
           sets.push(newSet);
           events.push({ kind: "createSet", p: p, setI: destSetI, color: placedColor });
         }
@@ -545,11 +545,11 @@ PD.engine.applyCommand = function (state, cmd) {
           color: placedColor
         });
 
-        var winner = PD.rules.evaluateWin(state);
-        if (winner !== PD.state.NO_WINNER) {
+        var winner = MC.rules.evaluateWin(state);
+        if (winner !== MC.state.NO_WINNER) {
           state.winnerP = winner;
           events.push({ kind: "win", winnerP: winner });
-          PD.state.clearPrompt(state);
+          MC.state.clearPrompt(state);
           return;
         }
 
@@ -566,14 +566,14 @@ PD.engine.applyCommand = function (state, cmd) {
   function applyBank(cmdBank) {
     var card = cmdBank.card;
     if (!card || !card.loc) throw new Error("bad_cmd");
-    if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if (!MC.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
     if (card.loc.p !== p) throw new Error("not_your_card");
 
     var uid = card.uid;
-    var def = PD.state.defByUid(state, uid);
-    if (!PD.rules.isBankableDef(def)) throw new Error("not_bankable");
+    var def = MC.state.defByUid(state, uid);
+    if (!MC.rules.isBankableDef(def)) throw new Error("not_bankable");
 
-    PD.engine.removeHandAtLoc(state, card);
+    MC.engine.removeHandAtLoc(state, card);
     state.players[p].bank.push(uid);
 
     events.push({
@@ -589,17 +589,17 @@ PD.engine.applyCommand = function (state, cmd) {
     var card = cmdProp.card;
     var dest = cmdProp.dest;
     if (!card || !card.loc || !dest) throw new Error("bad_cmd");
-    if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if (!MC.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
     if (card.loc.p !== p) throw new Error("not_your_card");
 
     var uid = card.uid;
-    var def = PD.state.defByUid(state, uid);
-    if (!def || def.kind !== PD.CardKind.Property) throw new Error("not_property");
+    var def = MC.state.defByUid(state, uid);
+    if (!def || def.kind !== MC.CardKind.Property) throw new Error("not_property");
 
-    var placedColor = PD.state.NO_COLOR;
-    if (PD.rules.isWildDef(def)) {
+    var placedColor = MC.state.NO_COLOR;
+    if (MC.rules.isWildDef(def)) {
       placedColor = cmdProp.color;
-      if (!PD.rules.wildAllowsColor(def, placedColor)) throw new Error("wild_color_illegal");
+      if (!MC.rules.wildAllowsColor(def, placedColor)) throw new Error("wild_color_illegal");
     } else {
       placedColor = def.propertyColor;
     }
@@ -607,7 +607,7 @@ PD.engine.applyCommand = function (state, cmd) {
     var sets = state.players[p].sets;
     var setI;
     if (dest.newSet) {
-      var newSet = PD.state.newEmptySet();
+      var newSet = MC.state.newEmptySet();
       setI = sets.length;
       sets.push(newSet);
       events.push({ kind: "createSet", p: p, setI: setI, color: placedColor });
@@ -615,12 +615,12 @@ PD.engine.applyCommand = function (state, cmd) {
       setI = dest.setI;
       if (setI < 0 || setI >= sets.length) throw new Error("bad_set");
       var setExisting = sets[setI];
-      var setColor = PD.rules.getSetColor(setExisting.props);
-      if (setColor === PD.state.NO_COLOR) throw new Error("empty_set");
+      var setColor = MC.rules.getSetColor(setExisting.props);
+      if (setColor === MC.state.NO_COLOR) throw new Error("empty_set");
       if (setColor !== placedColor) throw new Error("set_color_mismatch");
     }
 
-    PD.engine.removeHandAtLoc(state, card);
+    MC.engine.removeHandAtLoc(state, card);
     var setT = sets[setI];
     setT.props.push([uid, placedColor]);
 
@@ -632,8 +632,8 @@ PD.engine.applyCommand = function (state, cmd) {
     });
     decPlays();
 
-    var winner = PD.rules.evaluateWin(state);
-    if (winner !== PD.state.NO_WINNER) {
+    var winner = MC.rules.evaluateWin(state);
+    if (winner !== MC.state.NO_WINNER) {
       state.winnerP = winner;
       events.push({ kind: "win", winnerP: winner });
       return;
@@ -647,12 +647,12 @@ PD.engine.applyCommand = function (state, cmd) {
     var card = cmdHouse.card;
     var dest = cmdHouse.dest;
     if (!card || !card.loc || !dest) throw new Error("bad_cmd");
-    if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if (!MC.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
     if (card.loc.p !== p) throw new Error("not_your_card");
 
     var uid = card.uid;
-    var def = PD.state.defByUid(state, uid);
-    if (!def || def.kind !== PD.CardKind.House) throw new Error("not_house");
+    var def = MC.state.defByUid(state, uid);
+    if (!def || def.kind !== MC.CardKind.House) throw new Error("not_house");
 
     var sets = state.players[p].sets;
     var setI = dest.setI;
@@ -660,12 +660,12 @@ PD.engine.applyCommand = function (state, cmd) {
     var set = sets[setI];
     if (set.houseUid !== 0) throw new Error("house_already");
 
-    var color = PD.rules.getSetColor(set.props);
-    if (color === PD.state.NO_COLOR) throw new Error("empty_set");
-    var req = PD.SET_RULES[color].requiredSize;
+    var color = MC.rules.getSetColor(set.props);
+    if (color === MC.state.NO_COLOR) throw new Error("empty_set");
+    var req = MC.SET_RULES[color].requiredSize;
     if (set.props.length < req) throw new Error("set_not_complete");
 
-    PD.engine.removeHandAtLoc(state, card);
+    MC.engine.removeHandAtLoc(state, card);
     set.houseUid = uid;
 
     events.push({
@@ -680,12 +680,12 @@ PD.engine.applyCommand = function (state, cmd) {
   function applyPlayRent(cmdRent) {
     var card = cmdRent.card;
     if (!card || !card.loc) throw new Error("bad_cmd");
-    if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if (!MC.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
     if (card.loc.p !== p) throw new Error("not_your_card");
 
     var uid = card.uid;
-    var def = PD.state.defByUid(state, uid);
-    if (!def || def.kind !== PD.CardKind.Action || def.actionKind !== PD.ActionKind.Rent) throw new Error("not_rent");
+    var def = MC.state.defByUid(state, uid);
+    if (!def || def.kind !== MC.CardKind.Action || def.actionKind !== MC.ActionKind.Rent) throw new Error("not_rent");
 
     var setI = cmdRent.setI;
     var sets = state.players[p].sets;
@@ -693,8 +693,8 @@ PD.engine.applyCommand = function (state, cmd) {
     var set = sets[setI];
     if (!set || !set.props || set.props.length <= 0) throw new Error("empty_set");
 
-    var color = PD.rules.getSetColor(set.props);
-    if (color === PD.state.NO_COLOR) throw new Error("empty_set");
+    var color = MC.rules.getSetColor(set.props);
+    if (color === MC.state.NO_COLOR) throw new Error("empty_set");
 
     var allowed = def.rentAllowedColors;
     if (allowed && allowed.length) {
@@ -704,11 +704,11 @@ PD.engine.applyCommand = function (state, cmd) {
       if (!ok) throw new Error("rent_color_illegal");
     }
 
-    var amount = PD.rules.rentAmountForSet(state, p, setI);
+    var amount = MC.rules.rentAmountForSet(state, p, setI);
     if (amount <= 0) throw new Error("rent_zero");
 
     // Discard the rent card.
-    PD.engine.removeHandAtLoc(state, card);
+    MC.engine.removeHandAtLoc(state, card);
     state.discard.push(uid);
     events.push({
       kind: "move",
@@ -719,8 +719,8 @@ PD.engine.applyCommand = function (state, cmd) {
     decPlays();
 
     // Trigger debt prompt for the opponent (if they have payables).
-    var payer = PD.rules.otherPlayer(p);
-    PD.state.beginDebt(state, payer, p, amount, { kind: "rent", fromP: p, actionUid: uid });
+    var payer = MC.rules.otherPlayer(p);
+    MC.state.beginDebt(state, payer, p, amount, { kind: "rent", fromP: p, actionUid: uid });
     events.push({ kind: "rent", p: p, setI: setI, color: color, amount: amount });
   }
 
@@ -728,17 +728,17 @@ PD.engine.applyCommand = function (state, cmd) {
     var card = cmdSly.card;
     var target = cmdSly.target;
     if (!card || !card.loc || !target || !target.loc) throw new Error("bad_cmd");
-    if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if (!MC.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
     if (card.loc.p !== p) throw new Error("not_your_card");
 
     var uid = card.uid;
-    var def = PD.state.defByUid(state, uid);
-    if (!def || def.kind !== PD.CardKind.Action || def.actionKind !== PD.ActionKind.SlyDeal) throw new Error("not_sly");
+    var def = MC.state.defByUid(state, uid);
+    if (!def || def.kind !== MC.CardKind.Action || def.actionKind !== MC.ActionKind.SlyDeal) throw new Error("not_sly");
 
     // Validate target is opponent property.
-    var otherP = PD.rules.otherPlayer(p);
+    var otherP = MC.rules.otherPlayer(p);
     var tLoc = target.loc;
-    if (!PD.engine.locEqZone(tLoc, "setProps")) throw new Error("bad_loc");
+    if (!MC.engine.locEqZone(tLoc, "setProps")) throw new Error("bad_loc");
     if (tLoc.p !== otherP) throw new Error("bad_target");
 
     // Validate not from full set.
@@ -746,14 +746,14 @@ PD.engine.applyCommand = function (state, cmd) {
     if (!setsO || tLoc.setI < 0 || tLoc.setI >= setsO.length) throw new Error("bad_set");
     var setO = setsO[tLoc.setI];
     if (!setO || !setO.props) throw new Error("bad_set");
-    var color = PD.rules.getSetColor(setO.props);
-    if (color === PD.state.NO_COLOR) throw new Error("empty_set");
-    var req = PD.SET_RULES[color].requiredSize;
+    var color = MC.rules.getSetColor(setO.props);
+    if (color === MC.state.NO_COLOR) throw new Error("empty_set");
+    var req = MC.SET_RULES[color].requiredSize;
     if (setO.props.length >= req) throw new Error("sly_full_set");
     if (!setO.props[tLoc.i] || setO.props[tLoc.i][0] !== target.uid) throw new Error("bad_loc");
 
     // Discard the action card.
-    PD.engine.removeHandAtLoc(state, card);
+    MC.engine.removeHandAtLoc(state, card);
     state.discard.push(uid);
     events.push({
       kind: "move",
@@ -764,10 +764,10 @@ PD.engine.applyCommand = function (state, cmd) {
     decPlays();
 
     // If defender has JSN, open a response prompt; otherwise resolve immediately.
-    var hasJsn = PD.rules.handHasActionKind(state, otherP, PD.ActionKind.JustSayNo);
+    var hasJsn = MC.rules.handHasActionKind(state, otherP, MC.ActionKind.JustSayNo);
 
     if (hasJsn) {
-      PD.state.setPrompt(state, {
+      MC.state.setPrompt(state, {
         kind: "respondAction",
         p: otherP,
         srcAction: { kind: "slyDeal", fromP: p, actionUid: uid },
@@ -782,8 +782,8 @@ PD.engine.applyCommand = function (state, cmd) {
   }
 
   if (cmd.kind === "endTurn") {
-    if (handP.length > PD.state.HAND_MAX) {
-      PD.state.setPrompt(state, { kind: "discardDown", p: p });
+    if (handP.length > MC.state.HAND_MAX) {
+      MC.state.setPrompt(state, { kind: "discardDown", p: p });
       if (state.prompt) state.prompt.nDiscarded = 0;
       return { events: events };
     }
@@ -803,12 +803,12 @@ PD.engine.applyCommand = function (state, cmd) {
   return { events: events };
 };
 
-PD.engine._pushPlayPropMoves = function (outMoves, state, p, uid, loc, sets) {
-  var def = PD.state.defByUid(state, uid);
-  if (!def || def.kind !== PD.CardKind.Property) return;
+MC.engine._pushPlayPropMoves = function (outMoves, state, p, uid, loc, sets) {
+  var def = MC.state.defByUid(state, uid);
+  if (!def || def.kind !== MC.CardKind.Property) return;
   var cardRef = { uid: uid, loc: loc };
 
-  if (PD.rules.isWildDef(def)) {
+  if (MC.rules.isWildDef(def)) {
     // New set for each allowed color.
     outMoves.push({ kind: "playProp", card: cardRef, dest: { p: p, newSet: true }, color: def.wildColors[0] });
     outMoves.push({ kind: "playProp", card: cardRef, dest: { p: p, newSet: true }, color: def.wildColors[1] });
@@ -816,9 +816,9 @@ PD.engine._pushPlayPropMoves = function (outMoves, state, p, uid, loc, sets) {
     var si;
     for (si = 0; si < sets.length; si++) {
       var set = sets[si];
-      var setColor = PD.rules.getSetColor(set.props);
-      if (setColor === PD.state.NO_COLOR) continue;
-      if (PD.rules.wildAllowsColor(def, setColor)) {
+      var setColor = MC.rules.getSetColor(set.props);
+      if (setColor === MC.state.NO_COLOR) continue;
+      if (MC.rules.wildAllowsColor(def, setColor)) {
         outMoves.push({ kind: "playProp", card: cardRef, dest: { p: p, setI: si }, color: setColor });
       }
     }
@@ -830,16 +830,16 @@ PD.engine._pushPlayPropMoves = function (outMoves, state, p, uid, loc, sets) {
   var sj;
   for (sj = 0; sj < sets.length; sj++) {
     var setJ = sets[sj];
-    var setColorJ = PD.rules.getSetColor(setJ.props);
-    if (setColorJ === PD.state.NO_COLOR) continue;
+    var setColorJ = MC.rules.getSetColor(setJ.props);
+    if (setColorJ === MC.state.NO_COLOR) continue;
     if (setColorJ === c) {
       outMoves.push({ kind: "playProp", card: cardRef, dest: { p: p, setI: sj } });
     }
   }
 };
 
-PD.engine.legalMoves = function (state) {
-  if (state.winnerP !== PD.state.NO_WINNER) return [];
+MC.engine.legalMoves = function (state) {
+  if (state.winnerP !== MC.state.NO_WINNER) return [];
   if (state.prompt) {
     var pr = state.prompt;
     if (pr.kind === "discardDown") {
@@ -882,8 +882,8 @@ PD.engine.legalMoves = function (state) {
         var hj;
         for (hj = 0; hj < handJ.length; hj++) {
           var uidJ = handJ[hj];
-          var defJ = PD.state.defByUid(state, uidJ);
-          if (defJ && defJ.kind === PD.CardKind.Action && defJ.actionKind === PD.ActionKind.JustSayNo) {
+          var defJ = MC.state.defByUid(state, uidJ);
+          if (defJ && defJ.kind === MC.CardKind.Action && defJ.actionKind === MC.ActionKind.JustSayNo) {
             out.push({ kind: "playJustSayNo", card: { uid: uidJ, loc: { p: pPay, zone: "hand", i: hj } } });
           }
         }
@@ -897,8 +897,8 @@ PD.engine.legalMoves = function (state) {
       var hr;
       for (hr = 0; hr < handR.length; hr++) {
         var uidR = handR[hr];
-        var defR = PD.state.defByUid(state, uidR);
-        if (defR && defR.kind === PD.CardKind.Action && defR.actionKind === PD.ActionKind.JustSayNo) {
+        var defR = MC.state.defByUid(state, uidR);
+        if (defR && defR.kind === MC.CardKind.Action && defR.actionKind === MC.ActionKind.JustSayNo) {
           outR.push({ kind: "playJustSayNo", card: { uid: uidR, loc: { p: pR, zone: "hand", i: hr } } });
         }
       }
@@ -913,7 +913,7 @@ PD.engine.legalMoves = function (state) {
       var iR;
       for (iR = 0; iR < uids.length; iR++) {
         var uidR = uids[iR];
-        PD.engine._pushPlayPropMoves(outR, state, pR, uidR, { p: pR, zone: "recvProps", i: iR }, setsR);
+        MC.engine._pushPlayPropMoves(outR, state, pR, uidR, { p: pR, zone: "recvProps", i: iR }, setsR);
       }
       return outR;
     }
@@ -922,21 +922,21 @@ PD.engine.legalMoves = function (state) {
       var outW = [{ kind: "skipReplaceWindow" }];
       var srcSetI = pr.srcSetI;
       var excludeUid = pr.excludeUid;
-      var elig = PD.rules.replaceWindowEligibleWildLocs(state, pW, srcSetI, excludeUid);
+      var elig = MC.rules.replaceWindowEligibleWildLocs(state, pW, srcSetI, excludeUid);
       var iW;
       for (iW = 0; iW < elig.length; iW++) {
         var e = elig[iW];
         if (!e || !e.loc) continue;
         var uidW = e.uid;
-        var defW = PD.state.defByUid(state, uidW);
-        if (!PD.rules.isWildDef(defW)) continue;
+        var defW = MC.state.defByUid(state, uidW);
+        if (!MC.rules.isWildDef(defW)) continue;
 
         var c0 = defW.wildColors[0];
         var c1 = defW.wildColors[1];
         var cardRef = { uid: uidW, loc: e.loc };
 
         function pushMovesForColor(col) {
-          var dests = PD.rules.replaceWindowDestinations(state, pW, srcSetI, col);
+          var dests = MC.rules.replaceWindowDestinations(state, pW, srcSetI, col);
           var di;
           for (di = 0; di < dests.length; di++) {
             outW.push({ kind: "moveWild", card: cardRef, dest: dests[di], color: col });
@@ -965,57 +965,57 @@ PD.engine.legalMoves = function (state) {
   var i;
   for (i = 0; i < hand.length; i++) {
     var uid = hand[i];
-    var def = PD.state.defByUid(state, uid);
+    var def = MC.state.defByUid(state, uid);
     var cardRef = { uid: uid, loc: { p: p, zone: "hand", i: i } };
 
-    if (PD.rules.isBankableDef(def)) {
+    if (MC.rules.isBankableDef(def)) {
       moves.push({ kind: "bank", card: cardRef });
     }
 
-    if (def.kind === PD.CardKind.Property) {
-      PD.engine._pushPlayPropMoves(moves, state, p, uid, cardRef.loc, sets);
-    } else if (def.kind === PD.CardKind.House) {
+    if (def.kind === MC.CardKind.Property) {
+      MC.engine._pushPlayPropMoves(moves, state, p, uid, cardRef.loc, sets);
+    } else if (def.kind === MC.CardKind.House) {
       var sh;
       for (sh = 0; sh < sets.length; sh++) {
         var setH = sets[sh];
         if (setH.houseUid !== 0) continue;
-        var col = PD.rules.getSetColor(setH.props);
-        if (col === PD.state.NO_COLOR) continue;
-        var req = PD.SET_RULES[col].requiredSize;
+        var col = MC.rules.getSetColor(setH.props);
+        if (col === MC.state.NO_COLOR) continue;
+        var req = MC.SET_RULES[col].requiredSize;
         if (setH.props.length >= req) {
           moves.push({ kind: "playHouse", card: cardRef, dest: { p: p, setI: sh } });
         }
       }
-    } else if (def.kind === PD.CardKind.Action && def.actionKind === PD.ActionKind.Rent) {
+    } else if (def.kind === MC.CardKind.Action && def.actionKind === MC.ActionKind.Rent) {
       // Rent: one move per eligible set.
       var allowed = def.rentAllowedColors;
       var siR;
       for (siR = 0; siR < sets.length; siR++) {
         var setR = sets[siR];
         if (!setR || !setR.props || setR.props.length <= 0) continue;
-        var colR = PD.rules.getSetColor(setR.props);
-        if (colR === PD.state.NO_COLOR) continue;
+        var colR = MC.rules.getSetColor(setR.props);
+        if (colR === MC.state.NO_COLOR) continue;
         if (allowed && allowed.length) {
           var ok = false;
           var ai;
           for (ai = 0; ai < allowed.length; ai++) if (allowed[ai] === colR) ok = true;
           if (!ok) continue;
         }
-        var amt = PD.rules.rentAmountForSet(state, p, siR);
+        var amt = MC.rules.rentAmountForSet(state, p, siR);
         if (amt <= 0) continue;
         moves.push({ kind: "playRent", card: cardRef, setI: siR });
       }
-    } else if (def.kind === PD.CardKind.Action && def.actionKind === PD.ActionKind.SlyDeal) {
+    } else if (def.kind === MC.CardKind.Action && def.actionKind === MC.ActionKind.SlyDeal) {
       // Sly Deal: one move per eligible opponent property (not from complete set).
-      var op = PD.rules.otherPlayer(p);
+      var op = MC.rules.otherPlayer(p);
       var setsOp = state.players[op].sets;
       var siS;
       for (siS = 0; siS < setsOp.length; siS++) {
         var setS = setsOp[siS];
         if (!setS || !setS.props || setS.props.length <= 0) continue;
-        var colS = PD.rules.getSetColor(setS.props);
-        if (colS === PD.state.NO_COLOR) continue;
-        var reqS = PD.SET_RULES[colS].requiredSize;
+        var colS = MC.rules.getSetColor(setS.props);
+        if (colS === MC.state.NO_COLOR) continue;
+        var reqS = MC.SET_RULES[colS].requiredSize;
         if (setS.props.length >= reqS) continue;
         var piS;
         for (piS = 0; piS < setS.props.length; piS++) {

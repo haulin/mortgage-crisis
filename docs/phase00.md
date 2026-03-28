@@ -18,11 +18,11 @@ The end result is:
 ## Decisions locked (from interview)
 
 - **Module ordering**: numeric prefixes, lexicographic concat (e.g. `00_`, `01_`, …, `99_`)
-- **Namespace**: a single global `PD` object (`var PD = PD || {};`)
+- **Namespace**: a single global `MC` object (`var MC = MC || {};`)
 - **Generated artifact**: `game.js` is **committed**
-- **Phase 00 runtime**: keep a minimal runnable cartridge entry point (`function TIC() { PD.mainTick(); }`)
+- **Phase 00 runtime**: keep a minimal runnable cartridge entry point (`function TIC() { MC.mainTick(); }`)
 - **Watcher**: no watch mode in Phase 00 (manual build only)
-- **No `import`/`export` in `src/`** (tests will load scripts via Node `vm` and call `PD.*`)
+- **No `import`/`export` in `src/`** (tests will load scripts via Node `vm` and call `MC.*`)
 - **Output debug separators** in `game.js`: yes
 - **Test runner**: Node built-in `node --test`
 - **Phase doc naming**: `docs/phase00.md` (two digits; lexicographic-friendly)
@@ -34,7 +34,7 @@ Phase 00 is done when:
 - `npm run build` generates root `game.js`
 - `game.js` begins with TIC-80 headers:
   - `// script: js`
-  - `// title: Property Deal`
+  - `// title: Mortgage Crisis`
 - `game.js` contains **exactly one** `function TIC()` definition
 - Pasting `game.js` into TIC-80 JS cart runs and shows the boot screen
 - `npm test` passes on your machine
@@ -53,17 +53,17 @@ Add these paths (Phase 00 starts intentionally small; later phases fill these ou
 
 ### 1) One global namespace only
 
-- The prelude defines `var PD = PD || {};`
+- The prelude defines `var MC = MC || {};`
 - All other files must attach to it:
-  - `PD.config = {...}`
-  - `PD.mainTick = function() {...}`
+  - `MC.config = {...}`
+  - `MC.mainTick = function() {...}`
 
-Avoid defining globals like `state`, `ui`, etc. outside `PD`.
+Avoid defining globals like `state`, `ui`, etc. outside `MC`.
 
 ### 2) Only one `TIC()`
 
 - `function TIC()` is defined in exactly one module
-- Everything else is called from there via `PD.*`
+- Everything else is called from there via `MC.*`
 
 ### 3) No ESM syntax in `src/`
 
@@ -95,7 +95,7 @@ Keeping headers out of `src/` prevents accidental duplication.
 1) Begin with TIC-80 header block:
 
 - `// script: js`
-- `// title: Property Deal`
+- `// title: Mortgage Crisis`
 - Optional generated warning line (recommended):
   - `// generated: do not edit by hand (edit src/* instead)`
 
@@ -148,13 +148,13 @@ Not to test gameplay yet—just to validate we can load our code in Node in a wa
 The test should:
 
 - Create a Node `vm` context with:
-  - `PD` initialized (or allow the prelude to initialize it)
+  - `MC` initialized (or allow the prelude to initialize it)
   - stub functions for TIC-80 globals used by boot code:
     - `cls`, `print` (no-op is fine)
 - Load every `src/*.js` (same ordering rule as build) into that context
 - Assert:
-  - `PD` exists
-  - `PD.mainTick` exists and is a function
+  - `MC` exists
+  - `MC.mainTick` exists and is a function
   - `TIC` exists and is a function
 
 This gives us a foundation for future rule-engine tests without requiring ESM exports.

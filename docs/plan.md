@@ -1,6 +1,6 @@
-# Property Deal — Build Plan (MVP1)
+# Mortgage Crisis — Build Plan (MVP1)
 
-This document captures the **shared MVP1 spec** and a **piece-by-piece implementation plan** for building Property Deal (Monopoly Deal–inspired) on **TIC-80 JS**.
+This document captures the **shared MVP1 spec** and a **piece-by-piece implementation plan** for building Mortgage Crisis (Monopoly Deal–inspired) on **TIC-80 JS**.
 
 Documentation convention (for future phases):
 
@@ -25,6 +25,7 @@ Documentation convention (for future phases):
 - **Phase 08 ✅**: Actions + responses: Sly Deal targeting + Just Say No response windows (Sly prompt + Rent-in-payDebt), plus related UI/focus/policy knobs. See `docs/phase08.md`.
 - **Phase 08b ✅**: Low-risk UX tidy-ups: DebugText layout/wrapping, debug Next keeps cursor on Next, moveStress Sly target richness, and hold‑A Sly no-target fallback to Quick/Bank. See `docs/phase08b.md`.
 - **Phase 09 ✅**: Wild replace-window prompt + moveWild targeting (incl. Source-cancel consistency) + eligibility/AI/tests polish. See `docs/phase09.md`.
+- **Phase 09b ✅**: Quick wins: rename to Mortgage Crisis + `MC` namespace, HUD version string, AI prompt prefix (`AI:`), AI debt payment bias toward bank, and disallow Source-only actions.
 
 ### Deferred-items capture (scope creep safety net)
 
@@ -45,8 +46,8 @@ When we decide “this is post‑MVP / Phase 12+”, we must **immediately** cap
 
 ### Naming conventions (codebase)
 
-- **Namespaces / enums**: PascalCase objects (e.g. `PD.ActionKind`, `PD.CardKind`)
-- **Scalar constants**: ALL_CAPS (e.g. `PD.HOUSE_RENT_BONUS`)
+- **Namespaces / enums**: PascalCase objects (e.g. `MC.ActionKind`, `MC.CardKind`)
+- **Scalar constants**: ALL_CAPS (e.g. `MC.HOUSE_RENT_BONUS`)
 - **Functions**: camelCase (avoid baking internal entrypoint names into docs; prefer describing behavior/contracts)
 
 ### Engineering guardrails (cartridge hygiene)
@@ -54,7 +55,7 @@ When we decide “this is post‑MVP / Phase 12+”, we must **immediately** cap
 - **No runtime fallbacks**: avoid `x = x || {}`, `|| []`, “should never happen” defaults in runtime code. Prefer canonical constructors/canonicalizers plus tests.
 - **No runtime shape asserts**: don’t ship “assert shape” helpers in `game.js`; enforce invariants in unit tests.
 - **Numeric coercion**: keep `|0` / `>>>0` localized to TIC-80 draw-call boundary wrappers (e.g. `rectSafe`, `sprSafe`) and deterministic engine/RNG hot spots.
-- **Namespaces**: module namespaces are created once in the prelude; don’t repeat `PD.ui = PD.ui || {}`-style guards in modules.
+- **Namespaces**: module namespaces are created once in the prelude; don’t repeat `MC.ui = MC.ui || {}`-style guards in modules.
 - **Build artifact rule**: after any change in `src/` or `scripts/build.mjs`, run `npm test` and `npm run build` so committed `game.js` stays in sync.
 
 ## Locked MVP1 Rules (Source of Truth)
@@ -250,7 +251,7 @@ Content expansion readiness: In every phase create a system that will allow futu
 - Generate paste-ready `game.js` via a **light build step** (pure concatenation; no runtime deps)
 - Ensure `game.js` includes required TIC-80 headers:
   - `// script: js`
-  - `// title: Property Deal`
+  - `// title: Mortgage Crisis`
   - (Phase 00 complete and validated in TIC-80; details in `docs/phase00.md`.)
 
 ### Phase 01 ✅ — Foundations (data + RNG + state)
@@ -329,7 +330,7 @@ This is a small “in-between” phase to keep the debug/render harness faithful
 
 ### Phase 04 **✅** — UI state machine (controller UX)
 
-- Implement a **UI-owned view state machine** (`PD.ui`) + injected controls (`PD.controls`), with renderer as **display-only**.
+- Implement a **UI-owned view state machine** (`MC.ui`) + injected controls (`MC.controls`), with renderer as **display-only**.
 - **Selection model by zone** (5-row layout retained):
   - opponent hand (inspect only; hidden unless debug)
   - opponent table (inspect only in Phase 04)
@@ -351,7 +352,7 @@ This is a small “in-between” phase to keep the debug/render harness faithful
   - banking shows a preview at the bank-stack drop position
 - **Center row buttons**:
   - `End` (always; legality enforced by rules)
-  - Debug-only: `Step`, `Reset`, `Next` (gated by `PD.config.debug.enabled`)
+  - Debug-only: `Step`, `Reset`, `Next` (gated by `MC.config.debug.enabled`)
 - **Bounded scope**: Phase 04 UI only drives currently-implemented commands:
   - `endTurn`, `bank`, `playProp` (Place), `playHouse` (Build)
   - Rent/SlyDeal/JSN/debt/payment/received-property placement/wild replace-window are deferred to later phases (Phase 05+).
@@ -387,7 +388,7 @@ Quality-of-life (still UX-level; no new rules commands):
   - show a short toast **“Deck ran out. Shuffling”**
   - animate the deck pile underlayers (0/1/2) while input is locked
   - during shuffle, show discard as **empty** and mask the deck count as **empty** until the shuffle finishes
-- Refactor: centralize animation + feedback presentation in `PD.anim` so the renderer stays display-only:
+- Refactor: centralize animation + feedback presentation in `MC.anim` so the renderer stays display-only:
   - renderer consumes `computed` presentation (`nVis/pileLayers`, `computed.animOverlay`, `computed.highlightCol`) and is oblivious to `view.anim` / `view.feedback`
 
 ### Phase 06 **✅** — Debt/payment + “faux-turn placement”
@@ -448,34 +449,54 @@ Done:
 - Offer optional prompt to move exactly 1 Wild if legal (source remains complete)
 - See `docs/phase09.md` for details.
 
-### Phase 10 — Scenarios + dev boot
+### Phase 09b ✅ — Quick wins
 
-- Replace dev-only `Y:Mode` hint/toggle with a proper dev entrypoint (e.g. hidden debug menu) or remove for non-dev builds
-- Implement scenario list and boot selection (e.g., hidden title-screen menu)
+- the project was renamed to Mortgage Crisis, so we should update all references
+- Add real versioning instead of "Phase 09" hardcoded text
+- I don't think I like "Opponent: " prefix for the AI prompts. It is not that important and it is too long. Probably use "AI: "
+- Improve default AI debt payment heuristic to prefer paying from bank before paying properties (when legal), to reduce surprise property transfers
+- When player is out of moves and they attempt to place a card, the only valid destination is source. They no longer get negative feedback about no action possible. If only source is a valid destination then action should be disallowed.
+
+
+### Phase 10 — MVP ready
+
+- Replace dev-only `Y:Mode` hint/toggle with a proper dev entrypoint (e.g. hidden debug menu), hide debug buttons
+- scrolling in the banks shuffle stress scenario is not good
+- Add title screen / main menu - project name, controls list
+- Make a way to return to main menu
+- Add a Rules / How-to-play screen (reachable from boot/title screen) so the game is self-explanatory without external docs
+
+### Phase 11 - Demo ready
+
+- Replace placeholder action icons with larger **~15×15** icons (implemented as a 2×2 sprite block with a colorkey padding row/col to yield an effective 15×15)
+- More exciting animated abstract background; fallback to tiled sprite patterns if per-frame generation is too expensive
+- Add mouse controls (TIC-80 `mouse()`) layered on top of controller UX
+- when starting a game/default scenario, the 5/7 cards on each side are already dealt. We should probably start with the 2x5 draw animation and display a toast with who is starting.
+
+
+### Phase 11 — Post‑Demo
+
 - Seed UX for dev/playtesting:
   - seed **display** (show the current seed so bug reports are reproducible)
   - seed **override** (type/select a seed so a run is replayable)
   - default “release-ish” seeding option (time-based seed from TIC-80 time source)
-- Add a scroll-stress scenario to verify row horizontal scrolling/cameras (e.g. 12 cards in hand + lots of money cards in bank + many property stacks)
-- Add a Rules / How-to-play screen (reachable from boot/title screen) so the game is self-explanatory without external docs
+- AI strategy picker
+- Music / sound effects (TIC-80 `music()` / `sfx()`)
 
-### Phase 11 — Post‑MVP1 content expansion (make it feel like a real game)
+### Phase 11b - Content expansion
 
-- Add more property colors/sets (new `PD.Color` entries + `PD.SET_RULES` + `CARD_DEFS`)
+- Add more property colors/sets (new `MC.Color` entries + `MC.SET_RULES` + `CARD_DEFS`)
 - Expand deck composition (properties/money/actions) while keeping turn UX readable
-- Add additional card types **only once the workflow exists** (so no dead draws). Practical rule of thumb:
-  - After Phase 06 (debt/payment): add 1–2 “pay/select/transfer” actions that reuse that pipeline (e.g. Forced Purchase)
-  - After Phase 07 (actions + responses): add 1–2 action cards that reuse the response window (JSN)
-  - After Phase 09 (replace-window): add 1–2 Wild/board-state manipulation cards that reuse replace eligibility
+- Add additional card types **only once the workflow exists** (so no dead draws).
+  - Wild any property
+  - Pass Go
+  - Forced Purchase
+  - Birthday
+  - Debt Collector
 
 Issues:
-- When player is out of moves and they attempt to place a card, the only valid destination is source. They no longer get negative feedback about no action possible. If only source is a valid destination then action should be disallowed.
-- scrolling in the banks shuffle stress scenario is not good
-- the project was renamed to Mortgage Crisis, so we should update all references
 - action menu should maybe get rendered as a bigger overlay, similar to inspect and not cover buttons
-- I don't think I like "Opponent: " prefix for the AI prompts. It is not that important and it is too long.
 - When we do transfers (paying rent/debt, stealing props, discarding), cards often just “appear” in the destination. Hard to notice. Perhaps animate transfers similarly to dealing/drawing?
-- when starting a game/default scenario, the 5/7 cards on each side are already dealt. We should probably start with the 2x5 draw animation and display a toast with who is starting.
 - Debt: house first does not auto-focus house when another property is selected
 - Unify wording in various prompts and menus, humanize it.
 
@@ -485,19 +506,15 @@ Issues:
 - Continue Inspect overlay polish as needed (still not “big cards”)
 - Reduce scenario list noise: merge `placeBasic` / `wildBasic` / `houseBasic` into a single “Basics” scenario (or otherwise consolidate) - also placeReceived and replace wild.
 - Deferred: Denote complete property sets in the UI (e.g. badge/outline/marker and/or Inspect text “Complete set”) so Sly Deal restrictions are obvious
-- Deferred: Improve default AI debt payment heuristic to prefer paying from bank before paying properties (when legal), to reduce surprise property transfers
 - Deferred: Optional rule/UX: when a House is received via debt payment, allow recipient to place it onto a completed set (instead of always banking it as money)
 - Deferred: When entering `placeReceived` with exactly 1 received property (notably from Sly Deal), auto-enter Place targeting for that card to skip the extra “select received card then A” step
 - Deferred: Consider a general prompt stack once nested prompts expand (e.g. `replaceWindow` nested inside `placeReceived`)
 - Deferred: Add a “Wild Any” property card if it meaningfully improves scenario/test coverage (post‑MVP)
-- Deferred: Re-architecture idea — “capabilities + hooks” registry:
-  - Goal: reduce giant `if/switch` ladders by letting each feature own its rule/UI/AI glue without scattering conditionals across layers.
-  - Approach: define a small feature interface where modules can optionally provide hooks like:
-    - “post-apply” hook (observe events/state transitions and optionally begin a prompt)
-    - “prompt mode” hooks (legal moves while prompting + apply validation for prompt-owned commands)
-    - UI hooks (prompt toast text, prompt input handling, targeting sort policy, auto-focus pick)
-    - AI hook (policy weight/narration extensions; AI already resembles this pattern)
-  - Migration: convert one feature at a time (start with a small prompt-driven feature), keep a generic fallback path for anything not registered.
+- Deferred: Re-architecture idea — “capabilities + hooks” registry (beyond current cmd-profiles):
+  - Goal: reduce giant `if/switch` ladders by making features register behavior instead of scattering conditionals across rules/UI/AI.
+  - Already implemented (partial): cmd-profiles are a table-driven strategy registry for targeting/menu behavior; AI already uses composable policies.
+  - Still missing: a general feature registry for engine/rules hooks (e.g. post-apply prompt triggers) and prompt-mode legality/validation hooks.
+  - Migration: convert one feature at a time and keep a generic fallback for anything not registered.
 - Broader spatially-aware targeting cycle redesign (directionally consistent cycling, improved Up/Down semantics, etc.)
 - Targeting-cycle refactor: directionally consistent L/R ordering across all targeting kinds (Rent/Place/Build/Bank/Sly)
 - Add a red chevron/arrow threat marker option (instead of ghost-only) for respond/target emphasis
@@ -510,23 +527,14 @@ Issues:
 
 ### Phase 13 — Card art + palette polish
 
-- Replace placeholder action icons with larger **~15×15** icons (implemented as a 2×2 sprite block with a colorkey padding row/col to yield an effective 15×15)
 - Money/action card faces: dithered / lighter background treatment (sprite pattern or fast overlay)
 - (Optional, later) implement true “big card” rendering for previews once icons exist for all card types (keeps big-card work dependent on art readiness)
 
-### Phase 14 — Background treatment
-
-- More exciting animated abstract background; fallback to tiled sprite patterns if per-frame generation is too expensive
-
-### Phase 15 — Mouse + audio + extra polish grab-bag
-
-- Add mouse controls (TIC-80 `mouse()`) layered on top of controller UX
-- Music / sound effects (TIC-80 `music()` / `sfx()`)
 
 ## Code organization (durable)
 
 - The source of truth lives in **`src/`** with numeric prefixes for deterministic concatenation order.
-- Module boundaries are enforced via **namespaces** (e.g. `PD.ui`, `PD.render`, `PD.engine`, `PD.rules`) rather than subfolders.
+- Module boundaries are enforced via **namespaces** (e.g. `MC.ui`, `MC.render`, `MC.engine`, `MC.rules`) rather than subfolders.
 - Avoid keeping “exact module map” lists in docs (they go stale); prefer describing layers/contracts and let the codebase + git history show where it lives today.
 
 - `scripts/build.mjs` (Node; generates `game.js`)

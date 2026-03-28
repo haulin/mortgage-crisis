@@ -8,7 +8,7 @@ This phase is intentionally UI-light. It focuses on **state**, **legality**, **c
 
 - **Card identity**: each physical card has a numeric `uid` (internal). Tests/scenarios prefer stable **defIds** from `CARD_DEFS[*].id`.
 - **Engine style**: command application mutates state in place and returns structured `{events}`.
-- **Enums**: colors/kinds use small ints (e.g. `PD.Color.*`).
+- **Enums**: colors/kinds use small ints (e.g. `MC.Color.*`).
 - **Property-in-set representation**: properties in a set are stored as tuples: `[uid, color]`.
   - Sets are **single-color** (derived), but can include Wilds assigned to that color.
   - Set color is derived from its properties (no stored `set.color` field).
@@ -21,8 +21,8 @@ This phase is intentionally UI-light. It focuses on **state**, **legality**, **c
 
 ## Naming conventions
 
-- **Namespaces / enums**: PascalCase objects (e.g. `PD.ActionKind`, `PD.CardKind`)
-- **Scalar constants**: ALL_CAPS (e.g. `PD.HOUSE_RENT_BONUS`)
+- **Namespaces / enums**: PascalCase objects (e.g. `MC.ActionKind`, `MC.CardKind`)
+- **Scalar constants**: ALL_CAPS (e.g. `MC.HOUSE_RENT_BONUS`)
 - **Functions**: camelCase (avoid baking internal entrypoint names into docs; prefer describing behavior/contracts)
 
 ## Scope implemented in code

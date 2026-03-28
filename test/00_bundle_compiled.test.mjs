@@ -49,8 +49,8 @@ test("compiled-style bundle loads in one VM script", async () => {
   const compiled = await buildCompiledSource();
   new vm.Script(compiled, { filename: "compiled:src_bundle.js" }).runInContext(context);
 
-  assert.equal(typeof context.PD, "object");
-  assert.equal(typeof context.PD.mainTick, "function");
+  assert.equal(typeof context.MC, "object");
+  assert.equal(typeof context.MC.mainTick, "function");
   assert.equal(typeof context.TIC, "function");
 });
 

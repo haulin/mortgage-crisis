@@ -1,6 +1,6 @@
-// PD.ai: simple playtest AI (pick among legal moves using deterministic RNG + short narration).
+// MC.ai: simple playtest AI (pick among legal moves using deterministic RNG + short narration).
 
-PD.ai.policies = {
+MC.ai.policies = {
   uniform: {
     id: "uniform",
     weight: function () { return 1; }
@@ -11,8 +11,22 @@ PD.ai.policies = {
     weight: function (state, move) {
       // Soft bias: prefer placing properties into existing sets, but still allow anything.
       // Tuning knob lives in config.
-      var k = PD.config.ai.biasExistingSetK;
+      var k = MC.config.ai.biasExistingSetK;
       if (move && move.kind === "playProp" && move.dest && move.dest.setI != null) return k;
+      return 1;
+    }
+  },
+
+  biasPayDebtFromBank: {
+    id: "biasPayDebtFromBank",
+    weight: function (state, move) {
+      // Phase 09b: prefer paying debts from bank to reduce surprise property transfers.
+      // Tuning knob lives in config.
+      var k = MC.config.ai.biasPayDebtFromBankK;
+      if (!move || move.kind !== "payDebt") return 1;
+      if (!(k > 1)) k = 1;
+      var loc = (move.card && move.card.loc) ? move.card.loc : null;
+      if (loc && loc.zone === "bank") return k;
       return 1;
     }
   },
@@ -22,7 +36,7 @@ PD.ai.policies = {
     weight: function (state, move) {
       // Soft bias: prefer asking for rent rather than banking the Rent card.
       // Tuning knob lives in config.
-      var k = PD.config.ai.biasPlayRentK;
+      var k = MC.config.ai.biasPlayRentK;
       if (move && move.kind === "playRent") return k;
       return 1;
     }
@@ -33,7 +47,7 @@ PD.ai.policies = {
     weight: function (state, move) {
       // Soft bias: prefer canceling negative actions when a response window exists.
       // Tuning knob lives in config.
-      var k = PD.config.ai.biasPlayJustSayNoK;
+      var k = MC.config.ai.biasPlayJustSayNoK;
       if (move && move.kind === "playJustSayNo") return k;
       return 1;
     }
@@ -45,7 +59,7 @@ PD.ai.policies = {
       // Phase 09: simple heuristic for replace-window Wild repositioning.
       // Prefer moves that complete a set, then maximize rent delta on existing sets.
       // Tuning knob lives in config.
-      var k = PD.config.ai.biasMoveWildK;
+      var k = MC.config.ai.biasMoveWildK;
       if (!move || move.kind !== "moveWild") return 1;
       if (!(k > 1)) k = 1;
 
@@ -64,9 +78,9 @@ PD.ai.policies = {
       var set = sets[setI];
       if (!set || !set.props || set.props.length <= 0) return 1;
 
-      var color = PD.rules.getSetColor(set.props);
-      if (color === PD.state.NO_COLOR) return 1;
-      var rules = PD.SET_RULES[color];
+      var color = MC.rules.getSetColor(set.props);
+      if (color === MC.state.NO_COLOR) return 1;
+      var rules = MC.SET_RULES[color];
       if (!rules || !(rules.requiredSize > 0)) return 1;
       var req = rules.requiredSize;
 
@@ -75,8 +89,8 @@ PD.ai.policies = {
       var completes = (nAfterUncapped >= req);
 
       // Compute rent before/after (rent caps at required size).
-      var rentBefore = PD.rules.rentAmountForSet(state, p, setI);
-      var rentAfter = PD.rules.rentAmountForColorCount(color, nAfterUncapped, !!set.houseUid);
+      var rentBefore = MC.rules.rentAmountForSet(state, p, setI);
+      var rentAfter = MC.rules.rentAmountForColorCount(color, nAfterUncapped, !!set.houseUid);
 
       var delta = rentAfter - rentBefore;
       if (completes) return k * 20;
@@ -86,14 +100,14 @@ PD.ai.policies = {
   }
 };
 
-PD.ai.composePolicies = function (id, policyIds) {
+MC.ai.composePolicies = function (id, policyIds) {
   // Compose policies by multiplying their weights.
   // Contract: each component policy weight is a positive number (1 means neutral).
   var parts = [];
   var i;
   for (i = 0; i < policyIds.length; i++) {
     var pid = policyIds[i];
-    var p = PD.ai.policies[pid];
+    var p = MC.ai.policies[pid];
     if (!p) throw new Error("ai_unknown_policy:" + String(pid));
     parts.push(p);
   }
@@ -108,18 +122,19 @@ PD.ai.composePolicies = function (id, policyIds) {
   };
 };
 
-PD.ai.policies.defaultHeuristic = PD.ai.composePolicies("defaultHeuristic", [
+MC.ai.policies.defaultHeuristic = MC.ai.composePolicies("defaultHeuristic", [
   "biasExistingSet",
+  "biasPayDebtFromBank",
   "biasPlayRent",
   "biasPlayJustSayNo",
   "biasMoveWild"
 ]);
 
-PD.ai.pickMove = function (state, moves, policy) {
+MC.ai.pickMove = function (state, moves, policy) {
   if (!moves || moves.length === 0) return null;
 
   // Fallback to uniform if policy is missing (should be caught by tests).
-  var pol = policy || PD.ai.policies.uniform;
+  var pol = policy || MC.ai.policies.uniform;
 
   var weights = [];
   var total = 0;
@@ -134,11 +149,11 @@ PD.ai.pickMove = function (state, moves, policy) {
 
   // Safety: if a policy produces all-zero weights, fall back to uniform.
   if (!(total > 0)) {
-    var idxU = PD.rng.nextIntInState(state, moves.length);
+    var idxU = MC.rng.nextIntInState(state, moves.length);
     return moves[idxU];
   }
 
-  var r = PD.rng.nextIntInState(state, total);
+  var r = MC.rng.nextIntInState(state, total);
   var acc = 0;
   for (i = 0; i < moves.length; i++) {
     acc += weights[i];
@@ -149,43 +164,43 @@ PD.ai.pickMove = function (state, moves, policy) {
   return moves[moves.length - 1];
 };
 
-PD.ai.policyForP = function (p) {
-  return PD.ai.policies[PD.config.ai.policyByP[p]];
+MC.ai.policyForP = function (p) {
+  return MC.ai.policies[MC.config.ai.policyByP[p]];
 };
 
-PD.ai.actor = function (state) {
+MC.ai.actor = function (state) {
   var pr = state.prompt;
   if (pr && pr.p != null) return pr.p;
   return state.activeP;
 };
 
-PD.ai.pickRandomLegalMove = function (state) {
-  var moves = PD.engine.legalMoves(state);
+MC.ai.pickRandomLegalMove = function (state) {
+  var moves = MC.engine.legalMoves(state);
   if (!moves || moves.length === 0) return null;
-  var p = PD.ai.actor(state);
-  var policy = PD.ai.policyForP(p);
-  return PD.ai.pickMove(state, moves, policy);
+  var p = MC.ai.actor(state);
+  var policy = MC.ai.policyForP(p);
+  return MC.ai.pickMove(state, moves, policy);
 };
 
-PD.ai.describeCmd = function (state, cmd) {
+MC.ai.describeCmd = function (state, cmd) {
   if (!cmd || !cmd.kind) return "";
   var k = String(cmd.kind);
-  if (k === "endTurn") return "Opponent: End turn";
-  if (k === "bank") return "Opponent: Bank";
-  if (k === "playRent") return "Opponent: Rent";
-  if (k === "playSlyDeal") return "Opponent: Sly Deal";
-  if (k === "respondPass") return "Opponent: Allow";
-  if (k === "playJustSayNo") return "Opponent: Just Say No";
-  if (k === "skipReplaceWindow") return "Opponent: Skip";
-  if (k === "moveWild") return "Opponent: Move Wild";
-  if (k === "playHouse") return "Opponent: Build";
+  if (k === "endTurn") return "AI: End turn";
+  if (k === "bank") return "AI: Bank";
+  if (k === "playRent") return "AI: Rent";
+  if (k === "playSlyDeal") return "AI: Sly Deal";
+  if (k === "respondPass") return "AI: Allow";
+  if (k === "playJustSayNo") return "AI: Just Say No";
+  if (k === "skipReplaceWindow") return "AI: Skip";
+  if (k === "moveWild") return "AI: Move Wild";
+  if (k === "playHouse") return "AI: Build";
   if (k === "playProp") {
-    var dl = PD.fmt.destLabelForCmd(state, cmd);
-    return dl ? ("Opponent: Place -> " + dl) : "Opponent: Place";
+    var dl = MC.fmt.destLabelForCmd(state, cmd);
+    return dl ? ("AI: Place -> " + dl) : "AI: Place";
   }
-  if (k === "payDebt") return "Opponent: Pay";
-  if (k === "discard") return "Opponent: Discard";
-  if (k === "cancelPrompt") return "Opponent: Cancel";
-  return "Opponent: " + k;
+  if (k === "payDebt") return "AI: Pay";
+  if (k === "discard") return "AI: Discard";
+  if (k === "cancelPrompt") return "AI: Cancel";
+  return "AI: " + k;
 };
 

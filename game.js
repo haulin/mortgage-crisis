@@ -1,48 +1,53 @@
 // script: js
-// title: Property Deal
-// saveid: PropertyDeal
+// title: Mortgage Crisis
+// saveid: MortgageCrisis
 // generated: do not edit by hand (edit src/* instead)
 // ---- src/00_prelude.js ----
-// Prelude: initialize the global `PD` namespace and module namespaces exactly once.
-// Invariant: other modules attach to these objects (no defensive `PD.x = PD.x || {}`).
-var PD = PD || {};
+// Prelude: initialize the global `MC` namespace and module namespaces exactly once.
+// Invariant: other modules attach to these objects (no defensive `MC.x = MC.x || {}`).
+var MC = MC || {};
 
 // Module namespaces: created once here, never defensively elsewhere.
-PD.controls = {};
-PD.render = {};
-PD.ui = {};
-PD.anim = {};
-PD.fmt = {};
-PD.layout = {};
-PD.moves = {};
-PD.cmd = {};
-PD.cmdProfiles = {};
-PD.ai = {};
-PD.state = {};
-PD.engine = {};
-PD.rules = {};
-PD.util = {};
-PD.shuffle = {};
-PD.rng = {};
-PD.seed = {};
-PD.scenarios = {};
-PD.debug = {};
+MC.controls = {};
+MC.render = {};
+MC.ui = {};
+MC.anim = {};
+MC.fmt = {};
+MC.layout = {};
+MC.moves = {};
+MC.cmd = {};
+MC.cmdProfiles = {};
+MC.ai = {};
+MC.state = {};
+MC.engine = {};
+MC.rules = {};
+MC.util = {};
+MC.shuffle = {};
+MC.rng = {};
+MC.seed = {};
+MC.scenarios = {};
+MC.debug = {};
 
 // ---- src/05_config.js ----
-// PD.config: central gameplay/UI/render tuning knobs (validated in tests; avoid runtime fallbacks).
-PD.config = {
+// MC.config: central gameplay/UI/render tuning knobs (validated in tests; avoid runtime fallbacks).
+MC.config = {
   screenW: 240,
   screenH: 136,
   seedBase: 1001
 };
 
+// Meta/version display (Phase 09b).
+MC.config.meta = {
+  version: "v0.9b"
+};
+
 // Debug/dev knobs (Phase 03b+). Keep these centralized so we can disable later.
-PD.config.debug = {
+MC.config.debug = {
   enabled: true
 };
 
 // Controller UX knobs (Phase 04+). All values are in frames (TIC runs at 60fps).
-PD.config.controls = {
+MC.config.controls = {
   // D-pad repeat: start repeating after delay, then pulse every period.
   dpadRepeatDelayFrames: 12,
   dpadRepeatPeriodFrames: 4,
@@ -56,9 +61,9 @@ PD.config.controls = {
 };
 
 // UI/navigation tuning (Phase 04+).
-PD.config.ui = {
+MC.config.ui = {
   // Directional navigation cone penalty multiplier (per-axis):
-  // used by PD.ui.navPickInDirection scoring:
+  // used by MC.ui.navPickInDirection scoring:
   // score = along^2 + (perp^2)*k
   //
   // Bigger k => narrower cone (harder to jump across rows/columns).
@@ -87,13 +92,17 @@ PD.config.ui = {
 };
 
 // AI policy knobs (Phase 07+).
-PD.config.ai = {
+MC.config.ai = {
   // Per-player policy IDs (0=player, 1=opponent by default).
   policyByP: ["defaultHeuristic", "defaultHeuristic"],
 
   // Weight multiplier for "place property into an existing set" moves.
   // 1 means no bias (equivalent to uniform random).
   biasExistingSetK: 8,
+
+  // Phase 09b: soft bias toward paying debts from bank before transferring properties.
+  // 1 means no bias (equivalent to uniform random).
+  biasPayDebtFromBankK: 8,
 
   // Weight multiplier for "play Rent" moves (bias asking for rent over banking Rent).
   // 1 means no bias (equivalent to uniform random).
@@ -109,7 +118,7 @@ PD.config.ai = {
 };
 
 // Rule-note IDs (Phase 05+). These are small display-only annotations in Inspect.
-PD.RuleNote = {
+MC.RuleNote = {
   // MVP1 rule constraints.
   SlyDeal_NotFromFullSet: 1,
 
@@ -119,17 +128,17 @@ PD.RuleNote = {
 };
 
 // Rules display knobs (Phase 05+).
-PD.config.rules = {
+MC.config.rules = {
   // List of enabled RuleNote IDs to show in Inspect.
   // Note: keep this intentionally small; it's easy to mislead players with future-rule text.
   enabledRuleNotes: [
-    PD.RuleNote.SlyDeal_NotFromFullSet
+    MC.RuleNote.SlyDeal_NotFromFullSet
   ]
 };
 
 // TIC-80 default palette is Sweetie-16.
 // These are palette *indices* (0..15), not RGB values.
-PD.Pal = {
+MC.Pal = {
   Black: 0,       // #1a1c2c
   Purple: 1,      // #5d275d
   Red: 2,         // #b13e53
@@ -148,11 +157,11 @@ PD.Pal = {
   DarkGrey: 15,   // #333c57
 };
 
-PD.config.render = {
+MC.config.render = {
   // Layout knobs: geometry + positions.
   layout: {
-    screenW: PD.config.screenW,
-    screenH: PD.config.screenH,
+    screenW: MC.config.screenW,
+    screenH: MC.config.screenH,
 
     // Row bands (0-based, inclusive bounds are derived).
     rowY: [0, 12, 39, 82, 109],
@@ -241,30 +250,30 @@ PD.config.render = {
     iconY: 9,
 
     // Colors (Sweetie-16 indices).
-    colBg: PD.Pal.Black,
-    colText: PD.Pal.White,
-    colCardBorder: PD.Pal.White,
-    colCardInterior: PD.Pal.White,
-    colShadow: PD.Pal.Black,
-    colHighlight: PD.Pal.Yellow,
-    colCenterPanel: PD.Pal.DarkBlue,
-    colCenterPanelBorder: PD.Pal.White,
-    colValuePatch: PD.Pal.White,
-    colValuePatchBorder: PD.Pal.Black,
-    hudLineCol: PD.Pal.White,
-    colToastBgAi: PD.Pal.DarkBlue,
+    colBg: MC.Pal.Black,
+    colText: MC.Pal.White,
+    colCardBorder: MC.Pal.White,
+    colCardInterior: MC.Pal.White,
+    colShadow: MC.Pal.Black,
+    colHighlight: MC.Pal.Yellow,
+    colCenterPanel: MC.Pal.DarkBlue,
+    colCenterPanelBorder: MC.Pal.White,
+    colValuePatch: MC.Pal.White,
+    colValuePatchBorder: MC.Pal.Black,
+    hudLineCol: MC.Pal.White,
+    colToastBgAi: MC.Pal.DarkBlue,
 
     // Center pile depth outlines (Phase 03b polish)
-    pileShadowOutlineCol: PD.Pal.Black,
+    pileShadowOutlineCol: MC.Pal.Black,
     // Under-layer outline colors (screen-space depth):
     // - under1: the closer (smaller offset) layer
     // - under2: the deeper (larger offset) layer
     // Deeper is intentionally darker.
-    pileOutlineUnder1Col: PD.Pal.LightGrey,
-    pileOutlineUnder2Col: PD.Pal.Grey,
+    pileOutlineUnder1Col: MC.Pal.LightGrey,
+    pileOutlineUnder2Col: MC.Pal.Grey,
 
     // Inspect panel colors (Phase 05).
-    inspectPanelFillCol: PD.Pal.DarkGreen,
+    inspectPanelFillCol: MC.Pal.DarkGreen,
 
     // Deck/Discard pile count digit offset (Phase 05).
     pileCountDx: 1,
@@ -292,42 +301,42 @@ PD.config.render = {
   // Money/value palette mapping from docs/session01.md: 1→4, 2→2, 3→5, 4→10, 5→1
   moneyBgByValue: [
     0,
-    PD.Pal.Yellow,     // 1
-    PD.Pal.Red,        // 2
-    PD.Pal.LightGreen, // 3
-    PD.Pal.LightBlue,  // 4
-    PD.Pal.Purple      // 5
+    MC.Pal.Yellow,     // 1
+    MC.Pal.Red,        // 2
+    MC.Pal.LightGreen, // 3
+    MC.Pal.LightBlue,  // 4
+    MC.Pal.Purple      // 5
   ]
 };
 
 // ---- src/10_util.js ----
-// PD.util: shared tiny utilities (pure helpers; no TIC-80 API usage).
+// MC.util: shared tiny utilities (pure helpers; no TIC-80 API usage).
 
-PD.util.bankValueTotal = function (state, p) {
+MC.util.bankValueTotal = function (state, p) {
   var bank = state.players[p].bank;
   var sum = 0;
   var i;
   for (i = 0; i < bank.length; i++) {
     var uid = bank[i];
     var di = state.uidToDefI[uid];
-    var def = PD.CARD_DEFS[di];
+    var def = MC.CARD_DEFS[di];
     if (def && def.bankValue) sum += def.bankValue;
   }
   return sum;
 };
 
 // ---- src/15_rng.js ----
-// PD.rng: deterministic PRNG helpers (bitwise coercion stays localized here).
-PD.rng.u32 = function (n) {
+// MC.rng: deterministic PRNG helpers (bitwise coercion stays localized here).
+MC.rng.u32 = function (n) {
   return (n >>> 0);
 };
 
-PD.rng.u32NonZero = function (n) {
+MC.rng.u32NonZero = function (n) {
   var x = (n >>> 0);
   return x ? x : 1;
 };
 
-PD.rng.xorshift32Step = function (sU32) {
+MC.rng.xorshift32Step = function (sU32) {
   var x = sU32 >>> 0;
   if (!x) x = 1;
   x ^= x << 13;
@@ -338,43 +347,43 @@ PD.rng.xorshift32Step = function (sU32) {
   return x >>> 0;
 };
 
-PD.rng.RNG = function (seedU32) {
-  this.s = PD.rng.u32NonZero(seedU32);
+MC.rng.RNG = function (seedU32) {
+  this.s = MC.rng.u32NonZero(seedU32);
 };
 
 // Standalone RNG instances (handy for tests/utilities; separate from RNG-in-state).
-PD.rng.RNG.prototype.nextU32 = function () {
-  this.s = PD.rng.xorshift32Step(this.s >>> 0);
+MC.rng.RNG.prototype.nextU32 = function () {
+  this.s = MC.rng.xorshift32Step(this.s >>> 0);
   return this.s >>> 0;
 };
 
-PD.rng.RNG.prototype.nextInt = function (n) {
+MC.rng.RNG.prototype.nextInt = function (n) {
   n = n | 0;
   if (n <= 0) return 0;
   return (this.nextU32() % n) | 0;
 };
 
 // RNG-in-state helpers (store evolving state in `state.rngS`).
-PD.rng.nextU32InState = function (state) {
-  state.rngS = PD.rng.xorshift32Step(state.rngS >>> 0);
+MC.rng.nextU32InState = function (state) {
+  state.rngS = MC.rng.xorshift32Step(state.rngS >>> 0);
   return state.rngS >>> 0;
 };
 
-PD.rng.nextIntInState = function (state, n) {
+MC.rng.nextIntInState = function (state, n) {
   n = n | 0;
   if (n <= 0) return 0;
-  return (PD.rng.nextU32InState(state) % n) | 0;
+  return (MC.rng.nextU32InState(state) % n) | 0;
 };
 
 // ---- src/20_seed.js ----
-// PD.seed: seed policy for deterministic runs (dev-friendly, reproducible).
-PD.seed.computeSeedU32 = function () {
-  return PD.rng.u32NonZero(PD.config.seedBase);
+// MC.seed: seed policy for deterministic runs (dev-friendly, reproducible).
+MC.seed.computeSeedU32 = function () {
+  return MC.rng.u32NonZero(MC.config.seedBase);
 };
 
 // ---- src/25_controls.js ----
-// PD.controls: input state machine (injected/pollable controls with repeat + hold/tap detection).
-PD.controls.newState = function () {
+// MC.controls: input state machine (injected/pollable controls with repeat + hold/tap detection).
+MC.controls.newState = function () {
   return {
     frame: 0,
 
@@ -396,7 +405,7 @@ PD.controls.newState = function () {
   };
 };
 
-PD.controls.pollGlobals = function () {
+MC.controls.pollGlobals = function () {
   var down = [false, false, false, false, false, false, false, false];
   var pressed = [false, false, false, false, false, false, false, false];
 
@@ -411,9 +420,9 @@ PD.controls.pollGlobals = function () {
   return { down: down, pressed: pressed };
 };
 
-PD.controls.actions = function (st, raw, cfg) {
-  if (!st) st = PD.controls.newState();
-  // Contract: caller provides {down[8], pressed[8]} and cfg from PD.config.controls.
+MC.controls.actions = function (st, raw, cfg) {
+  if (!st) st = MC.controls.newState();
+  // Contract: caller provides {down[8], pressed[8]} and cfg from MC.config.controls.
   var down = raw.down;
   var pressed = raw.pressed;
 
@@ -534,8 +543,8 @@ PD.controls.actions = function (st, raw, cfg) {
 };
 
 // ---- src/30_shuffle.js ----
-// PD.shuffle: deterministic shuffling helpers (seeded RNG / state RNG).
-PD.shuffle.byNextInt = function (arr, nextInt) {
+// MC.shuffle: deterministic shuffling helpers (seeded RNG / state RNG).
+MC.shuffle.byNextInt = function (arr, nextInt) {
   var i;
   for (i = arr.length - 1; i > 0; i--) {
     var j = nextInt(i + 1);
@@ -546,69 +555,69 @@ PD.shuffle.byNextInt = function (arr, nextInt) {
   return arr;
 };
 
-PD.shuffle.inPlaceWithRng = function (arr, rng) {
-  return PD.shuffle.byNextInt(arr, function (n) { return rng.nextInt(n); });
+MC.shuffle.inPlaceWithRng = function (arr, rng) {
+  return MC.shuffle.byNextInt(arr, function (n) { return rng.nextInt(n); });
 };
 
-PD.shuffle.inPlaceWithStateRng = function (state, arr) {
-  return PD.shuffle.byNextInt(arr, function (n) { return PD.rng.nextIntInState(state, n); });
+MC.shuffle.inPlaceWithStateRng = function (state, arr) {
+  return MC.shuffle.byNextInt(arr, function (n) { return MC.rng.nextIntInState(state, n); });
 };
 
 // ---- src/35_defs.js ----
 // Card/game definitions: enums + static data tables (treated as read-only).
-PD.Color = {
+MC.Color = {
   Cyan: 0,
   Magenta: 1,
   Orange: 2,
   Black: 3,
 };
 
-PD.CardKind = {
+MC.CardKind = {
   Money: 0,
   Action: 1,
   Property: 2,
   House: 3,
 };
 
-PD.ActionKind = {
+MC.ActionKind = {
   Rent: 0,
   SlyDeal: 1,
   JustSayNo: 2,
 };
 
 // Rule note display text (Phase 05+). These are appended in Inspect when enabled by config.
-PD.ruleNoteTextById = [];
-PD.ruleNoteTextById[PD.RuleNote.SlyDeal_NotFromFullSet] = "(Cannot be part of a full set)";
-PD.ruleNoteTextById[PD.RuleNote.House_StationsUtilities] = "(Except stations & utilities)";
-PD.ruleNoteTextById[PD.RuleNote.JSN_Chain] = "(You can say No to a No)";
+MC.ruleNoteTextById = [];
+MC.ruleNoteTextById[MC.RuleNote.SlyDeal_NotFromFullSet] = "(Cannot be part of a full set)";
+MC.ruleNoteTextById[MC.RuleNote.House_StationsUtilities] = "(Except stations & utilities)";
+MC.ruleNoteTextById[MC.RuleNote.JSN_Chain] = "(You can say No to a No)";
 
-PD.SET_RULES = [];
-PD.SET_RULES[PD.Color.Cyan] = {
+MC.SET_RULES = [];
+MC.SET_RULES[MC.Color.Cyan] = {
   requiredSize: 2,
   rent: [1, 3],
 };
-PD.SET_RULES[PD.Color.Magenta] = {
+MC.SET_RULES[MC.Color.Magenta] = {
   requiredSize: 3,
   rent: [1, 2, 4],
 };
-PD.SET_RULES[PD.Color.Orange] = {
+MC.SET_RULES[MC.Color.Orange] = {
   requiredSize: 3,
   rent: [2, 3, 5],
 };
-PD.SET_RULES[PD.Color.Black] = {
+MC.SET_RULES[MC.Color.Black] = {
   requiredSize: 4,
   rent: [1, 2, 3, 6],
 };
 
-PD.HOUSE_RENT_BONUS = 3;
+MC.HOUSE_RENT_BONUS = 3;
 
-PD.CARD_DEFS = [
+MC.CARD_DEFS = [
   // Money (10)
   {
     id: "money_1",
     name: "Money",
     desc: "Spend to pay debts.\nBank as money.",
-    kind: PD.CardKind.Money,
+    kind: MC.CardKind.Money,
     count: 3,
     bankValue: 1,
   },
@@ -616,7 +625,7 @@ PD.CARD_DEFS = [
     id: "money_2",
     name: "Money",
     desc: "Spend to pay debts.\nBank as money.",
-    kind: PD.CardKind.Money,
+    kind: MC.CardKind.Money,
     count: 3,
     bankValue: 2,
   },
@@ -624,7 +633,7 @@ PD.CARD_DEFS = [
     id: "money_3",
     name: "Money",
     desc: "Spend to pay debts.\nBank as money.",
-    kind: PD.CardKind.Money,
+    kind: MC.CardKind.Money,
     count: 2,
     bankValue: 3,
   },
@@ -632,7 +641,7 @@ PD.CARD_DEFS = [
     id: "money_4",
     name: "Money",
     desc: "Spend to pay debts.\nBank as money.",
-    kind: PD.CardKind.Money,
+    kind: MC.CardKind.Money,
     count: 1,
     bankValue: 4,
   },
@@ -640,7 +649,7 @@ PD.CARD_DEFS = [
     id: "money_5",
     name: "Money",
     desc: "Spend to pay debts.\nBank as money.",
-    kind: PD.CardKind.Money,
+    kind: MC.CardKind.Money,
     count: 1,
     bankValue: 5,
   },
@@ -650,54 +659,54 @@ PD.CARD_DEFS = [
     id: "prop_cyan",
     name: "Property Cyan",
     desc: "Full set: 2 required.\nRent for 1 property: $1\nRent for 2 properties: $3",
-    kind: PD.CardKind.Property,
+    kind: MC.CardKind.Property,
     count: 2,
-    propertyColor: PD.Color.Cyan,
+    propertyColor: MC.Color.Cyan,
     propertyPayValue: 3,
   },
   {
     id: "prop_magenta",
     name: "Property Magenta",
     desc: "Full set: 3 required.\nRent for 1 property: $1\nRent for 2 properties: $2\nRent for 3 properties: $4",
-    kind: PD.CardKind.Property,
+    kind: MC.CardKind.Property,
     count: 3,
-    propertyColor: PD.Color.Magenta,
+    propertyColor: MC.Color.Magenta,
     propertyPayValue: 2,
   },
   {
     id: "prop_orange",
     name: "Property Orange",
     desc: "Full set: 3 required.\nRent for 1 property: $2\nRent for 2 properties: $3\nRent for 3 properties: $5",
-    kind: PD.CardKind.Property,
+    kind: MC.CardKind.Property,
     count: 3,
-    propertyColor: PD.Color.Orange,
+    propertyColor: MC.Color.Orange,
     propertyPayValue: 2,
   },
   {
     id: "prop_black",
     name: "Property Black",
     desc: "Full set: 4 required.\nRent for 1 property: $1\nRent for 2 properties: $2\nRent for 3 properties: $3\nRent for 4 properties: $6",
-    kind: PD.CardKind.Property,
+    kind: MC.CardKind.Property,
     count: 4,
-    propertyColor: PD.Color.Black,
+    propertyColor: MC.Color.Black,
     propertyPayValue: 1,
   },
   {
     id: "wild_mo",
     name: "Wild Magenta/Orange",
     desc: "Orange rent: $2/$3/$5\nMagenta rent: $1/$2/$4",
-    kind: PD.CardKind.Property,
+    kind: MC.CardKind.Property,
     count: 1,
-    wildColors: [PD.Color.Magenta, PD.Color.Orange],
+    wildColors: [MC.Color.Magenta, MC.Color.Orange],
     propertyPayValue: 2,
   },
   {
     id: "wild_cb",
     name: "Wild Cyan/Black",
     desc: "Cyan rent: $1/$3\nBlack rent: $1/$2/$3/$6",
-    kind: PD.CardKind.Property,
+    kind: MC.CardKind.Property,
     count: 1,
-    wildColors: [PD.Color.Cyan, PD.Color.Black],
+    wildColors: [MC.Color.Cyan, MC.Color.Black],
     propertyPayValue: 2,
   },
 
@@ -706,10 +715,10 @@ PD.CARD_DEFS = [
     id: "house",
     name: "House",
     desc: "Action card. Add onto any\nfull set you own to add\n$3 to the rent value.",
-    kind: PD.CardKind.House,
+    kind: MC.CardKind.House,
     count: 2,
     bankValue: 3,
-    ruleNotes: [PD.RuleNote.House_StationsUtilities]
+    ruleNotes: [MC.RuleNote.House_StationsUtilities]
   },
 
   // Actions (9)
@@ -717,28 +726,28 @@ PD.CARD_DEFS = [
     id: "rent_mo",
     name: "Rent Magenta/Orange",
     desc: "Action card. Your opponent\npays you rent for your\nMagenta or Orange sets.\n(Play into center to use)",
-    kind: PD.CardKind.Action,
-    actionKind: PD.ActionKind.Rent,
+    kind: MC.CardKind.Action,
+    actionKind: MC.ActionKind.Rent,
     count: 2,
     bankValue: 1,
-    rentAllowedColors: [PD.Color.Magenta, PD.Color.Orange],
+    rentAllowedColors: [MC.Color.Magenta, MC.Color.Orange],
   },
   {
     id: "rent_cb",
     name: "Rent Cyan/Black",
     desc: "Action card. Your opponent\npays you rent for your\nCyan or Black sets.\n(Play into center to use)",
-    kind: PD.CardKind.Action,
-    actionKind: PD.ActionKind.Rent,
+    kind: MC.CardKind.Action,
+    actionKind: MC.ActionKind.Rent,
     count: 2,
     bankValue: 1,
-    rentAllowedColors: [PD.Color.Cyan, PD.Color.Black],
+    rentAllowedColors: [MC.Color.Cyan, MC.Color.Black],
   },
   {
     id: "rent_any",
     name: "Rent Any",
     desc: "Action card. Your opponent\npays you rent for one set\nof your choice.\n(Play into center to use)",
-    kind: PD.CardKind.Action,
-    actionKind: PD.ActionKind.Rent,
+    kind: MC.CardKind.Action,
+    actionKind: MC.ActionKind.Rent,
     count: 1,
     bankValue: 1,
     rentAllowedColors: null,
@@ -747,47 +756,47 @@ PD.CARD_DEFS = [
     id: "sly_deal",
     name: "Sly Deal",
     desc: "Action card. Steal 1 property\nfrom your opponent.\n(Play into center to use)",
-    kind: PD.CardKind.Action,
-    actionKind: PD.ActionKind.SlyDeal,
+    kind: MC.CardKind.Action,
+    actionKind: MC.ActionKind.SlyDeal,
     count: 2,
     bankValue: 3,
-    ruleNotes: [PD.RuleNote.SlyDeal_NotFromFullSet]
+    ruleNotes: [MC.RuleNote.SlyDeal_NotFromFullSet]
   },
   {
     id: "just_say_no",
     name: "Just Say No",
     desc: "Action card. Use any time\nwhen an action is played\nagainst you.\n(Play into center to use)",
-    kind: PD.CardKind.Action,
-    actionKind: PD.ActionKind.JustSayNo,
+    kind: MC.CardKind.Action,
+    actionKind: MC.ActionKind.JustSayNo,
     count: 2,
     bankValue: 4,
-    ruleNotes: [PD.RuleNote.JSN_Chain]
+    ruleNotes: [MC.RuleNote.JSN_Chain]
   },
 ];
 
-PD.DEF_INDEX_BY_ID = {};
+MC.DEF_INDEX_BY_ID = {};
 (function initDefIndexById() {
   var i;
-  for (i = 0; i < PD.CARD_DEFS.length; i++) {
-    var id = PD.CARD_DEFS[i].id;
-    if (PD.DEF_INDEX_BY_ID[id] != null) {
+  for (i = 0; i < MC.CARD_DEFS.length; i++) {
+    var id = MC.CARD_DEFS[i].id;
+    if (MC.DEF_INDEX_BY_ID[id] != null) {
       throw new Error("duplicate card def id: " + id);
     }
-    PD.DEF_INDEX_BY_ID[id] = i;
+    MC.DEF_INDEX_BY_ID[id] = i;
   }
 })();
 
 // ---- src/40_state.js ----
-// PD.state: game state constructors + uid bookkeeping + prompt helpers (no UI/render).
-PD.state.NO_COLOR = -1;
-PD.state.NO_WINNER = -1;
-PD.state.HAND_MAX = 7;
+// MC.state: game state constructors + uid bookkeeping + prompt helpers (no UI/render).
+MC.state.NO_COLOR = -1;
+MC.state.NO_WINNER = -1;
+MC.state.HAND_MAX = 7;
 
-PD.state.clearPrompt = function (state) {
+MC.state.clearPrompt = function (state) {
   state.prompt = null;
 };
 
-PD.state.setPrompt = function (state, prompt) {
+MC.state.setPrompt = function (state, prompt) {
   if (prompt == null) {
     state.prompt = null;
     return;
@@ -865,7 +874,7 @@ PD.state.setPrompt = function (state, prompt) {
   throw new Error("unknown_prompt_kind:" + k);
 };
 
-PD.state.hasAnyPayables = function (state, p) {
+MC.state.hasAnyPayables = function (state, p) {
   var pl = state.players[p];
   if (pl.bank.length) return true;
   var sets = pl.sets;
@@ -878,53 +887,53 @@ PD.state.hasAnyPayables = function (state, p) {
   return false;
 };
 
-PD.state.beginDebt = function (state, fromP, toP, amount, srcAction) {
+MC.state.beginDebt = function (state, fromP, toP, amount, srcAction) {
   if (!(amount > 0)) return;
-  if (!PD.state.hasAnyPayables(state, fromP)) return;
-  PD.state.setPrompt(state, { kind: "payDebt", p: fromP, toP: toP, rem: amount, buf: [], srcAction: srcAction || null });
+  if (!MC.state.hasAnyPayables(state, fromP)) return;
+  MC.state.setPrompt(state, { kind: "payDebt", p: fromP, toP: toP, rem: amount, buf: [], srcAction: srcAction || null });
 };
 
-PD.rules.otherPlayer = function (p) {
+MC.rules.otherPlayer = function (p) {
   return (p ^ 1) & 1;
 };
 
-PD.rules.getSetColor = function (props) {
-  if (!props || props.length === 0) return PD.state.NO_COLOR;
+MC.rules.getSetColor = function (props) {
+  if (!props || props.length === 0) return MC.state.NO_COLOR;
   return props[0][1];
 };
 
-PD.rules.isBankableDef = function (def) {
+MC.rules.isBankableDef = function (def) {
   if (!def) return false;
-  return def.kind === PD.CardKind.Money || def.kind === PD.CardKind.Action || def.kind === PD.CardKind.House;
+  return def.kind === MC.CardKind.Money || def.kind === MC.CardKind.Action || def.kind === MC.CardKind.House;
 };
 
-PD.rules.isWildDef = function (def) {
-  return !!(def && def.kind === PD.CardKind.Property && def.wildColors && def.wildColors.length);
+MC.rules.isWildDef = function (def) {
+  return !!(def && def.kind === MC.CardKind.Property && def.wildColors && def.wildColors.length);
 };
 
-PD.rules.handHasActionKind = function (state, p, actionKind) {
+MC.rules.handHasActionKind = function (state, p, actionKind) {
   var hand = state && state.players && state.players[p] ? state.players[p].hand : null;
   if (!hand || hand.length === 0) return false;
   var i;
   for (i = 0; i < hand.length; i++) {
     var uid = hand[i];
-    var def = PD.state.defByUid(state, uid);
-    if (def && def.kind === PD.CardKind.Action && def.actionKind === actionKind) return true;
+    var def = MC.state.defByUid(state, uid);
+    if (def && def.kind === MC.CardKind.Action && def.actionKind === actionKind) return true;
   }
   return false;
 };
 
-PD.rules.wildAllowsColor = function (def, color) {
-  if (!PD.rules.isWildDef(def)) return false;
+MC.rules.wildAllowsColor = function (def, color) {
+  if (!MC.rules.isWildDef(def)) return false;
   return def.wildColors[0] === color || def.wildColors[1] === color;
 };
 
-PD.state.buildAllUids = function (state) {
+MC.state.buildAllUids = function (state) {
   var uidToDefI = [0];
   var uid = 1;
   var di;
-  for (di = 0; di < PD.CARD_DEFS.length; di++) {
-    var def = PD.CARD_DEFS[di];
+  for (di = 0; di < MC.CARD_DEFS.length; di++) {
+    var def = MC.CARD_DEFS[di];
     var c = def.count;
     var k;
     for (k = 0; k < c; k++) {
@@ -936,12 +945,12 @@ PD.state.buildAllUids = function (state) {
   state.totalUids = uidToDefI.length - 1;
 };
 
-PD.state.defByUid = function (state, uid) {
+MC.state.defByUid = function (state, uid) {
   var di = state.uidToDefI[uid];
-  return PD.CARD_DEFS[di];
+  return MC.CARD_DEFS[di];
 };
 
-PD.state.newEmptySet = function () {
+MC.state.newEmptySet = function () {
   return {
     // Properties are tuples: [uid, color]
     props: [],
@@ -950,7 +959,7 @@ PD.state.newEmptySet = function () {
   };
 };
 
-PD.state.drawToHand = function (state, p, n, events) {
+MC.state.drawToHand = function (state, p, n, events) {
   if (n <= 0) return;
 
   var uids = [];
@@ -963,7 +972,7 @@ PD.state.drawToHand = function (state, p, n, events) {
       var i;
       for (i = 0; i < nDisc; i++) state.deck.push(state.discard[i]);
       state.discard = [];
-      PD.shuffle.inPlaceWithStateRng(state, state.deck);
+      MC.shuffle.inPlaceWithStateRng(state, state.deck);
       if (events) events.push({ kind: "reshuffle", from: "discard", to: "deck", n: nDisc });
       nAvail = state.deck.length;
       if (nAvail <= 0) break;
@@ -983,18 +992,18 @@ PD.state.drawToHand = function (state, p, n, events) {
   if (events && uids.length > 0) events.push({ kind: "draw", p: p, uids: uids });
 };
 
-PD.state.startTurn = function (state, events) {
+MC.state.startTurn = function (state, events) {
   state.playsLeft = 3;
-  PD.state.clearPrompt(state);
+  MC.state.clearPrompt(state);
   var p = state.activeP;
   var nDraw = 2;
   if (state.players[p].hand.length === 0) nDraw = 5;
-  PD.state.drawToHand(state, p, nDraw, events);
+  MC.state.drawToHand(state, p, nDraw, events);
   if (events) events.push({ kind: "plays", p: state.activeP, playsLeft: state.playsLeft });
 };
 
-PD.state.newGame = function (opts) {
-  var seedU32 = (opts.seedU32 == null) ? PD.seed.computeSeedU32() : PD.rng.u32NonZero(opts.seedU32);
+MC.state.newGame = function (opts) {
+  var seedU32 = (opts.seedU32 == null) ? MC.seed.computeSeedU32() : MC.rng.u32NonZero(opts.seedU32);
 
   var state = {
     rngS: seedU32,
@@ -1012,13 +1021,13 @@ PD.state.newGame = function (opts) {
     activeP: 0,
     playsLeft: 0,
     prompt: null,
-    winnerP: PD.state.NO_WINNER
+    winnerP: MC.state.NO_WINNER
   };
 
-  PD.state.buildAllUids(state);
+  MC.state.buildAllUids(state);
 
   if (opts.scenarioId) {
-    PD.scenarios.applyScenario(state, String(opts.scenarioId));
+    MC.scenarios.applyScenario(state, String(opts.scenarioId));
     return state;
   }
 
@@ -1026,27 +1035,27 @@ PD.state.newGame = function (opts) {
   // then start their turn (draw 2, playsLeft=3).
   var uid;
   for (uid = 1; uid <= state.totalUids; uid++) state.deck.push(uid);
-  PD.shuffle.inPlaceWithStateRng(state, state.deck);
+  MC.shuffle.inPlaceWithStateRng(state, state.deck);
 
-  PD.state.drawToHand(state, 0, 5, null);
-  PD.state.drawToHand(state, 1, 5, null);
+  MC.state.drawToHand(state, 0, 5, null);
+  MC.state.drawToHand(state, 1, 5, null);
 
-  state.activeP = PD.rng.nextIntInState(state, 2);
+  state.activeP = MC.rng.nextIntInState(state, 2);
   var events = [];
   events.push({ kind: "turn", activeP: state.activeP });
-  PD.state.startTurn(state, events);
+  MC.state.startTurn(state, events);
   // Default newGame doesn't expose events, but tests may call startTurn/endTurn directly.
 
   return state;
 };
 
 // Scenario/test helpers (defId-first).
-PD.state.cardPoolInit = function (state) {
+MC.state.cardPoolInit = function (state) {
   var pool = {};
   var uid;
   for (uid = 1; uid <= state.totalUids; uid++) {
     var di = state.uidToDefI[uid];
-    var defId = PD.CARD_DEFS[di].id;
+    var defId = MC.CARD_DEFS[di].id;
     var a = pool[defId];
     if (!a) {
       a = [];
@@ -1058,16 +1067,16 @@ PD.state.cardPoolInit = function (state) {
   return pool;
 };
 
-PD.state.takeUid = function (state, defId) {
-  if (!state._pool) PD.state.cardPoolInit(state);
+MC.state.takeUid = function (state, defId) {
+  if (!state._pool) MC.state.cardPoolInit(state);
   var a = state._pool[defId];
   if (!a || a.length === 0) throw new Error("pool_exhausted:" + defId);
   return a.pop();
 };
 
 // ---- src/45_rules.js ----
-// PD.rules: pure rule computations. PD.engine: deterministic command application + move generation.
-PD.rules.evaluateWin = function (state) {
+// MC.rules: pure rule computations. MC.engine: deterministic command application + move generation.
+MC.rules.evaluateWin = function (state) {
   var p;
   for (p = 0; p < 2; p++) {
     var sets = state.players[p].sets;
@@ -1076,27 +1085,27 @@ PD.rules.evaluateWin = function (state) {
     for (si = 0; si < sets.length; si++) {
       var set = sets[si];
       if (!set) continue;
-      var color = PD.rules.getSetColor(set.props);
-      if (color === PD.state.NO_COLOR) continue;
-      var req = PD.SET_RULES[color].requiredSize;
+      var color = MC.rules.getSetColor(set.props);
+      if (color === MC.state.NO_COLOR) continue;
+      var req = MC.SET_RULES[color].requiredSize;
       if (set.props.length >= req && req > 0) complete++;
     }
     if (complete >= 3) return p;
   }
-  return PD.state.NO_WINNER;
+  return MC.state.NO_WINNER;
 };
 
-PD.engine.assertCanApply = function (state) {
-  if (state.winnerP !== PD.state.NO_WINNER) throw new Error("game_over");
+MC.engine.assertCanApply = function (state) {
+  if (state.winnerP !== MC.state.NO_WINNER) throw new Error("game_over");
 };
 
-PD.engine.locEqZone = function (loc, zone) {
+MC.engine.locEqZone = function (loc, zone) {
   return !!loc && loc.zone === zone;
 };
 
-PD.rules.rentAmountForColorCount = function (color, nPropsUncapped, hasHouse) {
-  if (color === PD.state.NO_COLOR) return 0;
-  var rules = PD.SET_RULES[color];
+MC.rules.rentAmountForColorCount = function (color, nPropsUncapped, hasHouse) {
+  if (color === MC.state.NO_COLOR) return 0;
+  var rules = MC.SET_RULES[color];
   if (!rules || !rules.rent || rules.rent.length <= 0) return 0;
 
   var req = rules.requiredSize;
@@ -1107,21 +1116,21 @@ PD.rules.rentAmountForColorCount = function (color, nPropsUncapped, hasHouse) {
 
   var base = rules.rent[n - 1];
   var bonus = 0;
-  if (hasHouse && req > 0 && nPropsUncapped >= req) bonus = PD.HOUSE_RENT_BONUS;
+  if (hasHouse && req > 0 && nPropsUncapped >= req) bonus = MC.HOUSE_RENT_BONUS;
   return base + bonus;
 };
 
-PD.rules.rentAmountForSet = function (state, p, setI) {
+MC.rules.rentAmountForSet = function (state, p, setI) {
   var sets = state.players[p].sets;
   if (setI < 0 || setI >= sets.length) return 0;
   var set = sets[setI];
   if (!set || !set.props || set.props.length <= 0) return 0;
 
-  var color = PD.rules.getSetColor(set.props);
-  return PD.rules.rentAmountForColorCount(color, set.props.length, !!set.houseUid);
+  var color = MC.rules.getSetColor(set.props);
+  return MC.rules.rentAmountForColorCount(color, set.props.length, !!set.houseUid);
 };
 
-PD.rules.replaceWindowEligibleWildLocs = function (state, p, srcSetI, excludeUid) {
+MC.rules.replaceWindowEligibleWildLocs = function (state, p, srcSetI, excludeUid) {
   // Phase 09: replace-window is offered only when we can remove exactly 1 Wild from
   // the just-played-into set while keeping that source set complete.
   if (!(p === 0 || p === 1)) return [];
@@ -1130,9 +1139,9 @@ PD.rules.replaceWindowEligibleWildLocs = function (state, p, srcSetI, excludeUid
   var set = sets[srcSetI];
   if (!set || !set.props || set.props.length <= 0) return [];
 
-  var srcColor = PD.rules.getSetColor(set.props);
-  if (srcColor === PD.state.NO_COLOR) return [];
-  var req = PD.SET_RULES[srcColor].requiredSize;
+  var srcColor = MC.rules.getSetColor(set.props);
+  if (srcColor === MC.state.NO_COLOR) return [];
+  var req = MC.SET_RULES[srcColor].requiredSize;
   if (!(req > 0)) return [];
 
   // Need to still be complete after removing exactly 1 property.
@@ -1146,14 +1155,14 @@ PD.rules.replaceWindowEligibleWildLocs = function (state, p, srcSetI, excludeUid
     if (!tup) continue;
     var uid = tup[0];
     if (uid === excludeUid) continue;
-    var def = PD.state.defByUid(state, uid);
-    if (!PD.rules.isWildDef(def)) continue;
+    var def = MC.state.defByUid(state, uid);
+    if (!MC.rules.isWildDef(def)) continue;
     out.push({ uid: uid, loc: { p: p, zone: "setProps", setI: srcSetI, i: i } });
   }
   return out;
 };
 
-PD.rules.replaceWindowDestinations = function (state, p, srcSetI, placedColor) {
+MC.rules.replaceWindowDestinations = function (state, p, srcSetI, placedColor) {
   // Destinations: other matching-color sets (in setI order) plus newSet (last).
   if (!(p === 0 || p === 1)) return [{ p: p, newSet: true }];
   var sets = state.players[p] ? state.players[p].sets : null;
@@ -1163,8 +1172,8 @@ PD.rules.replaceWindowDestinations = function (state, p, srcSetI, placedColor) {
   for (si = 0; si < sets.length; si++) {
     if (si === srcSetI) continue;
     var set = sets[si];
-    var col = PD.rules.getSetColor(set ? set.props : null);
-    if (col === PD.state.NO_COLOR) continue;
+    var col = MC.rules.getSetColor(set ? set.props : null);
+    if (col === MC.state.NO_COLOR) continue;
     if (col !== placedColor) continue;
     out.push({ p: p, setI: si });
   }
@@ -1172,7 +1181,7 @@ PD.rules.replaceWindowDestinations = function (state, p, srcSetI, placedColor) {
   return out;
 };
 
-PD.rules.replaceWindowValidateMove = function (state, prompt, cmdMove, actorP) {
+MC.rules.replaceWindowValidateMove = function (state, prompt, cmdMove, actorP) {
   if (!cmdMove || cmdMove.kind !== "moveWild") return { ok: false, err: "bad_cmd" };
   var card = cmdMove.card;
   var dest = cmdMove.dest;
@@ -1193,16 +1202,16 @@ PD.rules.replaceWindowValidateMove = function (state, prompt, cmdMove, actorP) {
   var pi = card.loc.i;
   if (!srcSet.props[pi] || srcSet.props[pi][0] !== uid) return { ok: false, err: "bad_loc" };
 
-  var def = PD.state.defByUid(state, uid);
-  if (!PD.rules.isWildDef(def)) return { ok: false, err: "not_wild" };
+  var def = MC.state.defByUid(state, uid);
+  if (!MC.rules.isWildDef(def)) return { ok: false, err: "not_wild" };
 
   var placedColor = cmdMove.color;
-  if (!PD.rules.wildAllowsColor(def, placedColor)) return { ok: false, err: "wild_color_illegal" };
+  if (!MC.rules.wildAllowsColor(def, placedColor)) return { ok: false, err: "wild_color_illegal" };
 
   // Source must remain complete after removing exactly 1 property.
-  var srcColor = PD.rules.getSetColor(srcSet.props);
-  if (srcColor === PD.state.NO_COLOR) return { ok: false, err: "empty_set" };
-  var req = PD.SET_RULES[srcColor].requiredSize;
+  var srcColor = MC.rules.getSetColor(srcSet.props);
+  if (srcColor === MC.state.NO_COLOR) return { ok: false, err: "empty_set" };
+  var req = MC.SET_RULES[srcColor].requiredSize;
   if (!((srcSet.props.length - 1) >= req)) return { ok: false, err: "replace_src_incomplete" };
 
   // Destination: other set (matching color) or new set.
@@ -1215,8 +1224,8 @@ PD.rules.replaceWindowValidateMove = function (state, prompt, cmdMove, actorP) {
     if (destSetI === srcSetI) return { ok: false, err: "replace_same_set" };
     if (destSetI < 0 || destSetI >= sets.length) return { ok: false, err: "bad_set" };
     var setExisting = sets[destSetI];
-    var setColor = PD.rules.getSetColor(setExisting ? setExisting.props : null);
-    if (setColor === PD.state.NO_COLOR) return { ok: false, err: "empty_set" };
+    var setColor = MC.rules.getSetColor(setExisting ? setExisting.props : null);
+    if (setColor === MC.state.NO_COLOR) return { ok: false, err: "empty_set" };
     if (setColor !== placedColor) return { ok: false, err: "set_color_mismatch" };
   }
 
@@ -1231,7 +1240,7 @@ PD.rules.replaceWindowValidateMove = function (state, prompt, cmdMove, actorP) {
   };
 };
 
-PD.engine.removeHandAtLoc = function (state, card) {
+MC.engine.removeHandAtLoc = function (state, card) {
   var loc = card.loc;
   var p = loc.p;
   var i = loc.i;
@@ -1241,8 +1250,8 @@ PD.engine.removeHandAtLoc = function (state, card) {
   hand.splice(i, 1);
 };
 
-PD.engine.applyCommand = function (state, cmd) {
-  PD.engine.assertCanApply(state);
+MC.engine.applyCommand = function (state, cmd) {
+  MC.engine.assertCanApply(state);
   if (!cmd || !cmd.kind) throw new Error("bad_cmd");
 
   var events = [];
@@ -1256,19 +1265,19 @@ PD.engine.applyCommand = function (state, cmd) {
   }
 
   function applyEndTurn() {
-    state.activeP = PD.rules.otherPlayer(state.activeP);
+    state.activeP = MC.rules.otherPlayer(state.activeP);
     events.push({ kind: "turn", activeP: state.activeP });
-    PD.state.startTurn(state, events);
+    MC.state.startTurn(state, events);
   }
 
   function applyDiscard(cmdDiscard) {
     var card = cmdDiscard.card;
     if (!card || !card.loc) throw new Error("bad_cmd");
-    if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if (!MC.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
     if (card.loc.p !== p) throw new Error("not_your_card");
 
     var uid = card.uid;
-    PD.engine.removeHandAtLoc(state, card);
+    MC.engine.removeHandAtLoc(state, card);
     state.discard.push(uid);
 
     events.push({
@@ -1283,8 +1292,8 @@ PD.engine.applyCommand = function (state, cmd) {
     }
 
     // End-turn discard-down prompt: once <= HAND_MAX, finish ending the turn.
-    if (handP.length <= PD.state.HAND_MAX) {
-      PD.state.clearPrompt(state);
+    if (handP.length <= MC.state.HAND_MAX) {
+      MC.state.clearPrompt(state);
       applyEndTurn();
     }
   }
@@ -1304,10 +1313,10 @@ PD.engine.applyCommand = function (state, cmd) {
     // Phase 09: after placing a property into a set, optionally allow moving one Wild
     // out of that same set (excluding the just-played card), but only if the source
     // set remains complete after removal.
-    if (state.winnerP !== PD.state.NO_WINNER) return false;
-    var elig = PD.rules.replaceWindowEligibleWildLocs(state, actorP, srcSetI, excludeUid);
+    if (state.winnerP !== MC.state.NO_WINNER) return false;
+    var elig = MC.rules.replaceWindowEligibleWildLocs(state, actorP, srcSetI, excludeUid);
     if (!elig || elig.length === 0) return false;
-    PD.state.setPrompt(state, {
+    MC.state.setPrompt(state, {
       kind: "replaceWindow",
       p: actorP,
       srcSetI: srcSetI,
@@ -1321,7 +1330,7 @@ PD.engine.applyCommand = function (state, cmd) {
     if (!(fromP === 0 || fromP === 1)) throw new Error("bad_fromP");
     if (!target || !target.loc) throw new Error("bad_target");
     var loc = target.loc;
-    if (!PD.engine.locEqZone(loc, "setProps")) throw new Error("bad_loc");
+    if (!MC.engine.locEqZone(loc, "setProps")) throw new Error("bad_loc");
 
     var defP = loc.p;
     var setI = loc.setI;
@@ -1336,9 +1345,9 @@ PD.engine.applyCommand = function (state, cmd) {
     if (!props[pi] || props[pi][0] !== target.uid) throw new Error("bad_loc");
 
     // Sly rule: cannot steal from a complete set (including overfilled).
-    var color = PD.rules.getSetColor(props);
-    if (color === PD.state.NO_COLOR) throw new Error("empty_set");
-    var req = PD.SET_RULES[color].requiredSize;
+    var color = MC.rules.getSetColor(props);
+    if (color === MC.state.NO_COLOR) throw new Error("empty_set");
+    var req = MC.SET_RULES[color].requiredSize;
     if (props.length >= req) throw new Error("sly_full_set");
 
     // Remove from defender set.
@@ -1346,7 +1355,7 @@ PD.engine.applyCommand = function (state, cmd) {
     cleanupEmptySetsForPlayer(defP);
 
     // Attacker receives the property and must place it.
-    PD.state.setPrompt(state, { kind: "placeReceived", p: fromP, uids: [target.uid] });
+    MC.state.setPrompt(state, { kind: "placeReceived", p: fromP, uids: [target.uid] });
     // Direction: stolen from defender -> attacker.
     events.push({ kind: "slySteal", fromP: defP, toP: fromP, uid: target.uid });
   }
@@ -1360,15 +1369,15 @@ PD.engine.applyCommand = function (state, cmd) {
       }
       if (cmd.kind === "cancelPrompt") {
         if (prompt.nDiscarded > 0) throw new Error("prompt_forced");
-        PD.state.clearPrompt(state);
+        MC.state.clearPrompt(state);
         return { events: events };
       }
       throw new Error("prompt_active");
     }
 
     function payValueForUid(uid) {
-      var def = PD.state.defByUid(state, uid);
-      if (def.kind === PD.CardKind.Property) return def.propertyPayValue != null ? def.propertyPayValue : 0;
+      var def = MC.state.defByUid(state, uid);
+      if (def.kind === MC.CardKind.Property) return def.propertyPayValue != null ? def.propertyPayValue : 0;
       return def.bankValue != null ? def.bankValue : 0;
     }
 
@@ -1415,15 +1424,15 @@ PD.engine.applyCommand = function (state, cmd) {
       cleanupEmptySetsForPlayer(p);
 
       // Auto-finalize when covered or out of payables.
-      if (prompt.rem > 0 && PD.state.hasAnyPayables(state, p)) return;
+      if (prompt.rem > 0 && MC.state.hasAnyPayables(state, p)) return;
 
       var toP = prompt.toP;
       var recv = [];
       var i;
       for (i = 0; i < buf.length; i++) {
         var uidT = buf[i];
-        var defT = PD.state.defByUid(state, uidT);
-        if (defT && defT.kind === PD.CardKind.Property) {
+        var defT = MC.state.defByUid(state, uidT);
+        if (defT && defT.kind === MC.CardKind.Property) {
           recv.push(uidT);
         } else {
           state.players[toP].bank.push(uidT);
@@ -1437,23 +1446,23 @@ PD.engine.applyCommand = function (state, cmd) {
       }
 
       if (recv.length > 0) {
-        PD.state.setPrompt(state, { kind: "placeReceived", p: toP, uids: recv });
+        MC.state.setPrompt(state, { kind: "placeReceived", p: toP, uids: recv });
       } else {
-        PD.state.clearPrompt(state);
+        MC.state.clearPrompt(state);
       }
     }
 
     function applyPlayJustSayNo(cmdJsn) {
       var card = cmdJsn.card;
       if (!card || !card.loc) throw new Error("bad_cmd");
-      if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+      if (!MC.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
       if (card.loc.p !== p) throw new Error("not_your_card");
 
       var uid = card.uid;
-      var def = PD.state.defByUid(state, uid);
-      if (!def || def.kind !== PD.CardKind.Action || def.actionKind !== PD.ActionKind.JustSayNo) throw new Error("not_jsn");
+      var def = MC.state.defByUid(state, uid);
+      if (!def || def.kind !== MC.CardKind.Action || def.actionKind !== MC.ActionKind.JustSayNo) throw new Error("not_jsn");
 
-      PD.engine.removeHandAtLoc(state, card);
+      MC.engine.removeHandAtLoc(state, card);
       state.discard.push(uid);
       events.push({
         kind: "move",
@@ -1464,7 +1473,7 @@ PD.engine.applyCommand = function (state, cmd) {
 
       // Cancel the active prompt and report the response (single-layer only).
       var src = prompt && prompt.srcAction ? prompt.srcAction : null;
-      PD.state.clearPrompt(state);
+      MC.state.clearPrompt(state);
       events.push({ kind: "jsn", p: p, srcAction: src });
     }
 
@@ -1474,7 +1483,7 @@ PD.engine.applyCommand = function (state, cmd) {
       if (String(prompt.srcAction.kind || "") !== "slyDeal") throw new Error("bad_srcAction");
       var fromP = prompt.srcAction.fromP;
       var target = prompt.target;
-      PD.state.clearPrompt(state);
+      MC.state.clearPrompt(state);
       applySlySteal(fromP, target);
     }
 
@@ -1483,20 +1492,20 @@ PD.engine.applyCommand = function (state, cmd) {
       var dest = cmdProp.dest;
       if (!card || !card.loc || !dest) throw new Error("bad_cmd");
       if (card.loc.p !== p) throw new Error("not_your_card");
-      if (!PD.engine.locEqZone(card.loc, "recvProps")) throw new Error("bad_loc");
+      if (!MC.engine.locEqZone(card.loc, "recvProps")) throw new Error("bad_loc");
 
       var ri = card.loc.i;
       var uids = prompt.uids;
       var uid = card.uid;
       if (!uids[ri] || uids[ri] !== uid) throw new Error("bad_loc");
 
-      var def = PD.state.defByUid(state, uid);
-      if (!def || def.kind !== PD.CardKind.Property) throw new Error("not_property");
+      var def = MC.state.defByUid(state, uid);
+      if (!def || def.kind !== MC.CardKind.Property) throw new Error("not_property");
 
-      var placedColor = PD.state.NO_COLOR;
-      if (PD.rules.isWildDef(def)) {
+      var placedColor = MC.state.NO_COLOR;
+      if (MC.rules.isWildDef(def)) {
         placedColor = cmdProp.color;
-        if (!PD.rules.wildAllowsColor(def, placedColor)) throw new Error("wild_color_illegal");
+        if (!MC.rules.wildAllowsColor(def, placedColor)) throw new Error("wild_color_illegal");
       } else {
         placedColor = def.propertyColor;
       }
@@ -1507,7 +1516,7 @@ PD.engine.applyCommand = function (state, cmd) {
       var sets = state.players[p].sets;
       var setI;
       if (dest.newSet) {
-        var newSet = PD.state.newEmptySet();
+        var newSet = MC.state.newEmptySet();
         setI = sets.length;
         sets.push(newSet);
         events.push({ kind: "createSet", p: p, setI: setI, color: placedColor });
@@ -1515,8 +1524,8 @@ PD.engine.applyCommand = function (state, cmd) {
         setI = dest.setI;
         if (setI < 0 || setI >= sets.length) throw new Error("bad_set");
         var setExisting = sets[setI];
-        var setColor = PD.rules.getSetColor(setExisting.props);
-        if (setColor === PD.state.NO_COLOR) throw new Error("empty_set");
+        var setColor = MC.rules.getSetColor(setExisting.props);
+        if (setColor === MC.state.NO_COLOR) throw new Error("empty_set");
         if (setColor !== placedColor) throw new Error("set_color_mismatch");
       }
 
@@ -1530,12 +1539,12 @@ PD.engine.applyCommand = function (state, cmd) {
         to: { p: p, zone: "setProps", setI: setI, i: setT.props.length - 1 }
       });
 
-      var winner = PD.rules.evaluateWin(state);
-      if (winner !== PD.state.NO_WINNER) {
+      var winner = MC.rules.evaluateWin(state);
+      if (winner !== MC.state.NO_WINNER) {
         state.winnerP = winner;
         events.push({ kind: "win", winnerP: winner });
         // Winner: skip replace-window and let UI suppress prompts.
-        if (prompt.uids.length === 0) PD.state.clearPrompt(state);
+        if (prompt.uids.length === 0) MC.state.clearPrompt(state);
         return;
       }
 
@@ -1544,7 +1553,7 @@ PD.engine.applyCommand = function (state, cmd) {
       var started = tryBeginReplaceWindow(p, setI, uid, resume);
       if (started) return;
 
-      if (prompt.uids.length === 0) PD.state.clearPrompt(state);
+      if (prompt.uids.length === 0) MC.state.clearPrompt(state);
     }
 
     if (prompt.kind === "payDebt") {
@@ -1569,9 +1578,9 @@ PD.engine.applyCommand = function (state, cmd) {
     if (prompt.kind === "replaceWindow") {
       function resumeOrClearReplaceWindow() {
         if (prompt.resume && String(prompt.resume.kind || "") === "placeReceived") {
-          PD.state.setPrompt(state, { kind: "placeReceived", p: p, uids: prompt.resume.uids.slice() });
+          MC.state.setPrompt(state, { kind: "placeReceived", p: p, uids: prompt.resume.uids.slice() });
         } else {
-          PD.state.clearPrompt(state);
+          MC.state.clearPrompt(state);
         }
       }
 
@@ -1581,7 +1590,7 @@ PD.engine.applyCommand = function (state, cmd) {
       }
 
       function applyMoveWild(cmdMove) {
-        var v = PD.rules.replaceWindowValidateMove(state, prompt, cmdMove, p);
+        var v = MC.rules.replaceWindowValidateMove(state, prompt, cmdMove, p);
         if (!v.ok) throw new Error(v.err);
 
         var uid = v.uid;
@@ -1597,7 +1606,7 @@ PD.engine.applyCommand = function (state, cmd) {
         // Apply the move (mutating state) now that validation has passed.
         srcSet.props.splice(pi, 1);
         if (isNewSet) {
-          var newSet = PD.state.newEmptySet();
+          var newSet = MC.state.newEmptySet();
           sets.push(newSet);
           events.push({ kind: "createSet", p: p, setI: destSetI, color: placedColor });
         }
@@ -1613,11 +1622,11 @@ PD.engine.applyCommand = function (state, cmd) {
           color: placedColor
         });
 
-        var winner = PD.rules.evaluateWin(state);
-        if (winner !== PD.state.NO_WINNER) {
+        var winner = MC.rules.evaluateWin(state);
+        if (winner !== MC.state.NO_WINNER) {
           state.winnerP = winner;
           events.push({ kind: "win", winnerP: winner });
-          PD.state.clearPrompt(state);
+          MC.state.clearPrompt(state);
           return;
         }
 
@@ -1634,14 +1643,14 @@ PD.engine.applyCommand = function (state, cmd) {
   function applyBank(cmdBank) {
     var card = cmdBank.card;
     if (!card || !card.loc) throw new Error("bad_cmd");
-    if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if (!MC.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
     if (card.loc.p !== p) throw new Error("not_your_card");
 
     var uid = card.uid;
-    var def = PD.state.defByUid(state, uid);
-    if (!PD.rules.isBankableDef(def)) throw new Error("not_bankable");
+    var def = MC.state.defByUid(state, uid);
+    if (!MC.rules.isBankableDef(def)) throw new Error("not_bankable");
 
-    PD.engine.removeHandAtLoc(state, card);
+    MC.engine.removeHandAtLoc(state, card);
     state.players[p].bank.push(uid);
 
     events.push({
@@ -1657,17 +1666,17 @@ PD.engine.applyCommand = function (state, cmd) {
     var card = cmdProp.card;
     var dest = cmdProp.dest;
     if (!card || !card.loc || !dest) throw new Error("bad_cmd");
-    if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if (!MC.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
     if (card.loc.p !== p) throw new Error("not_your_card");
 
     var uid = card.uid;
-    var def = PD.state.defByUid(state, uid);
-    if (!def || def.kind !== PD.CardKind.Property) throw new Error("not_property");
+    var def = MC.state.defByUid(state, uid);
+    if (!def || def.kind !== MC.CardKind.Property) throw new Error("not_property");
 
-    var placedColor = PD.state.NO_COLOR;
-    if (PD.rules.isWildDef(def)) {
+    var placedColor = MC.state.NO_COLOR;
+    if (MC.rules.isWildDef(def)) {
       placedColor = cmdProp.color;
-      if (!PD.rules.wildAllowsColor(def, placedColor)) throw new Error("wild_color_illegal");
+      if (!MC.rules.wildAllowsColor(def, placedColor)) throw new Error("wild_color_illegal");
     } else {
       placedColor = def.propertyColor;
     }
@@ -1675,7 +1684,7 @@ PD.engine.applyCommand = function (state, cmd) {
     var sets = state.players[p].sets;
     var setI;
     if (dest.newSet) {
-      var newSet = PD.state.newEmptySet();
+      var newSet = MC.state.newEmptySet();
       setI = sets.length;
       sets.push(newSet);
       events.push({ kind: "createSet", p: p, setI: setI, color: placedColor });
@@ -1683,12 +1692,12 @@ PD.engine.applyCommand = function (state, cmd) {
       setI = dest.setI;
       if (setI < 0 || setI >= sets.length) throw new Error("bad_set");
       var setExisting = sets[setI];
-      var setColor = PD.rules.getSetColor(setExisting.props);
-      if (setColor === PD.state.NO_COLOR) throw new Error("empty_set");
+      var setColor = MC.rules.getSetColor(setExisting.props);
+      if (setColor === MC.state.NO_COLOR) throw new Error("empty_set");
       if (setColor !== placedColor) throw new Error("set_color_mismatch");
     }
 
-    PD.engine.removeHandAtLoc(state, card);
+    MC.engine.removeHandAtLoc(state, card);
     var setT = sets[setI];
     setT.props.push([uid, placedColor]);
 
@@ -1700,8 +1709,8 @@ PD.engine.applyCommand = function (state, cmd) {
     });
     decPlays();
 
-    var winner = PD.rules.evaluateWin(state);
-    if (winner !== PD.state.NO_WINNER) {
+    var winner = MC.rules.evaluateWin(state);
+    if (winner !== MC.state.NO_WINNER) {
       state.winnerP = winner;
       events.push({ kind: "win", winnerP: winner });
       return;
@@ -1715,12 +1724,12 @@ PD.engine.applyCommand = function (state, cmd) {
     var card = cmdHouse.card;
     var dest = cmdHouse.dest;
     if (!card || !card.loc || !dest) throw new Error("bad_cmd");
-    if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if (!MC.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
     if (card.loc.p !== p) throw new Error("not_your_card");
 
     var uid = card.uid;
-    var def = PD.state.defByUid(state, uid);
-    if (!def || def.kind !== PD.CardKind.House) throw new Error("not_house");
+    var def = MC.state.defByUid(state, uid);
+    if (!def || def.kind !== MC.CardKind.House) throw new Error("not_house");
 
     var sets = state.players[p].sets;
     var setI = dest.setI;
@@ -1728,12 +1737,12 @@ PD.engine.applyCommand = function (state, cmd) {
     var set = sets[setI];
     if (set.houseUid !== 0) throw new Error("house_already");
 
-    var color = PD.rules.getSetColor(set.props);
-    if (color === PD.state.NO_COLOR) throw new Error("empty_set");
-    var req = PD.SET_RULES[color].requiredSize;
+    var color = MC.rules.getSetColor(set.props);
+    if (color === MC.state.NO_COLOR) throw new Error("empty_set");
+    var req = MC.SET_RULES[color].requiredSize;
     if (set.props.length < req) throw new Error("set_not_complete");
 
-    PD.engine.removeHandAtLoc(state, card);
+    MC.engine.removeHandAtLoc(state, card);
     set.houseUid = uid;
 
     events.push({
@@ -1748,12 +1757,12 @@ PD.engine.applyCommand = function (state, cmd) {
   function applyPlayRent(cmdRent) {
     var card = cmdRent.card;
     if (!card || !card.loc) throw new Error("bad_cmd");
-    if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if (!MC.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
     if (card.loc.p !== p) throw new Error("not_your_card");
 
     var uid = card.uid;
-    var def = PD.state.defByUid(state, uid);
-    if (!def || def.kind !== PD.CardKind.Action || def.actionKind !== PD.ActionKind.Rent) throw new Error("not_rent");
+    var def = MC.state.defByUid(state, uid);
+    if (!def || def.kind !== MC.CardKind.Action || def.actionKind !== MC.ActionKind.Rent) throw new Error("not_rent");
 
     var setI = cmdRent.setI;
     var sets = state.players[p].sets;
@@ -1761,8 +1770,8 @@ PD.engine.applyCommand = function (state, cmd) {
     var set = sets[setI];
     if (!set || !set.props || set.props.length <= 0) throw new Error("empty_set");
 
-    var color = PD.rules.getSetColor(set.props);
-    if (color === PD.state.NO_COLOR) throw new Error("empty_set");
+    var color = MC.rules.getSetColor(set.props);
+    if (color === MC.state.NO_COLOR) throw new Error("empty_set");
 
     var allowed = def.rentAllowedColors;
     if (allowed && allowed.length) {
@@ -1772,11 +1781,11 @@ PD.engine.applyCommand = function (state, cmd) {
       if (!ok) throw new Error("rent_color_illegal");
     }
 
-    var amount = PD.rules.rentAmountForSet(state, p, setI);
+    var amount = MC.rules.rentAmountForSet(state, p, setI);
     if (amount <= 0) throw new Error("rent_zero");
 
     // Discard the rent card.
-    PD.engine.removeHandAtLoc(state, card);
+    MC.engine.removeHandAtLoc(state, card);
     state.discard.push(uid);
     events.push({
       kind: "move",
@@ -1787,8 +1796,8 @@ PD.engine.applyCommand = function (state, cmd) {
     decPlays();
 
     // Trigger debt prompt for the opponent (if they have payables).
-    var payer = PD.rules.otherPlayer(p);
-    PD.state.beginDebt(state, payer, p, amount, { kind: "rent", fromP: p, actionUid: uid });
+    var payer = MC.rules.otherPlayer(p);
+    MC.state.beginDebt(state, payer, p, amount, { kind: "rent", fromP: p, actionUid: uid });
     events.push({ kind: "rent", p: p, setI: setI, color: color, amount: amount });
   }
 
@@ -1796,17 +1805,17 @@ PD.engine.applyCommand = function (state, cmd) {
     var card = cmdSly.card;
     var target = cmdSly.target;
     if (!card || !card.loc || !target || !target.loc) throw new Error("bad_cmd");
-    if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if (!MC.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
     if (card.loc.p !== p) throw new Error("not_your_card");
 
     var uid = card.uid;
-    var def = PD.state.defByUid(state, uid);
-    if (!def || def.kind !== PD.CardKind.Action || def.actionKind !== PD.ActionKind.SlyDeal) throw new Error("not_sly");
+    var def = MC.state.defByUid(state, uid);
+    if (!def || def.kind !== MC.CardKind.Action || def.actionKind !== MC.ActionKind.SlyDeal) throw new Error("not_sly");
 
     // Validate target is opponent property.
-    var otherP = PD.rules.otherPlayer(p);
+    var otherP = MC.rules.otherPlayer(p);
     var tLoc = target.loc;
-    if (!PD.engine.locEqZone(tLoc, "setProps")) throw new Error("bad_loc");
+    if (!MC.engine.locEqZone(tLoc, "setProps")) throw new Error("bad_loc");
     if (tLoc.p !== otherP) throw new Error("bad_target");
 
     // Validate not from full set.
@@ -1814,14 +1823,14 @@ PD.engine.applyCommand = function (state, cmd) {
     if (!setsO || tLoc.setI < 0 || tLoc.setI >= setsO.length) throw new Error("bad_set");
     var setO = setsO[tLoc.setI];
     if (!setO || !setO.props) throw new Error("bad_set");
-    var color = PD.rules.getSetColor(setO.props);
-    if (color === PD.state.NO_COLOR) throw new Error("empty_set");
-    var req = PD.SET_RULES[color].requiredSize;
+    var color = MC.rules.getSetColor(setO.props);
+    if (color === MC.state.NO_COLOR) throw new Error("empty_set");
+    var req = MC.SET_RULES[color].requiredSize;
     if (setO.props.length >= req) throw new Error("sly_full_set");
     if (!setO.props[tLoc.i] || setO.props[tLoc.i][0] !== target.uid) throw new Error("bad_loc");
 
     // Discard the action card.
-    PD.engine.removeHandAtLoc(state, card);
+    MC.engine.removeHandAtLoc(state, card);
     state.discard.push(uid);
     events.push({
       kind: "move",
@@ -1832,10 +1841,10 @@ PD.engine.applyCommand = function (state, cmd) {
     decPlays();
 
     // If defender has JSN, open a response prompt; otherwise resolve immediately.
-    var hasJsn = PD.rules.handHasActionKind(state, otherP, PD.ActionKind.JustSayNo);
+    var hasJsn = MC.rules.handHasActionKind(state, otherP, MC.ActionKind.JustSayNo);
 
     if (hasJsn) {
-      PD.state.setPrompt(state, {
+      MC.state.setPrompt(state, {
         kind: "respondAction",
         p: otherP,
         srcAction: { kind: "slyDeal", fromP: p, actionUid: uid },
@@ -1850,8 +1859,8 @@ PD.engine.applyCommand = function (state, cmd) {
   }
 
   if (cmd.kind === "endTurn") {
-    if (handP.length > PD.state.HAND_MAX) {
-      PD.state.setPrompt(state, { kind: "discardDown", p: p });
+    if (handP.length > MC.state.HAND_MAX) {
+      MC.state.setPrompt(state, { kind: "discardDown", p: p });
       if (state.prompt) state.prompt.nDiscarded = 0;
       return { events: events };
     }
@@ -1871,12 +1880,12 @@ PD.engine.applyCommand = function (state, cmd) {
   return { events: events };
 };
 
-PD.engine._pushPlayPropMoves = function (outMoves, state, p, uid, loc, sets) {
-  var def = PD.state.defByUid(state, uid);
-  if (!def || def.kind !== PD.CardKind.Property) return;
+MC.engine._pushPlayPropMoves = function (outMoves, state, p, uid, loc, sets) {
+  var def = MC.state.defByUid(state, uid);
+  if (!def || def.kind !== MC.CardKind.Property) return;
   var cardRef = { uid: uid, loc: loc };
 
-  if (PD.rules.isWildDef(def)) {
+  if (MC.rules.isWildDef(def)) {
     // New set for each allowed color.
     outMoves.push({ kind: "playProp", card: cardRef, dest: { p: p, newSet: true }, color: def.wildColors[0] });
     outMoves.push({ kind: "playProp", card: cardRef, dest: { p: p, newSet: true }, color: def.wildColors[1] });
@@ -1884,9 +1893,9 @@ PD.engine._pushPlayPropMoves = function (outMoves, state, p, uid, loc, sets) {
     var si;
     for (si = 0; si < sets.length; si++) {
       var set = sets[si];
-      var setColor = PD.rules.getSetColor(set.props);
-      if (setColor === PD.state.NO_COLOR) continue;
-      if (PD.rules.wildAllowsColor(def, setColor)) {
+      var setColor = MC.rules.getSetColor(set.props);
+      if (setColor === MC.state.NO_COLOR) continue;
+      if (MC.rules.wildAllowsColor(def, setColor)) {
         outMoves.push({ kind: "playProp", card: cardRef, dest: { p: p, setI: si }, color: setColor });
       }
     }
@@ -1898,16 +1907,16 @@ PD.engine._pushPlayPropMoves = function (outMoves, state, p, uid, loc, sets) {
   var sj;
   for (sj = 0; sj < sets.length; sj++) {
     var setJ = sets[sj];
-    var setColorJ = PD.rules.getSetColor(setJ.props);
-    if (setColorJ === PD.state.NO_COLOR) continue;
+    var setColorJ = MC.rules.getSetColor(setJ.props);
+    if (setColorJ === MC.state.NO_COLOR) continue;
     if (setColorJ === c) {
       outMoves.push({ kind: "playProp", card: cardRef, dest: { p: p, setI: sj } });
     }
   }
 };
 
-PD.engine.legalMoves = function (state) {
-  if (state.winnerP !== PD.state.NO_WINNER) return [];
+MC.engine.legalMoves = function (state) {
+  if (state.winnerP !== MC.state.NO_WINNER) return [];
   if (state.prompt) {
     var pr = state.prompt;
     if (pr.kind === "discardDown") {
@@ -1950,8 +1959,8 @@ PD.engine.legalMoves = function (state) {
         var hj;
         for (hj = 0; hj < handJ.length; hj++) {
           var uidJ = handJ[hj];
-          var defJ = PD.state.defByUid(state, uidJ);
-          if (defJ && defJ.kind === PD.CardKind.Action && defJ.actionKind === PD.ActionKind.JustSayNo) {
+          var defJ = MC.state.defByUid(state, uidJ);
+          if (defJ && defJ.kind === MC.CardKind.Action && defJ.actionKind === MC.ActionKind.JustSayNo) {
             out.push({ kind: "playJustSayNo", card: { uid: uidJ, loc: { p: pPay, zone: "hand", i: hj } } });
           }
         }
@@ -1965,8 +1974,8 @@ PD.engine.legalMoves = function (state) {
       var hr;
       for (hr = 0; hr < handR.length; hr++) {
         var uidR = handR[hr];
-        var defR = PD.state.defByUid(state, uidR);
-        if (defR && defR.kind === PD.CardKind.Action && defR.actionKind === PD.ActionKind.JustSayNo) {
+        var defR = MC.state.defByUid(state, uidR);
+        if (defR && defR.kind === MC.CardKind.Action && defR.actionKind === MC.ActionKind.JustSayNo) {
           outR.push({ kind: "playJustSayNo", card: { uid: uidR, loc: { p: pR, zone: "hand", i: hr } } });
         }
       }
@@ -1981,7 +1990,7 @@ PD.engine.legalMoves = function (state) {
       var iR;
       for (iR = 0; iR < uids.length; iR++) {
         var uidR = uids[iR];
-        PD.engine._pushPlayPropMoves(outR, state, pR, uidR, { p: pR, zone: "recvProps", i: iR }, setsR);
+        MC.engine._pushPlayPropMoves(outR, state, pR, uidR, { p: pR, zone: "recvProps", i: iR }, setsR);
       }
       return outR;
     }
@@ -1990,21 +1999,21 @@ PD.engine.legalMoves = function (state) {
       var outW = [{ kind: "skipReplaceWindow" }];
       var srcSetI = pr.srcSetI;
       var excludeUid = pr.excludeUid;
-      var elig = PD.rules.replaceWindowEligibleWildLocs(state, pW, srcSetI, excludeUid);
+      var elig = MC.rules.replaceWindowEligibleWildLocs(state, pW, srcSetI, excludeUid);
       var iW;
       for (iW = 0; iW < elig.length; iW++) {
         var e = elig[iW];
         if (!e || !e.loc) continue;
         var uidW = e.uid;
-        var defW = PD.state.defByUid(state, uidW);
-        if (!PD.rules.isWildDef(defW)) continue;
+        var defW = MC.state.defByUid(state, uidW);
+        if (!MC.rules.isWildDef(defW)) continue;
 
         var c0 = defW.wildColors[0];
         var c1 = defW.wildColors[1];
         var cardRef = { uid: uidW, loc: e.loc };
 
         function pushMovesForColor(col) {
-          var dests = PD.rules.replaceWindowDestinations(state, pW, srcSetI, col);
+          var dests = MC.rules.replaceWindowDestinations(state, pW, srcSetI, col);
           var di;
           for (di = 0; di < dests.length; di++) {
             outW.push({ kind: "moveWild", card: cardRef, dest: dests[di], color: col });
@@ -2033,57 +2042,57 @@ PD.engine.legalMoves = function (state) {
   var i;
   for (i = 0; i < hand.length; i++) {
     var uid = hand[i];
-    var def = PD.state.defByUid(state, uid);
+    var def = MC.state.defByUid(state, uid);
     var cardRef = { uid: uid, loc: { p: p, zone: "hand", i: i } };
 
-    if (PD.rules.isBankableDef(def)) {
+    if (MC.rules.isBankableDef(def)) {
       moves.push({ kind: "bank", card: cardRef });
     }
 
-    if (def.kind === PD.CardKind.Property) {
-      PD.engine._pushPlayPropMoves(moves, state, p, uid, cardRef.loc, sets);
-    } else if (def.kind === PD.CardKind.House) {
+    if (def.kind === MC.CardKind.Property) {
+      MC.engine._pushPlayPropMoves(moves, state, p, uid, cardRef.loc, sets);
+    } else if (def.kind === MC.CardKind.House) {
       var sh;
       for (sh = 0; sh < sets.length; sh++) {
         var setH = sets[sh];
         if (setH.houseUid !== 0) continue;
-        var col = PD.rules.getSetColor(setH.props);
-        if (col === PD.state.NO_COLOR) continue;
-        var req = PD.SET_RULES[col].requiredSize;
+        var col = MC.rules.getSetColor(setH.props);
+        if (col === MC.state.NO_COLOR) continue;
+        var req = MC.SET_RULES[col].requiredSize;
         if (setH.props.length >= req) {
           moves.push({ kind: "playHouse", card: cardRef, dest: { p: p, setI: sh } });
         }
       }
-    } else if (def.kind === PD.CardKind.Action && def.actionKind === PD.ActionKind.Rent) {
+    } else if (def.kind === MC.CardKind.Action && def.actionKind === MC.ActionKind.Rent) {
       // Rent: one move per eligible set.
       var allowed = def.rentAllowedColors;
       var siR;
       for (siR = 0; siR < sets.length; siR++) {
         var setR = sets[siR];
         if (!setR || !setR.props || setR.props.length <= 0) continue;
-        var colR = PD.rules.getSetColor(setR.props);
-        if (colR === PD.state.NO_COLOR) continue;
+        var colR = MC.rules.getSetColor(setR.props);
+        if (colR === MC.state.NO_COLOR) continue;
         if (allowed && allowed.length) {
           var ok = false;
           var ai;
           for (ai = 0; ai < allowed.length; ai++) if (allowed[ai] === colR) ok = true;
           if (!ok) continue;
         }
-        var amt = PD.rules.rentAmountForSet(state, p, siR);
+        var amt = MC.rules.rentAmountForSet(state, p, siR);
         if (amt <= 0) continue;
         moves.push({ kind: "playRent", card: cardRef, setI: siR });
       }
-    } else if (def.kind === PD.CardKind.Action && def.actionKind === PD.ActionKind.SlyDeal) {
+    } else if (def.kind === MC.CardKind.Action && def.actionKind === MC.ActionKind.SlyDeal) {
       // Sly Deal: one move per eligible opponent property (not from complete set).
-      var op = PD.rules.otherPlayer(p);
+      var op = MC.rules.otherPlayer(p);
       var setsOp = state.players[op].sets;
       var siS;
       for (siS = 0; siS < setsOp.length; siS++) {
         var setS = setsOp[siS];
         if (!setS || !setS.props || setS.props.length <= 0) continue;
-        var colS = PD.rules.getSetColor(setS.props);
-        if (colS === PD.state.NO_COLOR) continue;
-        var reqS = PD.SET_RULES[colS].requiredSize;
+        var colS = MC.rules.getSetColor(setS.props);
+        if (colS === MC.state.NO_COLOR) continue;
+        var reqS = MC.SET_RULES[colS].requiredSize;
         if (setS.props.length >= reqS) continue;
         var piS;
         for (piS = 0; piS < setS.props.length; piS++) {
@@ -2101,8 +2110,8 @@ PD.engine.legalMoves = function (state) {
 };
 
 // ---- src/50_scenarios.js ----
-// PD.scenarios: deterministic starting-state builders for testing + debug smoke runs.
-PD.scenarios.resetForScenario = function (state) {
+// MC.scenarios: deterministic starting-state builders for testing + debug smoke runs.
+MC.scenarios.resetForScenario = function (state) {
   state.deck = [];
   state.discard = [];
   state.players[0].hand = [];
@@ -2113,35 +2122,35 @@ PD.scenarios.resetForScenario = function (state) {
   state.players[1].sets = [];
   state.activeP = 0;
   state.playsLeft = 3;
-  PD.state.clearPrompt(state);
-  state.winnerP = PD.state.NO_WINNER;
+  MC.state.clearPrompt(state);
+  state.winnerP = MC.state.NO_WINNER;
   // Ensure pool exists.
-  PD.state.cardPoolInit(state);
+  MC.state.cardPoolInit(state);
 };
 
-PD.scenarios.setAddFixedProp = function (set, uid, color) {
+MC.scenarios.setAddFixedProp = function (set, uid, color) {
   set.props.push([uid, color]);
 };
 
-PD.scenarios.setAddPropByDefId = function (state, set, defId, forcedColor) {
-  var uid = PD.state.takeUid(state, defId);
-  var def = PD.state.defByUid(state, uid);
-  var color = PD.state.NO_COLOR;
-  if (PD.rules.isWildDef(def)) {
+MC.scenarios.setAddPropByDefId = function (state, set, defId, forcedColor) {
+  var uid = MC.state.takeUid(state, defId);
+  var def = MC.state.defByUid(state, uid);
+  var color = MC.state.NO_COLOR;
+  if (MC.rules.isWildDef(def)) {
     color = forcedColor;
-    if (!PD.rules.wildAllowsColor(def, color)) throw new Error("scenario_bad_color:" + defId);
+    if (!MC.rules.wildAllowsColor(def, color)) throw new Error("scenario_bad_color:" + defId);
   } else {
     color = def.propertyColor;
   }
-  PD.scenarios.setAddFixedProp(set, uid, color);
+  MC.scenarios.setAddFixedProp(set, uid, color);
   return uid;
 };
 
-PD.scenarios.fillDeckFromPool = function (state) {
+MC.scenarios.fillDeckFromPool = function (state) {
   var deck = [];
   var i;
-  for (i = 0; i < PD.CARD_DEFS.length; i++) {
-    var defId = PD.CARD_DEFS[i].id;
+  for (i = 0; i < MC.CARD_DEFS.length; i++) {
+    var defId = MC.CARD_DEFS[i].id;
     var a = state._pool[defId];
     if (!a || a.length === 0) continue;
     var k;
@@ -2151,20 +2160,20 @@ PD.scenarios.fillDeckFromPool = function (state) {
   state.deck = deck;
 };
 
-PD.scenarios.applyScenario = function (state, scenarioId) {
-  PD.scenarios.resetForScenario(state);
+MC.scenarios.applyScenario = function (state, scenarioId) {
+  MC.scenarios.resetForScenario(state);
 
-  var fn = PD.scenarios._applyById[scenarioId];
+  var fn = MC.scenarios._applyById[scenarioId];
   if (!fn) throw new Error("unknown_scenario:" + scenarioId);
   fn(state);
 
-  PD.scenarios.fillDeckFromPool(state);
+  MC.scenarios.fillDeckFromPool(state);
   // Keep deck deterministic for scenarios; callers can shuffle if desired.
   return state;
 };
 
 // Scenario registry (single source of truth).
-PD.scenarios.IDS = [
+MC.scenarios.IDS = [
   // Phase 09
   "replaceWindow",
   "placeBasic",
@@ -2184,7 +2193,7 @@ PD.scenarios.IDS = [
 ];
 
 // Optional metadata for debug UI / docs.
-PD.scenarios.INFO = {
+MC.scenarios.INFO = {
   replaceWindow: { title: "Replace-window", desc: "Phase 09: play into an overfill-complete set so the replace-window prompt is offered (move a Wild out of the just-played-into set)." },
   placeBasic: { title: "Place (basic)", desc: "Fixed property placement + Rent play-test (opponent has a small bank payable)." },
   wildBasic: { title: "Wild (basic)", desc: "Wild property placement + discard depth demo." },
@@ -2195,101 +2204,101 @@ PD.scenarios.INFO = {
   placeReceived: { title: "Place received", desc: "Faux-turn placement buffer (includes Wild color choice)." },
   moveStress: { title: "Move stress", desc: "Many partial sets + 9-card hand (props + wilds + rent-any + house) to maximize legalMoves fanout for smoke testing + AI policy tuning." },
   slyJSN: { title: "Sly+JSN", desc: "RespondAction prompt for Sly Deal (Allow vs Just Say No)." },
-  payDebtShuffleDeal: { title: "PayDebt→shuffle+deal", desc: "Repro helper: start in a rent-sourced payDebt prompt with empty hand + bank payment, then opponent is forced to endTurn and your next startTurn triggers discard→deck reshuffle + staged deal animation." },
+  payDebtShuffleDeal: { title: "PayDebt→shuffle+deal", desc: "Repro helper: start in a rent-sourced payDebt prompt with empty hand + bank payment, then opponent is forced to endTurn and your next startTurn triggers deck reshuffle + staged deal animation." },
 };
 
-PD.scenarios._applyById = {
+MC.scenarios._applyById = {
   replaceWindow: function (state) {
     // Source set (Orange, complete=3) includes a Wild not being played this turn.
     // Playing one more Orange into this set makes it overfilled (4), enabling replace-window:
     // moving exactly 1 Wild out still leaves the source set complete (3).
-    var setSrc = PD.state.newEmptySet();
-    PD.scenarios.setAddPropByDefId(state, setSrc, "prop_orange", PD.state.NO_COLOR);
-    PD.scenarios.setAddPropByDefId(state, setSrc, "prop_orange", PD.state.NO_COLOR);
-    PD.scenarios.setAddPropByDefId(state, setSrc, "wild_mo", PD.Color.Orange);
+    var setSrc = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setSrc, "prop_orange", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setSrc, "prop_orange", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setSrc, "wild_mo", MC.Color.Orange);
     state.players[0].sets.push(setSrc);
 
     // Destination set (Magenta, 2/3) so moving the Wild as Magenta can complete it.
-    var setM = PD.state.newEmptySet();
-    PD.scenarios.setAddPropByDefId(state, setM, "prop_magenta", PD.state.NO_COLOR);
-    PD.scenarios.setAddPropByDefId(state, setM, "prop_magenta", PD.state.NO_COLOR);
+    var setM = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setM, "prop_magenta", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setM, "prop_magenta", MC.state.NO_COLOR);
     state.players[0].sets.push(setM);
 
     // Hand: play Orange into the source set to trigger replace-window.
-    state.players[0].hand.push(PD.state.takeUid(state, "prop_orange"));
-    state.players[0].hand.push(PD.state.takeUid(state, "money_1"));
+    state.players[0].hand.push(MC.state.takeUid(state, "prop_orange"));
+    state.players[0].hand.push(MC.state.takeUid(state, "money_1"));
   },
 
   placeBasic: function (state) {
     // P0 has 2 orange properties + $1. P0 also has an existing Orange set with 1 property.
-    var setO = PD.state.newEmptySet();
-    PD.scenarios.setAddPropByDefId(state, setO, "prop_orange", PD.state.NO_COLOR);
+    var setO = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setO, "prop_orange", MC.state.NO_COLOR);
     state.players[0].sets.push(setO);
 
-    state.players[0].hand.push(PD.state.takeUid(state, "prop_orange"));
-    state.players[0].hand.push(PD.state.takeUid(state, "prop_orange"));
-    state.players[0].hand.push(PD.state.takeUid(state, "money_1"));
+    state.players[0].hand.push(MC.state.takeUid(state, "prop_orange"));
+    state.players[0].hand.push(MC.state.takeUid(state, "prop_orange"));
+    state.players[0].hand.push(MC.state.takeUid(state, "money_1"));
     // Add a rent card that matches Orange (Magenta/Orange rent).
-    state.players[0].hand.push(PD.state.takeUid(state, "rent_mo"));
+    state.players[0].hand.push(MC.state.takeUid(state, "rent_mo"));
 
     // Ensure opponent has something payable so Rent triggers payDebt.
-    state.players[1].bank.push(PD.state.takeUid(state, "money_1"));
+    state.players[1].bank.push(MC.state.takeUid(state, "money_1"));
   },
 
   wildBasic: function (state) {
     // P0 has Wild(M/O) and $1.
-    state.players[0].hand.push(PD.state.takeUid(state, "wild_mo"));
-    state.players[0].hand.push(PD.state.takeUid(state, "money_1"));
+    state.players[0].hand.push(MC.state.takeUid(state, "wild_mo"));
+    state.players[0].hand.push(MC.state.takeUid(state, "money_1"));
 
     // Discard demo (depth=3): top card is last.
-    state.discard.push(PD.state.takeUid(state, "money_2"));
-    state.discard.push(PD.state.takeUid(state, "money_1"));
-    state.discard.push(PD.state.takeUid(state, "rent_cb"));
+    state.discard.push(MC.state.takeUid(state, "money_2"));
+    state.discard.push(MC.state.takeUid(state, "money_1"));
+    state.discard.push(MC.state.takeUid(state, "rent_cb"));
   },
 
   houseBasic: function (state) {
     // P0 has two Houses in hand.
-    state.players[0].hand.push(PD.state.takeUid(state, "house"));
-    state.players[0].hand.push(PD.state.takeUid(state, "house"));
+    state.players[0].hand.push(MC.state.takeUid(state, "house"));
+    state.players[0].hand.push(MC.state.takeUid(state, "house"));
 
     // One complete Cyan set (2).
-    var setC = PD.state.newEmptySet();
-    PD.scenarios.setAddPropByDefId(state, setC, "prop_cyan", PD.state.NO_COLOR);
-    PD.scenarios.setAddPropByDefId(state, setC, "prop_cyan", PD.state.NO_COLOR);
+    var setC = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setC, "prop_cyan", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setC, "prop_cyan", MC.state.NO_COLOR);
     state.players[0].sets.push(setC);
 
     // One incomplete Black set (3/4).
-    var setB = PD.state.newEmptySet();
-    PD.scenarios.setAddPropByDefId(state, setB, "prop_black", PD.state.NO_COLOR);
-    PD.scenarios.setAddPropByDefId(state, setB, "prop_black", PD.state.NO_COLOR);
-    PD.scenarios.setAddPropByDefId(state, setB, "prop_black", PD.state.NO_COLOR);
+    var setB = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setB, "prop_black", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setB, "prop_black", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setB, "prop_black", MC.state.NO_COLOR);
     state.players[0].sets.push(setB);
 
     // Discard demo (depth=1).
-    state.discard.push(PD.state.takeUid(state, "money_5"));
+    state.discard.push(MC.state.takeUid(state, "money_5"));
   },
 
   winCheck: function (state) {
     // P0 has 3 complete sets: Cyan(2), Magenta(3), Orange(3).
-    var setC2 = PD.state.newEmptySet();
-    PD.scenarios.setAddPropByDefId(state, setC2, "prop_cyan", PD.state.NO_COLOR);
-    PD.scenarios.setAddPropByDefId(state, setC2, "prop_cyan", PD.state.NO_COLOR);
+    var setC2 = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setC2, "prop_cyan", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setC2, "prop_cyan", MC.state.NO_COLOR);
     state.players[0].sets.push(setC2);
 
-    var setM3 = PD.state.newEmptySet();
-    PD.scenarios.setAddPropByDefId(state, setM3, "prop_magenta", PD.state.NO_COLOR);
-    PD.scenarios.setAddPropByDefId(state, setM3, "prop_magenta", PD.state.NO_COLOR);
-    PD.scenarios.setAddPropByDefId(state, setM3, "prop_magenta", PD.state.NO_COLOR);
+    var setM3 = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setM3, "prop_magenta", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setM3, "prop_magenta", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setM3, "prop_magenta", MC.state.NO_COLOR);
     state.players[0].sets.push(setM3);
 
-    var setO3 = PD.state.newEmptySet();
-    PD.scenarios.setAddPropByDefId(state, setO3, "prop_orange", PD.state.NO_COLOR);
-    PD.scenarios.setAddPropByDefId(state, setO3, "prop_orange", PD.state.NO_COLOR);
-    PD.scenarios.setAddPropByDefId(state, setO3, "prop_orange", PD.state.NO_COLOR);
+    var setO3 = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setO3, "prop_orange", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setO3, "prop_orange", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setO3, "prop_orange", MC.state.NO_COLOR);
     state.players[0].sets.push(setO3);
 
     state.playsLeft = 0;
-    state.winnerP = PD.rules.evaluateWin(state);
+    state.winnerP = MC.rules.evaluateWin(state);
   },
 
   bankScrollShuffle: function (state) {
@@ -2300,19 +2309,19 @@ PD.scenarios._applyById = {
     // - Ensure P1 hand is non-empty so endTurn draws 2 (not 5).
 
     // Seed P1 hand with 1 property so startTurn draws 2.
-    state.players[1].hand.push(PD.state.takeUid(state, "prop_cyan"));
+    state.players[1].hand.push(MC.state.takeUid(state, "prop_cyan"));
 
     // Drain pool: bankables -> P0 bank; non-bankables -> discard.
     var di;
-    for (di = 0; di < PD.CARD_DEFS.length; di++) {
-      var def = PD.CARD_DEFS[di];
+    for (di = 0; di < MC.CARD_DEFS.length; di++) {
+      var def = MC.CARD_DEFS[di];
       if (!def || !def.id) continue;
       var defId = def.id;
       var a = state._pool[defId];
       if (!a || a.length === 0) continue;
 
       // NOTE: scenario pool contains only uids, so we inspect the def kind here.
-      var bankable = PD.rules.isBankableDef(def);
+      var bankable = MC.rules.isBankableDef(def);
       while (a.length > 0) {
         var uid = a.pop();
         if (bankable) state.players[0].bank.push(uid);
@@ -2324,7 +2333,7 @@ PD.scenarios._applyById = {
     // Prefer taking from discard so the discard->deck reshuffle still has plenty of cards.
     if (state.discard.length > 0) {
       var keepUid = state.discard.pop();
-      var keepDef = PD.state.defByUid(state, keepUid);
+      var keepDef = MC.state.defByUid(state, keepUid);
       var keepId = String(keepDef.id);
       state._pool[keepId].push(keepUid);
     }
@@ -2333,48 +2342,48 @@ PD.scenarios._applyById = {
     state.players[0].hand = [];
     state.activeP = 0;
     state.playsLeft = 0;
-    state.winnerP = PD.state.NO_WINNER;
+    state.winnerP = MC.state.NO_WINNER;
   },
 
   // Phase 06: prompt-driven debt payment where House must be paid first.
   // Goal: exercise prompt actor separation + house-first redirect + overpay allowed.
   debtHouseFirst: function (state) {
     // P0: complete Cyan set with a House.
-    var setC = PD.state.newEmptySet();
-    PD.scenarios.setAddPropByDefId(state, setC, "prop_cyan", PD.state.NO_COLOR);
-    PD.scenarios.setAddPropByDefId(state, setC, "prop_cyan", PD.state.NO_COLOR);
-    setC.houseUid = PD.state.takeUid(state, "house");
+    var setC = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setC, "prop_cyan", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setC, "prop_cyan", MC.state.NO_COLOR);
+    setC.houseUid = MC.state.takeUid(state, "house");
     state.players[0].sets.push(setC);
 
     // Keep bank empty so the only payable is the House (forces the rule).
     state.players[0].bank = [];
 
     // Add a little hand so the UI isn't empty.
-    state.players[0].hand.push(PD.state.takeUid(state, "rent_cb"));
-    state.players[0].hand.push(PD.state.takeUid(state, "just_say_no"));
+    state.players[0].hand.push(MC.state.takeUid(state, "rent_cb"));
+    state.players[0].hand.push(MC.state.takeUid(state, "just_say_no"));
 
     // Pay a small debt to P1; paying the House overpays and resolves immediately.
-    var rentUid = PD.state.takeUid(state, "rent_any");
+    var rentUid = MC.state.takeUid(state, "rent_any");
     state.discard.push(rentUid);
-    PD.state.setPrompt(state, { kind: "payDebt", p: 0, toP: 1, rem: 1, buf: [], srcAction: { kind: "rent", fromP: 1, actionUid: rentUid } });
+    MC.state.setPrompt(state, { kind: "payDebt", p: 0, toP: 1, rem: 1, buf: [], srcAction: { kind: "rent", fromP: 1, actionUid: rentUid } });
   },
 
   // Phase 06: recipient faux-turn placement buffer (received properties).
   placeReceived: function (state) {
     // P0 has an existing Orange set to allow placing into existing sets.
-    var setO = PD.state.newEmptySet();
-    PD.scenarios.setAddPropByDefId(state, setO, "prop_orange", PD.state.NO_COLOR);
+    var setO = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setO, "prop_orange", MC.state.NO_COLOR);
     state.players[0].sets.push(setO);
 
     // Prompt buffer: one fixed property + one Wild to place (wild assignment chosen during placement).
     var recv = [];
-    recv.push(PD.state.takeUid(state, "prop_orange"));
-    recv.push(PD.state.takeUid(state, "wild_mo"));
-    PD.state.setPrompt(state, { kind: "placeReceived", p: 0, uids: recv });
+    recv.push(MC.state.takeUid(state, "prop_orange"));
+    recv.push(MC.state.takeUid(state, "wild_mo"));
+    MC.state.setPrompt(state, { kind: "placeReceived", p: 0, uids: recv });
 
     // Keep normal hand visible for the “faux-hand + real hand” row layout.
-    state.players[0].hand.push(PD.state.takeUid(state, "money_1"));
-    state.players[0].hand.push(PD.state.takeUid(state, "rent_mo"));
+    state.players[0].hand.push(MC.state.takeUid(state, "money_1"));
+    state.players[0].hand.push(MC.state.takeUid(state, "rent_mo"));
   },
 
   // Phase 07+: maximize legalMoves fanout for smoke testing + AI policy tuning.
@@ -2385,76 +2394,76 @@ PD.scenarios._applyById = {
     // Note: hand > HAND_MAX is intentional; endTurn will enter discardDown prompt.
 
     // 1 complete Cyan set (2) so House has at least one legal build target.
-    var setC = PD.state.newEmptySet();
-    PD.scenarios.setAddPropByDefId(state, setC, "prop_cyan", PD.state.NO_COLOR);
-    PD.scenarios.setAddPropByDefId(state, setC, "prop_cyan", PD.state.NO_COLOR);
+    var setC = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setC, "prop_cyan", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setC, "prop_cyan", MC.state.NO_COLOR);
     state.players[0].sets.push(setC);
 
     // Opponent has at least one stealable property so Sly Deal has targets.
     // Prefer an Orange-ish pair (incomplete set) so Sly targeting can cycle more than one option.
     // (Orange set requires 3, so 2 cards stays stealable.)
-    var setOp = PD.state.newEmptySet();
-    PD.scenarios.setAddPropByDefId(state, setOp, "wild_mo", PD.Color.Orange);
-    PD.scenarios.setAddPropByDefId(state, setOp, "prop_orange", PD.state.NO_COLOR);
+    var setOp = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setOp, "wild_mo", MC.Color.Orange);
+    MC.scenarios.setAddPropByDefId(state, setOp, "prop_orange", MC.state.NO_COLOR);
     state.players[1].sets.push(setOp);
 
     // 2 Magenta sets (each 1 prop) so Magenta + wild_mo can target multiple existing sets.
-    var setM0 = PD.state.newEmptySet();
-    PD.scenarios.setAddPropByDefId(state, setM0, "prop_magenta", PD.state.NO_COLOR);
+    var setM0 = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setM0, "prop_magenta", MC.state.NO_COLOR);
     state.players[0].sets.push(setM0);
-    var setM1 = PD.state.newEmptySet();
-    PD.scenarios.setAddPropByDefId(state, setM1, "prop_magenta", PD.state.NO_COLOR);
+    var setM1 = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setM1, "prop_magenta", MC.state.NO_COLOR);
     state.players[0].sets.push(setM1);
 
     // 2 Orange sets (each 1 prop) so Orange + wild_mo can target multiple existing sets.
-    var setO0 = PD.state.newEmptySet();
-    PD.scenarios.setAddPropByDefId(state, setO0, "prop_orange", PD.state.NO_COLOR);
+    var setO0 = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setO0, "prop_orange", MC.state.NO_COLOR);
     state.players[0].sets.push(setO0);
-    var setO1 = PD.state.newEmptySet();
-    PD.scenarios.setAddPropByDefId(state, setO1, "prop_orange", PD.state.NO_COLOR);
+    var setO1 = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setO1, "prop_orange", MC.state.NO_COLOR);
     state.players[0].sets.push(setO1);
 
     // 3 Black sets (each 1 prop) so Black + wild_cb can target multiple existing sets.
-    var setB0 = PD.state.newEmptySet();
-    PD.scenarios.setAddPropByDefId(state, setB0, "prop_black", PD.state.NO_COLOR);
+    var setB0 = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setB0, "prop_black", MC.state.NO_COLOR);
     state.players[0].sets.push(setB0);
-    var setB1 = PD.state.newEmptySet();
-    PD.scenarios.setAddPropByDefId(state, setB1, "prop_black", PD.state.NO_COLOR);
+    var setB1 = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setB1, "prop_black", MC.state.NO_COLOR);
     state.players[0].sets.push(setB1);
-    var setB2 = PD.state.newEmptySet();
-    PD.scenarios.setAddPropByDefId(state, setB2, "prop_black", PD.state.NO_COLOR);
+    var setB2 = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setB2, "prop_black", MC.state.NO_COLOR);
     state.players[0].sets.push(setB2);
 
     // Hand: one of each base property (remaining), one wild, plus rent-any + house + $1 + one action.
-    state.players[0].hand.push(PD.state.takeUid(state, "prop_magenta"));
+    state.players[0].hand.push(MC.state.takeUid(state, "prop_magenta"));
     // Keep Orange out of hand here so we can use it for opponent Sly targets above.
-    state.players[0].hand.push(PD.state.takeUid(state, "money_2"));
-    state.players[0].hand.push(PD.state.takeUid(state, "prop_black"));
-    state.players[0].hand.push(PD.state.takeUid(state, "wild_cb"));
+    state.players[0].hand.push(MC.state.takeUid(state, "money_2"));
+    state.players[0].hand.push(MC.state.takeUid(state, "prop_black"));
+    state.players[0].hand.push(MC.state.takeUid(state, "wild_cb"));
 
-    state.players[0].hand.push(PD.state.takeUid(state, "house"));
-    state.players[0].hand.push(PD.state.takeUid(state, "rent_any"));
-    state.players[0].hand.push(PD.state.takeUid(state, "money_1"));
-    state.players[0].hand.push(PD.state.takeUid(state, "sly_deal"));
+    state.players[0].hand.push(MC.state.takeUid(state, "house"));
+    state.players[0].hand.push(MC.state.takeUid(state, "rent_any"));
+    state.players[0].hand.push(MC.state.takeUid(state, "money_1"));
+    state.players[0].hand.push(MC.state.takeUid(state, "sly_deal"));
   },
 
   // Phase 08: Sly Deal respondAction prompt (Allow vs JSN).
   slyJSN: function (state) {
     // P0 has a stealable (incomplete) set with a single property.
-    var setO = PD.state.newEmptySet();
-    var uidT = PD.state.takeUid(state, "prop_orange");
-    PD.scenarios.setAddFixedProp(setO, uidT, PD.Color.Orange);
+    var setO = MC.state.newEmptySet();
+    var uidT = MC.state.takeUid(state, "prop_orange");
+    MC.scenarios.setAddFixedProp(setO, uidT, MC.Color.Orange);
     state.players[0].sets.push(setO);
 
     // P0 has JSN in hand to respond with.
-    state.players[0].hand.push(PD.state.takeUid(state, "just_say_no"));
-    state.players[0].hand.push(PD.state.takeUid(state, "money_1"));
+    state.players[0].hand.push(MC.state.takeUid(state, "just_say_no"));
+    state.players[0].hand.push(MC.state.takeUid(state, "money_1"));
 
     // Opponent played Sly Deal; the action card is already discarded.
-    var slyUid = PD.state.takeUid(state, "sly_deal");
+    var slyUid = MC.state.takeUid(state, "sly_deal");
     state.discard.push(slyUid);
 
-    PD.state.setPrompt(state, {
+    MC.state.setPrompt(state, {
       kind: "respondAction",
       p: 0,
       srcAction: { kind: "slyDeal", fromP: 1, actionUid: slyUid },
@@ -2472,22 +2481,22 @@ PD.scenarios._applyById = {
     state.playsLeft = 0;
 
     // P0 has an empty hand and a single payable bank card to cover the debt.
-    var payUid = PD.state.takeUid(state, "money_1");
+    var payUid = MC.state.takeUid(state, "money_1");
     state.players[0].bank.push(payUid);
 
     // Put enough cards into discard so startTurn draw(5) must reshuffle from discard.
     // Include a rent card uid so srcAction can reference a real uid in discard.
-    var rentUid = PD.state.takeUid(state, "rent_mo");
+    var rentUid = MC.state.takeUid(state, "rent_mo");
     state.discard.push(rentUid);
-    state.discard.push(PD.state.takeUid(state, "money_2"));
-    state.discard.push(PD.state.takeUid(state, "money_3"));
-    state.discard.push(PD.state.takeUid(state, "prop_orange"));
-    state.discard.push(PD.state.takeUid(state, "prop_magenta"));
-    state.discard.push(PD.state.takeUid(state, "wild_mo"));
+    state.discard.push(MC.state.takeUid(state, "money_2"));
+    state.discard.push(MC.state.takeUid(state, "money_3"));
+    state.discard.push(MC.state.takeUid(state, "prop_orange"));
+    state.discard.push(MC.state.takeUid(state, "prop_magenta"));
+    state.discard.push(MC.state.takeUid(state, "wild_mo"));
 
     // Open the debt prompt for P0 (payer). activeP remains the opponent (rent actor),
     // matching real gameplay: the prompt actor is prompt.p.
-    PD.state.setPrompt(state, {
+    MC.state.setPrompt(state, {
       kind: "payDebt",
       p: 0,
       toP: 1,
@@ -2504,12 +2513,12 @@ PD.scenarios._applyById = {
 };
 
 // ---- src/52_moves.js ----
-// PD.moves: shared move helpers (rules + UI). Pure-ish: reads state/move lists, no view mutations.
+// MC.moves: shared move helpers (rules + UI). Pure-ish: reads state/move lists, no view mutations.
 
 // Helpers for Place command lists (shared by targeting + menu label tweaks).
-PD.moves.defaultWildColorForPlace = function (state, uid, def) {
-  if (!def || !PD.rules.isWildDef(def)) return PD.state.NO_COLOR;
-  var moves = PD.engine.legalMoves(state);
+MC.moves.defaultWildColorForPlace = function (state, uid, def) {
+  if (!def || !MC.rules.isWildDef(def)) return MC.state.NO_COLOR;
+  var moves = MC.engine.legalMoves(state);
   var c0 = def.wildColors[0];
   var c1 = def.wildColors[1];
   var has0 = false, has1 = false;
@@ -2524,11 +2533,11 @@ PD.moves.defaultWildColorForPlace = function (state, uid, def) {
   return has0 ? c0 : (has1 ? c1 : c0);
 };
 
-PD.moves.placeCmdsForUid = function (state, uid, def, wildColor) {
-  var moves = PD.engine.legalMoves(state);
+MC.moves.placeCmdsForUid = function (state, uid, def, wildColor) {
+  var moves = MC.engine.legalMoves(state);
   var cmds = [];
   var i;
-  var isWild = !!(def && PD.rules.isWildDef(def));
+  var isWild = !!(def && MC.rules.isWildDef(def));
   for (i = 0; i < moves.length; i++) {
     var mf = moves[i];
     if (!mf || mf.kind !== "playProp") continue;
@@ -2553,8 +2562,8 @@ PD.moves.placeCmdsForUid = function (state, uid, def, wildColor) {
   return existing.concat(newSet);
 };
 
-PD.moves.defaultWildColorForMoveWild = function (state, uid, def, loc) {
-  if (!def || !PD.rules.isWildDef(def)) return PD.state.NO_COLOR;
+MC.moves.defaultWildColorForMoveWild = function (state, uid, def, loc) {
+  if (!def || !MC.rules.isWildDef(def)) return MC.state.NO_COLOR;
   if (loc && String(loc.zone || "") === "setProps" && loc.p != null && loc.setI != null && loc.i != null) {
     var sets = state.players[loc.p] ? state.players[loc.p].sets : null;
     var set = sets ? sets[loc.setI] : null;
@@ -2562,14 +2571,14 @@ PD.moves.defaultWildColorForMoveWild = function (state, uid, def, loc) {
     if (props && props[loc.i] && props[loc.i][0] === uid) return props[loc.i][1];
   }
   // Fallback: same default heuristic as Place (favor a color with existing-set destinations).
-  return PD.moves.defaultWildColorForPlace(state, uid, def);
+  return MC.moves.defaultWildColorForPlace(state, uid, def);
 };
 
-PD.moves.moveWildCmdsForUid = function (state, uid, def, wildColor) {
-  var moves = PD.engine.legalMoves(state);
+MC.moves.moveWildCmdsForUid = function (state, uid, def, wildColor) {
+  var moves = MC.engine.legalMoves(state);
   var cmds = [];
   var i;
-  var isWild = !!(def && PD.rules.isWildDef(def));
+  var isWild = !!(def && MC.rules.isWildDef(def));
   for (i = 0; i < moves.length; i++) {
     var mv = moves[i];
     if (!mv || mv.kind !== "moveWild") continue;
@@ -2580,8 +2589,8 @@ PD.moves.moveWildCmdsForUid = function (state, uid, def, wildColor) {
   return cmds;
 };
 
-PD.moves.buildCmdsForUid = function (state, uid) {
-  var moves = PD.engine.legalMoves(state);
+MC.moves.buildCmdsForUid = function (state, uid) {
+  var moves = MC.engine.legalMoves(state);
   var buildMoves = [];
   var i;
   for (i = 0; i < moves.length; i++) {
@@ -2591,8 +2600,8 @@ PD.moves.buildCmdsForUid = function (state, uid) {
   return buildMoves;
 };
 
-PD.moves.rentMovesForUid = function (state, uid) {
-  var moves = PD.engine.legalMoves(state);
+MC.moves.rentMovesForUid = function (state, uid) {
+  var moves = MC.engine.legalMoves(state);
   var rentMoves = [];
   var i;
   for (i = 0; i < moves.length; i++) {
@@ -2602,8 +2611,8 @@ PD.moves.rentMovesForUid = function (state, uid) {
   return rentMoves;
 };
 
-PD.moves.slyDealMovesForUid = function (state, uid) {
-  var moves = PD.engine.legalMoves(state);
+MC.moves.slyDealMovesForUid = function (state, uid) {
+  var moves = MC.engine.legalMoves(state);
   var out = [];
   var i;
   for (i = 0; i < moves.length; i++) {
@@ -2613,13 +2622,13 @@ PD.moves.slyDealMovesForUid = function (state, uid) {
   return out;
 };
 
-PD.moves.sortRentMovesByAmount = function (state, p, rentMoves) {
+MC.moves.sortRentMovesByAmount = function (state, p, rentMoves) {
   if (!rentMoves || rentMoves.length <= 1) return rentMoves;
   rentMoves.sort(function (a, b) {
     var ai = (a && a.setI != null) ? a.setI : -1;
     var bi = (b && b.setI != null) ? b.setI : -1;
-    var aa = PD.rules.rentAmountForSet(state, p, ai);
-    var bb = PD.rules.rentAmountForSet(state, p, bi);
+    var aa = MC.rules.rentAmountForSet(state, p, ai);
+    var bb = MC.rules.rentAmountForSet(state, p, bi);
     var d = bb - aa;
     if (d) return d;
     return ai - bi;
@@ -2627,7 +2636,7 @@ PD.moves.sortRentMovesByAmount = function (state, p, rentMoves) {
   return rentMoves;
 };
 
-PD.moves.locAllowsSource = function (loc) {
+MC.moves.locAllowsSource = function (loc) {
   if (!loc || !loc.zone) return false;
   var z = String(loc.zone);
   return (z === "hand") || (z === "recvProps");
@@ -2635,18 +2644,18 @@ PD.moves.locAllowsSource = function (loc) {
 
 // Build the list of cmds for a targeting mode.
 // Returns { cmds, wildColor } or null (unknown kind).
-PD.moves.cmdsForTargeting = function (state, kind, uid, loc) {
+MC.moves.cmdsForTargeting = function (state, kind, uid, loc) {
   kind = String(kind || "");
-  var out = { cmds: [], wildColor: PD.state.NO_COLOR };
+  var out = { cmds: [], wildColor: MC.state.NO_COLOR };
 
   // Cmd profiles: the single source of truth for targeting-mode cmd lists.
-  var prof = PD.cmd.getProfile(kind);
+  var prof = MC.cmd.getProfile(kind);
   if (!prof) return null;
 
-  var def = PD.state.defByUid(state, uid);
-  var isWild = !!(def && PD.rules.isWildDef(def));
+  var def = MC.state.defByUid(state, uid);
+  var isWild = !!(def && MC.rules.isWildDef(def));
   if (isWild && prof.defaultWildColor) out.wildColor = prof.defaultWildColor(state, uid, def, loc);
-  else out.wildColor = PD.state.NO_COLOR;
+  else out.wildColor = MC.state.NO_COLOR;
 
   if (prof.cmdsForUid) out.cmds = prof.cmdsForUid(state, uid, loc);
   else if (prof.cmdsForWildColor) out.cmds = prof.cmdsForWildColor(state, uid, def, out.wildColor, loc);
@@ -2664,7 +2673,7 @@ PD.moves.cmdsForTargeting = function (state, kind, uid, loc) {
 // - {kind:"bankEnd", p}
 // - {kind:"source"}
 // - null
-PD.moves.destForCmd = function (cmd) {
+MC.moves.destForCmd = function (cmd) {
   if (!cmd || !cmd.kind) return null;
   if (cmd.kind === "playProp") {
     if (cmd.dest && cmd.dest.newSet) return { kind: "newSet", p: cmd.dest.p };
@@ -2686,8 +2695,8 @@ PD.moves.destForCmd = function (cmd) {
   return null;
 };
 
-PD.moves.bankCmdsForUid = function (state, uid) {
-  var moves = PD.engine.legalMoves(state);
+MC.moves.bankCmdsForUid = function (state, uid) {
+  var moves = MC.engine.legalMoves(state);
   var cmds = [];
   var i;
   for (i = 0; i < moves.length; i++) {
@@ -2700,9 +2709,9 @@ PD.moves.bankCmdsForUid = function (state, uid) {
 };
 
 // ---- src/53_ai.js ----
-// PD.ai: simple playtest AI (pick among legal moves using deterministic RNG + short narration).
+// MC.ai: simple playtest AI (pick among legal moves using deterministic RNG + short narration).
 
-PD.ai.policies = {
+MC.ai.policies = {
   uniform: {
     id: "uniform",
     weight: function () { return 1; }
@@ -2713,8 +2722,22 @@ PD.ai.policies = {
     weight: function (state, move) {
       // Soft bias: prefer placing properties into existing sets, but still allow anything.
       // Tuning knob lives in config.
-      var k = PD.config.ai.biasExistingSetK;
+      var k = MC.config.ai.biasExistingSetK;
       if (move && move.kind === "playProp" && move.dest && move.dest.setI != null) return k;
+      return 1;
+    }
+  },
+
+  biasPayDebtFromBank: {
+    id: "biasPayDebtFromBank",
+    weight: function (state, move) {
+      // Phase 09b: prefer paying debts from bank to reduce surprise property transfers.
+      // Tuning knob lives in config.
+      var k = MC.config.ai.biasPayDebtFromBankK;
+      if (!move || move.kind !== "payDebt") return 1;
+      if (!(k > 1)) k = 1;
+      var loc = (move.card && move.card.loc) ? move.card.loc : null;
+      if (loc && loc.zone === "bank") return k;
       return 1;
     }
   },
@@ -2724,7 +2747,7 @@ PD.ai.policies = {
     weight: function (state, move) {
       // Soft bias: prefer asking for rent rather than banking the Rent card.
       // Tuning knob lives in config.
-      var k = PD.config.ai.biasPlayRentK;
+      var k = MC.config.ai.biasPlayRentK;
       if (move && move.kind === "playRent") return k;
       return 1;
     }
@@ -2735,7 +2758,7 @@ PD.ai.policies = {
     weight: function (state, move) {
       // Soft bias: prefer canceling negative actions when a response window exists.
       // Tuning knob lives in config.
-      var k = PD.config.ai.biasPlayJustSayNoK;
+      var k = MC.config.ai.biasPlayJustSayNoK;
       if (move && move.kind === "playJustSayNo") return k;
       return 1;
     }
@@ -2747,7 +2770,7 @@ PD.ai.policies = {
       // Phase 09: simple heuristic for replace-window Wild repositioning.
       // Prefer moves that complete a set, then maximize rent delta on existing sets.
       // Tuning knob lives in config.
-      var k = PD.config.ai.biasMoveWildK;
+      var k = MC.config.ai.biasMoveWildK;
       if (!move || move.kind !== "moveWild") return 1;
       if (!(k > 1)) k = 1;
 
@@ -2766,9 +2789,9 @@ PD.ai.policies = {
       var set = sets[setI];
       if (!set || !set.props || set.props.length <= 0) return 1;
 
-      var color = PD.rules.getSetColor(set.props);
-      if (color === PD.state.NO_COLOR) return 1;
-      var rules = PD.SET_RULES[color];
+      var color = MC.rules.getSetColor(set.props);
+      if (color === MC.state.NO_COLOR) return 1;
+      var rules = MC.SET_RULES[color];
       if (!rules || !(rules.requiredSize > 0)) return 1;
       var req = rules.requiredSize;
 
@@ -2777,8 +2800,8 @@ PD.ai.policies = {
       var completes = (nAfterUncapped >= req);
 
       // Compute rent before/after (rent caps at required size).
-      var rentBefore = PD.rules.rentAmountForSet(state, p, setI);
-      var rentAfter = PD.rules.rentAmountForColorCount(color, nAfterUncapped, !!set.houseUid);
+      var rentBefore = MC.rules.rentAmountForSet(state, p, setI);
+      var rentAfter = MC.rules.rentAmountForColorCount(color, nAfterUncapped, !!set.houseUid);
 
       var delta = rentAfter - rentBefore;
       if (completes) return k * 20;
@@ -2788,14 +2811,14 @@ PD.ai.policies = {
   }
 };
 
-PD.ai.composePolicies = function (id, policyIds) {
+MC.ai.composePolicies = function (id, policyIds) {
   // Compose policies by multiplying their weights.
   // Contract: each component policy weight is a positive number (1 means neutral).
   var parts = [];
   var i;
   for (i = 0; i < policyIds.length; i++) {
     var pid = policyIds[i];
-    var p = PD.ai.policies[pid];
+    var p = MC.ai.policies[pid];
     if (!p) throw new Error("ai_unknown_policy:" + String(pid));
     parts.push(p);
   }
@@ -2810,18 +2833,19 @@ PD.ai.composePolicies = function (id, policyIds) {
   };
 };
 
-PD.ai.policies.defaultHeuristic = PD.ai.composePolicies("defaultHeuristic", [
+MC.ai.policies.defaultHeuristic = MC.ai.composePolicies("defaultHeuristic", [
   "biasExistingSet",
+  "biasPayDebtFromBank",
   "biasPlayRent",
   "biasPlayJustSayNo",
   "biasMoveWild"
 ]);
 
-PD.ai.pickMove = function (state, moves, policy) {
+MC.ai.pickMove = function (state, moves, policy) {
   if (!moves || moves.length === 0) return null;
 
   // Fallback to uniform if policy is missing (should be caught by tests).
-  var pol = policy || PD.ai.policies.uniform;
+  var pol = policy || MC.ai.policies.uniform;
 
   var weights = [];
   var total = 0;
@@ -2836,11 +2860,11 @@ PD.ai.pickMove = function (state, moves, policy) {
 
   // Safety: if a policy produces all-zero weights, fall back to uniform.
   if (!(total > 0)) {
-    var idxU = PD.rng.nextIntInState(state, moves.length);
+    var idxU = MC.rng.nextIntInState(state, moves.length);
     return moves[idxU];
   }
 
-  var r = PD.rng.nextIntInState(state, total);
+  var r = MC.rng.nextIntInState(state, total);
   var acc = 0;
   for (i = 0; i < moves.length; i++) {
     acc += weights[i];
@@ -2851,59 +2875,59 @@ PD.ai.pickMove = function (state, moves, policy) {
   return moves[moves.length - 1];
 };
 
-PD.ai.policyForP = function (p) {
-  return PD.ai.policies[PD.config.ai.policyByP[p]];
+MC.ai.policyForP = function (p) {
+  return MC.ai.policies[MC.config.ai.policyByP[p]];
 };
 
-PD.ai.actor = function (state) {
+MC.ai.actor = function (state) {
   var pr = state.prompt;
   if (pr && pr.p != null) return pr.p;
   return state.activeP;
 };
 
-PD.ai.pickRandomLegalMove = function (state) {
-  var moves = PD.engine.legalMoves(state);
+MC.ai.pickRandomLegalMove = function (state) {
+  var moves = MC.engine.legalMoves(state);
   if (!moves || moves.length === 0) return null;
-  var p = PD.ai.actor(state);
-  var policy = PD.ai.policyForP(p);
-  return PD.ai.pickMove(state, moves, policy);
+  var p = MC.ai.actor(state);
+  var policy = MC.ai.policyForP(p);
+  return MC.ai.pickMove(state, moves, policy);
 };
 
-PD.ai.describeCmd = function (state, cmd) {
+MC.ai.describeCmd = function (state, cmd) {
   if (!cmd || !cmd.kind) return "";
   var k = String(cmd.kind);
-  if (k === "endTurn") return "Opponent: End turn";
-  if (k === "bank") return "Opponent: Bank";
-  if (k === "playRent") return "Opponent: Rent";
-  if (k === "playSlyDeal") return "Opponent: Sly Deal";
-  if (k === "respondPass") return "Opponent: Allow";
-  if (k === "playJustSayNo") return "Opponent: Just Say No";
-  if (k === "skipReplaceWindow") return "Opponent: Skip";
-  if (k === "moveWild") return "Opponent: Move Wild";
-  if (k === "playHouse") return "Opponent: Build";
+  if (k === "endTurn") return "AI: End turn";
+  if (k === "bank") return "AI: Bank";
+  if (k === "playRent") return "AI: Rent";
+  if (k === "playSlyDeal") return "AI: Sly Deal";
+  if (k === "respondPass") return "AI: Allow";
+  if (k === "playJustSayNo") return "AI: Just Say No";
+  if (k === "skipReplaceWindow") return "AI: Skip";
+  if (k === "moveWild") return "AI: Move Wild";
+  if (k === "playHouse") return "AI: Build";
   if (k === "playProp") {
-    var dl = PD.fmt.destLabelForCmd(state, cmd);
-    return dl ? ("Opponent: Place -> " + dl) : "Opponent: Place";
+    var dl = MC.fmt.destLabelForCmd(state, cmd);
+    return dl ? ("AI: Place -> " + dl) : "AI: Place";
   }
-  if (k === "payDebt") return "Opponent: Pay";
-  if (k === "discard") return "Opponent: Discard";
-  if (k === "cancelPrompt") return "Opponent: Cancel";
-  return "Opponent: " + k;
+  if (k === "payDebt") return "AI: Pay";
+  if (k === "discard") return "AI: Discard";
+  if (k === "cancelPrompt") return "AI: Cancel";
+  return "AI: " + k;
 };
 
 // ---- src/54_cmd_profiles.js ----
 // Cmd profiles: data-driven behavior by targeting kind, expressed in terms of cmd lists + UI hooks.
 // This registry centralizes Source-cancel policy + overlay text + cursor/sort behavior.
 
-PD.cmd.getProfile = function (kind) {
+MC.cmd.getProfile = function (kind) {
   kind = String(kind || "");
-  return PD.cmdProfiles[kind] || null;
+  return MC.cmdProfiles[kind] || null;
 };
 
 // Menu-capable cmd kinds (card menu items, ordered).
-PD.cmd.menuKinds = ["place", "build", "rent", "sly", "bank"];
+MC.cmd.menuKinds = ["place", "build", "rent", "sly", "bank"];
 
-PD.cmd.titleForCmdKind = function (cmd) {
+MC.cmd.titleForCmdKind = function (cmd) {
   if (!cmd || !cmd.kind) return "Target";
   var k = String(cmd.kind);
   if (k === "playRent") return "Rent";
@@ -2916,32 +2940,32 @@ PD.cmd.titleForCmdKind = function (cmd) {
   return "Target";
 };
 
-PD.cmd.destLineForCmd = function (state, targeting, cmd) {
+MC.cmd.destLineForCmd = function (state, targeting, cmd) {
   var t = targeting || null;
   if (!cmd || !cmd.kind) return "(no destination)";
   var k = String(cmd.kind);
 
-  if (k === "playProp" || k === "moveWild") return PD.cmd.destLinePlaceLike(state, t, cmd);
+  if (k === "playProp" || k === "moveWild") return MC.cmd.destLinePlaceLike(state, t, cmd);
 
   if (k === "playHouse") {
-    var dH = PD.moves.destForCmd(cmd);
+    var dH = MC.moves.destForCmd(cmd);
     if (!dH || dH.kind !== "setEnd") return "(no destination)";
     var setH = state.players[dH.p].sets[dH.setI];
-    var colH = setH ? PD.rules.getSetColor(setH.props) : PD.state.NO_COLOR;
-    return "Dest: " + PD.fmt.colorName(colH) + " set";
+    var colH = setH ? MC.rules.getSetColor(setH.props) : MC.state.NO_COLOR;
+    return "Dest: " + MC.fmt.colorName(colH) + " set";
   }
 
   if (k === "playRent") {
     var p = cmd.card.loc.p;
     var setR = state.players[p].sets[cmd.setI];
-    var colR = setR ? PD.rules.getSetColor(setR.props) : PD.state.NO_COLOR;
-    var amt = PD.rules.rentAmountForSet(state, p, cmd.setI);
-    return "From: " + PD.fmt.colorName(colR) + " set\nAmt: $" + amt;
+    var colR = setR ? MC.rules.getSetColor(setR.props) : MC.state.NO_COLOR;
+    var amt = MC.rules.rentAmountForSet(state, p, cmd.setI);
+    return "From: " + MC.fmt.colorName(colR) + " set\nAmt: $" + amt;
   }
 
   if (k === "playSlyDeal") {
     var tl = (cmd.target && cmd.target.loc) ? cmd.target.loc : null;
-    var colT = PD.state.NO_COLOR;
+    var colT = MC.state.NO_COLOR;
     if (tl && tl.zone === "setProps") {
       var setT = state.players[tl.p].sets[tl.setI];
       if (setT && setT.props) {
@@ -2949,7 +2973,7 @@ PD.cmd.destLineForCmd = function (state, targeting, cmd) {
         if (propT) colT = propT[1];
       }
     }
-    return "Target: " + PD.fmt.colorName(colT);
+    return "Target: " + MC.fmt.colorName(colT);
   }
 
   if (k === "bank") return "Dest: Bank";
@@ -2957,43 +2981,43 @@ PD.cmd.destLineForCmd = function (state, targeting, cmd) {
   return "(no destination)";
 };
 
-PD.cmd.destLinePlaceLike = function (state, targeting, cmd) {
+MC.cmd.destLinePlaceLike = function (state, targeting, cmd) {
   var t = targeting || null;
   if (!cmd || !cmd.kind) return "(no destination)";
   if (cmd.kind === "source") return "Dest: Source";
 
-  var d = PD.moves.destForCmd(cmd);
+  var d = MC.moves.destForCmd(cmd);
   var out = "";
   if (d) {
     if (d.kind === "newSet") out = "Dest: New set";
     else if (d.kind === "setEnd") {
       var set = state.players[d.p].sets[d.setI];
-      var col = set ? PD.rules.getSetColor(set.props) : PD.state.NO_COLOR;
-      out = "Dest: " + PD.fmt.colorName(col) + " set";
+      var col = set ? MC.rules.getSetColor(set.props) : MC.state.NO_COLOR;
+      out = "Dest: " + MC.fmt.colorName(col) + " set";
     }
   }
 
-  if (t && t.card && t.card.def && PD.rules.isWildDef(t.card.def)) out += "\nAs: " + PD.fmt.colorName(t.wildColor);
+  if (t && t.card && t.card.def && MC.rules.isWildDef(t.card.def)) out += "\nAs: " + MC.fmt.colorName(t.wildColor);
   return out || "(no destination)";
 };
 
-PD.cmdProfiles.place = {
+MC.cmdProfiles.place = {
   id: "place",
   title: "Place",
   helpLR: "L/R: Dest",
   includeSource: function (loc) {
-    return PD.moves.locAllowsSource(loc);
+    return MC.moves.locAllowsSource(loc);
   },
   defaultWildColor: function (state, uid, def) {
-    return PD.moves.defaultWildColorForPlace(state, uid, def);
+    return MC.moves.defaultWildColorForPlace(state, uid, def);
   },
   cmdsForWildColor: function (state, uid, def, wildColor) {
-    return PD.moves.placeCmdsForUid(state, uid, def, wildColor);
+    return MC.moves.placeCmdsForUid(state, uid, def, wildColor);
   },
-  destLine: PD.cmd.destLinePlaceLike
+  destLine: MC.cmd.destLinePlaceLike
 };
 
-PD.cmdProfiles.moveWild = {
+MC.cmdProfiles.moveWild = {
   id: "moveWild",
   title: "Place",
   helpLR: "L/R: Dest",
@@ -3002,17 +3026,17 @@ PD.cmdProfiles.moveWild = {
     return true;
   },
   defaultWildColor: function (state, uid, def, loc) {
-    return PD.moves.defaultWildColorForMoveWild(state, uid, def, loc);
+    return MC.moves.defaultWildColorForMoveWild(state, uid, def, loc);
   },
   cmdsForWildColor: function (state, uid, def, wildColor) {
-    return PD.moves.moveWildCmdsForUid(state, uid, def, wildColor);
+    return MC.moves.moveWildCmdsForUid(state, uid, def, wildColor);
   },
   sortRank: function (cmd) {
     if (cmd && cmd.kind === "source") return 2;
     if (cmd && cmd.dest && cmd.dest.newSet) return 1;
     return 0;
   },
-  destLine: PD.cmd.destLinePlaceLike,
+  destLine: MC.cmd.destLinePlaceLike,
   ui: {
     mode: "preview",
     screenXForCmd: function (ctx, cmdW) {
@@ -3020,57 +3044,57 @@ PD.cmdProfiles.moveWild = {
       if (cmdW.dest && cmdW.dest.newSet) return 999999;
       var setI = (cmdW.dest && cmdW.dest.setI != null) ? cmdW.dest.setI : null;
       if (setI == null) return 999999;
-      var rmT = ctx.computed.models[PD.render.ROW_P_TABLE];
+      var rmT = ctx.computed.models[MC.render.ROW_P_TABLE];
       var st = rmT.stacks["set:p0:set" + setI];
       if (!st) return 999999;
       var x = st.x0 + st.nReal * st.stride * st.fanDir;
-      var cam = ctx.view.camX[PD.render.ROW_P_TABLE];
+      var cam = ctx.view.camX[MC.render.ROW_P_TABLE];
       return x - cam;
     },
     sortRank: function (cmd) {
-      return PD.cmdProfiles.moveWild.sortRank(cmd);
+      return MC.cmdProfiles.moveWild.sortRank(cmd);
     }
   }
 };
 
-PD.cmdProfiles.bank = {
+MC.cmdProfiles.bank = {
   id: "bank",
   title: "Bank",
   helpLR: "L/R: Dest",
-  includeSource: function (loc) { return PD.moves.locAllowsSource(loc); },
-  cmdsForUid: function (state, uid) { return PD.moves.bankCmdsForUid(state, uid); },
-  destLine: PD.cmd.destLineForCmd
+  includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
+  cmdsForUid: function (state, uid) { return MC.moves.bankCmdsForUid(state, uid); },
+  destLine: MC.cmd.destLineForCmd
 };
 
-PD.cmdProfiles.build = {
+MC.cmdProfiles.build = {
   id: "build",
   title: "Build",
   helpLR: "L/R: Dest",
-  includeSource: function (loc) { return PD.moves.locAllowsSource(loc); },
-  cmdsForUid: function (state, uid) { return PD.moves.buildCmdsForUid(state, uid); },
-  destLine: PD.cmd.destLineForCmd
+  includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
+  cmdsForUid: function (state, uid) { return MC.moves.buildCmdsForUid(state, uid); },
+  destLine: MC.cmd.destLineForCmd
 };
 
-PD.cmdProfiles.rent = {
+MC.cmdProfiles.rent = {
   id: "rent",
   title: "Rent",
   helpLR: "L/R: Set",
-  includeSource: function (loc) { return PD.moves.locAllowsSource(loc); },
+  includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
   cmdsForUid: function (state, uid, loc) {
-    var cmds = PD.moves.rentMovesForUid(state, uid);
-    PD.moves.sortRentMovesByAmount(state, loc ? loc.p : 0, cmds);
+    var cmds = MC.moves.rentMovesForUid(state, uid);
+    MC.moves.sortRentMovesByAmount(state, loc ? loc.p : 0, cmds);
     return cmds;
   },
-  destLine: PD.cmd.destLineForCmd
+  destLine: MC.cmd.destLineForCmd
 };
 
-PD.cmdProfiles.sly = {
+MC.cmdProfiles.sly = {
   id: "sly",
   title: "Sly Deal",
   helpLR: "L/R: Target",
-  includeSource: function (loc) { return PD.moves.locAllowsSource(loc); },
-  cmdsForUid: function (state, uid) { return PD.moves.slyDealMovesForUid(state, uid); },
-  destLine: PD.cmd.destLineForCmd,
+  includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
+  cmdsForUid: function (state, uid) { return MC.moves.slyDealMovesForUid(state, uid); },
+  destLine: MC.cmd.destLineForCmd,
   ui: {
     mode: "cursor",
     findItemForCmd: function (ctx, cmdSly) {
@@ -3078,21 +3102,21 @@ PD.cmdProfiles.sly = {
       var t = ctx.view.targeting;
       if (cmdSly.kind === "source") {
         if (!t || !t.card || !t.card.loc) return null;
-        return PD.ui.findBestCursorTarget(ctx.computed.models, [PD.render.ROW_P_HAND], function (it) {
-          return PD.ui.itemMatchesUidLoc(it, t.card.uid, t.card.loc);
+        return MC.ui.findBestCursorTarget(ctx.computed.models, [MC.render.ROW_P_HAND], function (it) {
+          return MC.ui.itemMatchesUidLoc(it, t.card.uid, t.card.loc);
         });
       }
       if (cmdSly.kind === "playSlyDeal" && cmdSly.target && cmdSly.target.loc) {
         var loc = cmdSly.target.loc;
         var uid = cmdSly.target.uid;
-        return PD.ui.findBestCursorTarget(ctx.computed.models, [PD.render.ROW_OP_TABLE], function (it) {
-          return PD.ui.itemMatchesUidLoc(it, uid, loc);
+        return MC.ui.findBestCursorTarget(ctx.computed.models, [MC.render.ROW_OP_TABLE], function (it) {
+          return MC.ui.itemMatchesUidLoc(it, uid, loc);
         });
       }
       return null;
     },
     screenXForCmd: function (ctx, cmdSly) {
-      var pick = PD.cmdProfiles.sly.ui.findItemForCmd(ctx, cmdSly);
+      var pick = MC.cmdProfiles.sly.ui.findItemForCmd(ctx, cmdSly);
       if (!pick || !pick.item) return 999999;
       var row = pick.item.row;
       var cam = ctx.view.camX[row];
@@ -3113,37 +3137,37 @@ PD.cmdProfiles.sly = {
   }
 };
 
-PD.cmdProfiles.quick = {
+MC.cmdProfiles.quick = {
   id: "quick",
   title: function (targeting, cmdSel) {
     if (!cmdSel || !cmdSel.kind) return "Action";
-    return PD.cmd.titleForCmdKind(cmdSel);
+    return MC.cmd.titleForCmdKind(cmdSel);
   },
   helpLR: "L/R: Option",
-  includeSource: function (loc) { return PD.moves.locAllowsSource(loc); },
+  includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
   cmdsForUid: function (state, uid, loc) {
-    var rentCmds = PD.moves.rentMovesForUid(state, uid);
-    PD.moves.sortRentMovesByAmount(state, loc ? loc.p : 0, rentCmds);
-    var buildCmds = PD.moves.buildCmdsForUid(state, uid);
-    var bankCmds = PD.moves.bankCmdsForUid(state, uid);
+    var rentCmds = MC.moves.rentMovesForUid(state, uid);
+    MC.moves.sortRentMovesByAmount(state, loc ? loc.p : 0, rentCmds);
+    var buildCmds = MC.moves.buildCmdsForUid(state, uid);
+    var bankCmds = MC.moves.bankCmdsForUid(state, uid);
     return rentCmds.concat(buildCmds).concat(bankCmds);
   },
-  destLine: PD.cmd.destLineForCmd
+  destLine: MC.cmd.destLineForCmd
 };
 
 // ---- src/55_fmt.js ----
-// PD.fmt: shared text formatting helpers (UI/debug narration).
-PD.fmt.colorName = function (c) {
-  if (c === PD.Color.Cyan) return "Cyan";
-  if (c === PD.Color.Magenta) return "Magenta";
-  if (c === PD.Color.Orange) return "Orange";
-  if (c === PD.Color.Black) return "Black";
+// MC.fmt: shared text formatting helpers (UI/debug narration).
+MC.fmt.colorName = function (c) {
+  if (c === MC.Color.Cyan) return "Cyan";
+  if (c === MC.Color.Magenta) return "Magenta";
+  if (c === MC.Color.Orange) return "Orange";
+  if (c === MC.Color.Black) return "Black";
   return "c" + String(c);
 };
 
-PD.fmt.valueForDef = function (def) {
+MC.fmt.valueForDef = function (def) {
   if (!def) return null;
-  if (def.kind === PD.CardKind.Property) {
+  if (def.kind === MC.CardKind.Property) {
     if (def.propertyPayValue != null) return def.propertyPayValue;
     return 0;
   }
@@ -3151,7 +3175,7 @@ PD.fmt.valueForDef = function (def) {
   return null;
 };
 
-PD.fmt.errorMessage = function (code) {
+MC.fmt.errorMessage = function (code) {
   code = String(code || "");
   if (code === "no_plays_left") return "No plays left";
   if (code === "hand_over_limit") return "Hand over limit";
@@ -3171,10 +3195,10 @@ PD.fmt.errorMessage = function (code) {
   return code || "error";
 };
 
-PD.fmt.appendRuleNotes = function (def, baseDesc) {
+MC.fmt.appendRuleNotes = function (def, baseDesc) {
   baseDesc = baseDesc ? String(baseDesc) : "";
   if (!def || !def.ruleNotes || def.ruleNotes.length === 0) return baseDesc;
-  var enabled = PD.config.rules.enabledRuleNotes;
+  var enabled = MC.config.rules.enabledRuleNotes;
   if (enabled.length === 0) return baseDesc;
 
   var out = baseDesc;
@@ -3185,7 +3209,7 @@ PD.fmt.appendRuleNotes = function (def, baseDesc) {
     var on = false;
     for (j = 0; j < enabled.length; j++) if (enabled[j] === id) { on = true; break; }
     if (!on) continue;
-    var txt = PD.ruleNoteTextById[id] ? String(PD.ruleNoteTextById[id]) : "";
+    var txt = MC.ruleNoteTextById[id] ? String(MC.ruleNoteTextById[id]) : "";
     if (!txt) continue;
     if (out) out += "\n";
     out += txt;
@@ -3193,22 +3217,22 @@ PD.fmt.appendRuleNotes = function (def, baseDesc) {
   return out;
 };
 
-PD.fmt.inspectTitleForDef = function (def) {
+MC.fmt.inspectTitleForDef = function (def) {
   if (!def) return "";
   return def.name ? String(def.name) : (def.id ? String(def.id) : "");
 };
 
-PD.fmt.inspectDescForDef = function (def, selColor) {
+MC.fmt.inspectDescForDef = function (def, selColor) {
   if (!def) return "";
   var base = def.desc ? String(def.desc) : "";
-  base = PD.fmt.appendRuleNotes(def, base);
-  var v = PD.fmt.valueForDef(def);
+  base = MC.fmt.appendRuleNotes(def, base);
+  var v = MC.fmt.valueForDef(def);
   var vLine = (v != null && v > 0) ? ("Value: $" + String(v)) : "";
   var usedAs = "";
-  if (PD.rules.isWildDef(def)) {
+  if (MC.rules.isWildDef(def)) {
     var cSel = selColor;
-    if (cSel !== PD.state.NO_COLOR && def.wildColors && (cSel === def.wildColors[0] || cSel === def.wildColors[1])) {
-      usedAs = "Currently used as: " + PD.fmt.colorName(cSel);
+    if (cSel !== MC.state.NO_COLOR && def.wildColors && (cSel === def.wildColors[0] || cSel === def.wildColors[1])) {
+      usedAs = "Currently used as: " + MC.fmt.colorName(cSel);
     }
   }
 
@@ -3219,81 +3243,81 @@ PD.fmt.inspectDescForDef = function (def, selColor) {
   return out;
 };
 
-PD.fmt.destLabelForCmd = function (state, cmd) {
-  var d = PD.moves.destForCmd(cmd);
+MC.fmt.destLabelForCmd = function (state, cmd) {
+  var d = MC.moves.destForCmd(cmd);
   if (!d) return "";
   if (d.kind === "newSet") return "New Set";
-  if (d.kind === "setEnd") return PD.fmt.setLabelForSetI(state, d.p, d.setI);
+  if (d.kind === "setEnd") return MC.fmt.setLabelForSetI(state, d.p, d.setI);
   return "";
 };
 
-PD.fmt.setLabelForSetI = function (state, p, setI) {
+MC.fmt.setLabelForSetI = function (state, p, setI) {
   var set = state.players[p].sets[setI];
-  var col = set ? PD.rules.getSetColor(set.props) : PD.state.NO_COLOR;
-  return PD.fmt.colorName(col) + " Set";
+  var col = set ? MC.rules.getSetColor(set.props) : MC.state.NO_COLOR;
+  return MC.fmt.colorName(col) + " Set";
 };
 
-PD.fmt.menuLabelForCmds = function (baseLabel, state, cmds) {
+MC.fmt.menuLabelForCmds = function (baseLabel, state, cmds) {
   baseLabel = String(baseLabel || "");
   if (!baseLabel) baseLabel = "Action";
   if (!cmds || cmds.length === 0) return baseLabel;
   if (cmds.length !== 1) return baseLabel + "...";
-  var dl = PD.fmt.destLabelForCmd(state, cmds[0]);
+  var dl = MC.fmt.destLabelForCmd(state, cmds[0]);
   return dl ? (baseLabel + " -> " + dl) : baseLabel;
 };
 
-PD.fmt.menuLabelForRentMoves = function (state, rentMoves) {
+MC.fmt.menuLabelForRentMoves = function (state, rentMoves) {
   if (!rentMoves || rentMoves.length === 0) return "";
   if (rentMoves.length !== 1) return "Rent...";
   var onlyR = rentMoves[0];
-  var sl = PD.fmt.setLabelForSetI(state, 0, onlyR.setI);
+  var sl = MC.fmt.setLabelForSetI(state, 0, onlyR.setI);
   return sl ? ("Rent -> " + sl) : "Rent";
 };
 
-PD.fmt.targetingTitle = function (targeting, cmd) {
+MC.fmt.targetingTitle = function (targeting, cmd) {
   var tKind = targeting && targeting.kind ? String(targeting.kind) : "";
 
-  var prof = PD.cmd.getProfile(tKind);
+  var prof = MC.cmd.getProfile(tKind);
   if (prof && prof.title) {
     if (typeof prof.title === "function") return String(prof.title(targeting || null, cmd || null));
     return String(prof.title);
   }
 
-  return PD.cmd.titleForCmdKind(cmd);
+  return MC.cmd.titleForCmdKind(cmd);
 };
 
-PD.fmt.targetingDestLine = function (state, targeting, cmd) {
+MC.fmt.targetingDestLine = function (state, targeting, cmd) {
   var t = targeting || null;
 
   var tKind = t && t.kind ? String(t.kind) : "";
-  var prof = PD.cmd.getProfile(tKind);
+  var prof = MC.cmd.getProfile(tKind);
   if (prof && prof.destLine) return prof.destLine(state, t, cmd);
-  return PD.cmd.destLineForCmd(state, t, cmd);
+  return MC.cmd.destLineForCmd(state, t, cmd);
 };
 
-PD.fmt.targetingHelp = function (targeting) {
+MC.fmt.targetingHelp = function (targeting) {
   var t = targeting || null;
   var kind = t && t.kind ? String(t.kind) : "";
-  var prof = PD.cmd.getProfile(kind);
+  var prof = MC.cmd.getProfile(kind);
   var help = (prof && prof.helpLR) ? String(prof.helpLR) : "L/R: Dest";
-  if (t && t.card && t.card.def && PD.rules.isWildDef(t.card.def)) help += "  U/D: Color";
+  if (t && t.card && t.card.def && MC.rules.isWildDef(t.card.def)) help += "  U/D: Color";
   help += (t && t.hold) ? "\nRelease A: Drop  B:Cancel" : "\nA:Confirm  B:Cancel";
   return help;
 };
 
 // ---- src/56_layout.js ----
-// PD.layout: shared layout/geometry helpers (UI + renderer). Pure; reads PD.config.
+// MC.layout: shared layout/geometry helpers (UI + renderer). Pure; reads MC.config.
 
-PD.layout.rowY0 = function (row) {
-  return PD.config.render.layout.rowY[row];
+MC.layout.rowY0 = function (row) {
+  return MC.config.render.layout.rowY[row];
 };
 
-PD.layout.rowH = function (row) {
-  return PD.config.render.layout.rowH[row];
+MC.layout.rowH = function (row) {
+  return MC.config.render.layout.rowH[row];
 };
 
-PD.layout.faceYForRow = function (row) {
-  var L = PD.config.render.layout;
+MC.layout.faceYForRow = function (row) {
+  var L = MC.config.render.layout;
   if (row === 0) {
     // Opponent hand: bottom slice visible; cards extend upward off-screen.
     return L.rowY[0] + L.rowH[0] - L.faceH;
@@ -3304,20 +3328,20 @@ PD.layout.faceYForRow = function (row) {
   return L.rowY[row];
 };
 
-PD.layout.isOpponentRow = function (row) {
+MC.layout.isOpponentRow = function (row) {
   return row === 0 || row === 1;
 };
 
-PD.layout.playerForRow = function (row) {
+MC.layout.playerForRow = function (row) {
   if (row === 0 || row === 1) return 1;
   if (row === 3 || row === 4) return 0;
   return -1;
 };
 
 // ---- src/60_render.js ----
-// PD.render: display-only renderer + TIC-80 draw-call boundary wrappers (no state mutation).
+// MC.render: display-only renderer + TIC-80 draw-call boundary wrappers (no state mutation).
 (function initRenderModule() {
-  var R = PD.render;
+  var R = MC.render;
 
   R.ROW_OP_HAND = 0;
   R.ROW_OP_TABLE = 1;
@@ -3325,7 +3349,7 @@ PD.layout.playerForRow = function (row) {
   R.ROW_P_TABLE = 3;
   R.ROW_P_HAND = 4;
 
-  var renderCfg = PD.config.render;
+  var renderCfg = MC.config.render;
   // Keep internal `cfg` for readability, but source-of-truth config is split
   // into `render.layout` and `render.style`.
   var layout = renderCfg.layout;
@@ -3362,11 +3386,11 @@ PD.layout.playerForRow = function (row) {
 
   // Property bar palette (placeholder; tweak later).
   R.propBarColByColor = [];
-  var Pal = PD.Pal;
-  R.propBarColByColor[PD.Color.Cyan] = Pal.Cyan;
-  R.propBarColByColor[PD.Color.Magenta] = Pal.Purple;
-  R.propBarColByColor[PD.Color.Orange] = Pal.Orange;
-  R.propBarColByColor[PD.Color.Black] = Pal.DarkGrey;
+  var Pal = MC.Pal;
+  R.propBarColByColor[MC.Color.Cyan] = Pal.Cyan;
+  R.propBarColByColor[MC.Color.Magenta] = Pal.Purple;
+  R.propBarColByColor[MC.Color.Orange] = Pal.Orange;
+  R.propBarColByColor[MC.Color.Black] = Pal.DarkGrey;
 
   function rectSafe(x, y, w, h, c) {
     rect(x | 0, y | 0, w | 0, h | 0, c | 0);
@@ -3392,8 +3416,8 @@ PD.layout.playerForRow = function (row) {
   function rowH(row) { return R.cfg.rowH[row]; }
   function rowY1(row) { return rowY0(row) + rowH(row) - 1; }
 
-  // Row policy lives in PD.layout; renderer uses it for flip decisions.
-  function isOpponentRow(row) { return PD.layout.isOpponentRow(row); }
+  // Row policy lives in MC.layout; renderer uses it for flip decisions.
+  function isOpponentRow(row) { return MC.layout.isOpponentRow(row); }
 
   function cardLocalRectToScreen(xFace, yFace, lx, ly, w, h, flip180) {
     if (!flip180) {
@@ -3435,8 +3459,8 @@ PD.layout.playerForRow = function (row) {
     items.sort(function (a, b) { return a.depth - b.depth; });
 
     function drawGhostAt(xFace, yFace) {
-      var shadowCol = PD.Pal.Black;
-      var col = PD.Pal.Green;
+      var shadowCol = MC.Pal.Black;
+      var col = MC.Pal.Green;
       rectbSafe(xFace - 1, yFace - 1, R.cfg.faceW, R.cfg.faceH, shadowCol);
       rectbSafe(xFace, yFace, R.cfg.faceW, R.cfg.faceH, col);
     }
@@ -3558,34 +3582,34 @@ PD.layout.playerForRow = function (row) {
     rectSafe(pr.x, pr.y, pr.w, pr.h, barCol);
 
     // Rent row (rent table)
-    var rent = (PD.SET_RULES && PD.SET_RULES[color]) ? PD.SET_RULES[color].rent : null;
+    var rent = (MC.SET_RULES && MC.SET_RULES[color]) ? MC.SET_RULES[color].rent : null;
     drawRentRow(xFace, yFace, rent, flip180);
   }
 
   function iconForDef(def) {
     if (!def) return 0;
-    if (def.kind === PD.CardKind.Money) {
+    if (def.kind === MC.CardKind.Money) {
       return R.spr.iconMoney || 0;
     }
-    if (def.kind === PD.CardKind.House) return R.spr.iconHouse;
-    if (def.kind === PD.CardKind.Action) {
-      if (def.actionKind === PD.ActionKind.Rent) return R.spr.iconRent;
-      if (def.actionKind === PD.ActionKind.SlyDeal) return R.spr.iconSlyDeal;
-      if (def.actionKind === PD.ActionKind.JustSayNo) return R.spr.iconJSN;
+    if (def.kind === MC.CardKind.House) return R.spr.iconHouse;
+    if (def.kind === MC.CardKind.Action) {
+      if (def.actionKind === MC.ActionKind.Rent) return R.spr.iconRent;
+      if (def.actionKind === MC.ActionKind.SlyDeal) return R.spr.iconSlyDeal;
+      if (def.actionKind === MC.ActionKind.JustSayNo) return R.spr.iconJSN;
     }
     return 0;
   }
 
   function rentColorsForDef(def) {
-    if (!def || def.actionKind !== PD.ActionKind.Rent) return null;
+    if (!def || def.actionKind !== MC.ActionKind.Rent) return null;
     var a = def.rentAllowedColors;
     if (a && a.length) return a;
     // rent_any: treat as 4 colors in a stable order.
-    return [PD.Color.Cyan, PD.Color.Black, PD.Color.Magenta, PD.Color.Orange];
+    return [MC.Color.Cyan, MC.Color.Black, MC.Color.Magenta, MC.Color.Orange];
   }
 
   function rentBarColForColor(color) {
-    if (color === PD.Color.Black) return PD.Pal.Black;
+    if (color === MC.Color.Black) return MC.Pal.Black;
     var c = R.propBarColByColor[color];
     return c != null ? c : R.cfg.colText;
   }
@@ -3624,20 +3648,20 @@ PD.layout.playerForRow = function (row) {
   }
 
   function drawMiniCard(state, uid, xFace, yFace, flip180, assignedColor) {
-    var def = state ? PD.state.defByUid(state, uid) : null;
+    var def = state ? MC.state.defByUid(state, uid) : null;
     if (!def) {
       drawCardFaceBase(xFace, yFace, R.cfg.colCardInterior);
       return;
     }
 
-    if (def.kind === PD.CardKind.Property) {
+    if (def.kind === MC.CardKind.Property) {
       drawCardFaceBase(xFace, yFace, R.cfg.colCardInterior);
       var payV = def.propertyPayValue != null ? def.propertyPayValue : 0;
-      if (PD.rules.isWildDef(def)) {
+      if (MC.rules.isWildDef(def)) {
         // Two halves: top (halfFlip=false), bottom (halfFlip=true). Effective flip is XOR.
         var c0 = def.wildColors[0];
         var c1 = def.wildColors[1];
-        var a = (assignedColor == null) ? PD.state.NO_COLOR : assignedColor;
+        var a = (assignedColor == null) ? MC.state.NO_COLOR : assignedColor;
         var colHalfFalse = c0;
         var colHalfTrue = c1;
         if (a === c0 || a === c1) {
@@ -3656,7 +3680,7 @@ PD.layout.playerForRow = function (row) {
       return;
     }
 
-    if (def.kind === PD.CardKind.Action && def.actionKind === PD.ActionKind.Rent) {
+    if (def.kind === MC.CardKind.Action && def.actionKind === MC.ActionKind.Rent) {
       drawCardFaceBase(xFace, yFace, R.cfg.colCardInterior);
       drawRentBars(xFace, yFace, rentColorsForDef(def), !!flip180);
       var rv = def.bankValue;
@@ -3700,7 +3724,7 @@ PD.layout.playerForRow = function (row) {
   }
 
   // Phase 04: renderer no longer computes row models/navigation/cameras.
-  // UI owns selection + cameras via PD.ui, and passes computed models in.
+  // UI owns selection + cameras via MC.ui, and passes computed models in.
 
   function drawCenter(opts) {
     if (!opts || !opts.state || !opts.view || !opts.computed) return;
@@ -3716,7 +3740,7 @@ PD.layout.playerForRow = function (row) {
     rectSafe(0, y0, 239, y1 - y0 + 1, cfg.colCenterPanel);
     rectbSafe(0, y0, 239, y1 - y0 + 1, cfg.colCenterPanelBorder);
 
-    var dbgEnabled = !!PD.config.debug.enabled;
+    var dbgEnabled = !!MC.config.debug.enabled;
     var hlCol = (opts.highlightCol != null) ? opts.highlightCol : cfg.colHighlight;
 
     // Header: removed (Phase 04). Plays indicator is drawn in screen-space.
@@ -3798,11 +3822,11 @@ PD.layout.playerForRow = function (row) {
         else if (it.kind === "discard") drawDiscardAt(it.x, it.y, it.nVis, it.topUidVis);
         else if (it.kind === "btn") {
           // Flat UI button: dark fill + white text; selected uses highlight fill + black text.
-          // Note: debug gating and overlay hiding is handled in PD.ui.computeRowModels.
+          // Note: debug gating and overlay hiding is handled in MC.ui.computeRowModels.
 
           var enabled = true;
           if (it.id === "endTurn") {
-            enabled = (s.activeP === 0) && (s.players[0].hand.length <= PD.state.HAND_MAX);
+            enabled = (s.activeP === 0) && (s.players[0].hand.length <= MC.state.HAND_MAX);
           }
 
           var isSel = !!(selectedItem && selectedItem === it);
@@ -3810,9 +3834,9 @@ PD.layout.playerForRow = function (row) {
           if (it.id === "endTurn" && enabled && (s.activeP === 0) && (s.playsLeft != null) && (s.playsLeft <= 0)) recommend = true;
 
           var bg = isSel ? hlCol : cfg.colCenterPanel;
-          var border = isSel ? PD.Pal.Black : (recommend ? PD.Pal.Green : cfg.colCenterPanelBorder);
-          var colText = enabled ? (isSel ? PD.Pal.Black : cfg.colText) : PD.Pal.Grey;
-          if (!isSel && recommend && enabled) colText = PD.Pal.Green;
+          var border = isSel ? MC.Pal.Black : (recommend ? MC.Pal.Green : cfg.colCenterPanelBorder);
+          var colText = enabled ? (isSel ? MC.Pal.Black : cfg.colText) : MC.Pal.Grey;
+          if (!isSel && recommend && enabled) colText = MC.Pal.Green;
 
           rectSafe(it.x, it.y, it.w, it.h, bg);
           rectbSafe(it.x, it.y, it.w, it.h, border);
@@ -3835,7 +3859,7 @@ PD.layout.playerForRow = function (row) {
     // Phase 05: Inspect uses a screen-space panel with panel-driven anchors.
     var panel = null;
     if (view.inspectActive) {
-      var Lp = PD.config.render.layout;
+      var Lp = MC.config.render.layout;
       panel = {
         x0: Lp.inspectPanelX0,
         y0: Lp.inspectPanelY0,
@@ -3869,7 +3893,7 @@ PD.layout.playerForRow = function (row) {
           if (dbgEnabled && s.deck.length > 0) {
             var topUid = s.deck[s.deck.length - 1];
             drawMiniCard(s, topUid, xPrev, yPrev, false);
-            var defT = PD.state.defByUid(s, topUid);
+            var defT = MC.state.defByUid(s, topUid);
             if (defT && defT.name) deckDesc += "\nTop: " + String(defT.name);
           }
           printExSafe(deckDesc, xDesc, yDesc, cfg.colText, false, 1, true);
@@ -3881,7 +3905,7 @@ PD.layout.playerForRow = function (row) {
           if (s.discard.length > 0) {
             var topUid2 = s.discard[s.discard.length - 1];
             drawMiniCard(s, topUid2, xPrev, yPrev, false);
-            var defD = PD.state.defByUid(s, topUid2);
+            var defD = MC.state.defByUid(s, topUid2);
             if (defD && defD.name) discardDesc += "\nTop: " + String(defD.name);
           }
           printExSafe(discardDesc, xDesc, yDesc, cfg.colText, false, 1, true);
@@ -3903,7 +3927,7 @@ PD.layout.playerForRow = function (row) {
       // Card selection.
       if (!sel.uid) return;
       var uid = sel.uid;
-      var def = PD.state.defByUid(s, uid);
+      var def = MC.state.defByUid(s, uid);
       if (!def) return;
 
       // Opponent hand is hidden unless debug enabled.
@@ -3914,8 +3938,8 @@ PD.layout.playerForRow = function (row) {
       }
 
       drawMiniCard(s, uid, xPrev, yPrev, false, sel.color);
-      printSafe(PD.fmt.inspectTitleForDef(def), xTitle, yTitle, cfg.colText);
-      var desc = PD.fmt.inspectDescForDef(def, sel.color);
+      printSafe(MC.fmt.inspectTitleForDef(def), xTitle, yTitle, cfg.colText);
+      var desc = MC.fmt.inspectDescForDef(def, sel.color);
       printExSafe(desc, xDesc, yDesc, cfg.colText, false, 1, true);
     }
 
@@ -3940,7 +3964,7 @@ PD.layout.playerForRow = function (row) {
       var maxH = (hintY - 2) - boxY;
       if (maxH > 0 && boxH > maxH) boxH = maxH;
       if (boxH < 16) boxH = 16;
-      rectSafe(boxX, boxY, boxW, boxH, PD.Pal.Black);
+      rectSafe(boxX, boxY, boxW, boxH, MC.Pal.Black);
       rectbSafe(boxX, boxY, boxW, boxH, cfg.colCenterPanelBorder);
 
       for (j = 0; j < items.length; j++) {
@@ -3948,7 +3972,7 @@ PD.layout.playerForRow = function (row) {
         var label = String(items[j].label || items[j].id || "");
         if (j === selI) {
           rectSafe(boxX + 1, yy - 1, boxW - 2, 7, hlCol);
-          printSafe(label, xDesc, yy, PD.Pal.Black);
+          printSafe(label, xDesc, yy, MC.Pal.Black);
         } else {
           printSafe(label, xDesc, yy, cfg.colText);
         }
@@ -3959,24 +3983,24 @@ PD.layout.playerForRow = function (row) {
     function drawTargetingOverlay() {
       var t = view.targeting;
       if (!t || !t.active) return;
-      if (t.card && t.card.uid) drawMiniCard(s, t.card.uid, xPrev, yPrev, false, (t.wildColor !== PD.state.NO_COLOR) ? t.wildColor : null);
+      if (t.card && t.card.uid) drawMiniCard(s, t.card.uid, xPrev, yPrev, false, (t.wildColor !== MC.state.NO_COLOR) ? t.wildColor : null);
 
       var cmd = (t.cmds && t.cmds.length) ? t.cmds[t.cmdI % t.cmds.length] : null;
 
-      var title = PD.fmt.targetingTitle(t, cmd);
+      var title = MC.fmt.targetingTitle(t, cmd);
       printSafe(title, xTitle, yTitle, cfg.colText);
-      var destLine = PD.fmt.targetingDestLine(s, t, cmd);
+      var destLine = MC.fmt.targetingDestLine(s, t, cmd);
       // Backing box so targeting is unmistakable.
       var boxX = xDesc - 2;
       var boxY = yDesc - 2;
       var boxW = cfg.screenW - boxX - cfg.rowPadX;
       var boxH = 30;
-      rectSafe(boxX, boxY, boxW, boxH, PD.Pal.Black);
+      rectSafe(boxX, boxY, boxW, boxH, MC.Pal.Black);
       rectbSafe(boxX, boxY, boxW, boxH, cfg.colCenterPanelBorder);
 
       printExSafe(destLine, xDesc, yDesc, cfg.colText, false, 1, false);
 
-      var help = PD.fmt.targetingHelp(t);
+      var help = MC.fmt.targetingHelp(t);
       printExSafe(help, xDesc, y1 - 18, cfg.colText, false, 1, true);
     }
 
@@ -4006,7 +4030,7 @@ PD.layout.playerForRow = function (row) {
     var dx = 6; // 6px font cell width
     var i;
     for (i = 0; i < maxPlays; i++) {
-      var col = (i < used) ? PD.Pal.Red : PD.Pal.Green;
+      var col = (i < used) ? MC.Pal.Red : MC.Pal.Green;
       printSafe("o", x0 + i * dx, y0, col);
     }
   }
@@ -4014,7 +4038,7 @@ PD.layout.playerForRow = function (row) {
   function drawModeHintNearButtons(view, computed) {
     var cfg = R.cfg;
     if (cfg.hudLineEnabled === false) return;
-    var dbgEnabled = !!PD.config.debug.enabled;
+    var dbgEnabled = !!MC.config.debug.enabled;
     if (!dbgEnabled) return;
     // Prompts don't overlap this hint, so keep it visible in prompt mode too.
     if (!view || (view.mode !== "browse" && view.mode !== "prompt") || view.inspectActive) return;
@@ -4043,7 +4067,7 @@ PD.layout.playerForRow = function (row) {
     var y = maxBtnY - 7; // 6px font + 1
     var yPhase = y - 7;
     if (yPhase < 0) yPhase = 0;
-    printSafe("Phase 09", x, yPhase, cfg.hudLineCol);
+    printSafe(MC.config.meta.version, x, yPhase, cfg.hudLineCol);
     printSafe("Y:Mode", x, y, cfg.hudLineCol);
   }
 
@@ -4081,14 +4105,14 @@ PD.layout.playerForRow = function (row) {
       var x0 = Math.floor((cfg.screenW - boxW) / 2);
       var y0 = yCursor;
 
-      var bgCol = PD.Pal.Black;
+      var bgCol = MC.Pal.Black;
       if (kind === "ai") bgCol = cfg.colToastBgAi;
       rectSafe(x0, y0, boxW, boxH, bgCol);
       rectbSafe(x0, y0, boxW, boxH, cfg.colCenterPanelBorder);
 
       var textX = x0 + padX + iconW;
       if (isError) {
-        printSafe("X", x0 + 4, y0 + padY, PD.Pal.Red);
+        printSafe("X", x0 + 4, y0 + padY, MC.Pal.Red);
       }
       for (i = 0; i < parts.length; i++) {
         // Fixed-width makes centering math exact (avoids proportional font whitespace).
@@ -4125,25 +4149,25 @@ PD.layout.playerForRow = function (row) {
         lines.push("Cards:" + s.discard.length);
       } else if (k === "bank0") {
         lines.push("Sel:B0");
-        lines.push("Total:" + PD.util.bankValueTotal(s, 0));
+        lines.push("Total:" + MC.util.bankValueTotal(s, 0));
       } else if (k === "bank1") {
         lines.push("Sel:B1");
-        lines.push("Total:" + PD.util.bankValueTotal(s, 1));
+        lines.push("Total:" + MC.util.bankValueTotal(s, 1));
       } else {
         lines.push("Sel:" + String(k || "?"));
         lines.push("");
       }
     } else if (selectedItem && selectedItem.uid) {
       var uid = selectedItem.uid;
-      var def = PD.state.defByUid(s, uid);
+      var def = MC.state.defByUid(s, uid);
       var defId = def ? def.id : "?";
       lines.push("Sel:" + defId + " uid:" + uid);
 
       var detail = "";
-      if (def && def.kind === PD.CardKind.Property) {
-        if (PD.rules.isWildDef(def)) {
+      if (def && def.kind === MC.CardKind.Property) {
+        if (MC.rules.isWildDef(def)) {
           detail = "Wild:" + def.wildColors[0] + "/" + def.wildColors[1];
-          if (selectedItem && selectedItem.color != null && selectedItem.color !== PD.state.NO_COLOR) {
+          if (selectedItem && selectedItem.color != null && selectedItem.color !== MC.state.NO_COLOR) {
             detail += " As:c" + selectedItem.color;
           }
         }
@@ -4346,7 +4370,7 @@ PD.layout.playerForRow = function (row) {
     if (!debug || !debug.state) return ["Sel:(none)", ""];
     var it = null;
     if (debug.view) {
-      var computed = PD.ui.computeRowModels(debug.state, debug.view);
+      var computed = MC.ui.computeRowModels(debug.state, debug.view);
       it = computed ? computed.selected : null;
     }
     if (!it) return ["Sel:(none)", ""];
@@ -4359,20 +4383,20 @@ PD.layout.playerForRow = function (row) {
 
     if (it.uid) {
       var uid = it.uid;
-      var def = PD.state.defByUid(debug.state, uid);
+      var def = MC.state.defByUid(debug.state, uid);
       var defId = def ? def.id : "?";
       var line2 = (def && def.name) ? def.name : "";
 
-      if (def && def.kind === PD.CardKind.Property) {
-        if (PD.rules.isWildDef(def)) {
+      if (def && def.kind === MC.CardKind.Property) {
+        if (MC.rules.isWildDef(def)) {
           var c0 = def.wildColors[0];
           var c1 = def.wildColors[1];
-          line2 = "Wild:" + PD.fmt.colorName(c0) + "/" + PD.fmt.colorName(c1);
-          if (it.color != null && it.color !== PD.state.NO_COLOR) {
-            line2 += " As:" + PD.fmt.colorName(it.color);
+          line2 = "Wild:" + MC.fmt.colorName(c0) + "/" + MC.fmt.colorName(c1);
+          if (it.color != null && it.color !== MC.state.NO_COLOR) {
+            line2 += " As:" + MC.fmt.colorName(it.color);
           }
         } else {
-          line2 = "Prop:" + PD.fmt.colorName(def.propertyColor);
+          line2 = "Prop:" + MC.fmt.colorName(def.propertyColor);
         }
       }
 
@@ -4406,7 +4430,7 @@ PD.layout.playerForRow = function (row) {
     if (!state || !view) return;
 
     var computed = args.computed;
-    if (!computed) computed = PD.ui.computeRowModels(state, view);
+    if (!computed) computed = MC.ui.computeRowModels(state, view);
     if (!computed || !computed.models) return;
 
     var models = computed.models;
@@ -4450,8 +4474,8 @@ PD.layout.playerForRow = function (row) {
 })();
 
 // ---- src/65_ui.js ----
-// PD.ui: controller UX view-state machine + model computation (drives commands; does not author rules).
-PD.ui.newView = function () {
+// MC.ui: controller UX view-state machine + model computation (drives commands; does not author rules).
+MC.ui.newView = function () {
   return {
     // View-only state (cursor/camera/menu focus). This is intentionally not part of GameState.
     cursor: { row: 4, i: 0 }, // default to player hand
@@ -4478,8 +4502,8 @@ PD.ui.newView = function () {
       // source: { uid, loc }
       card: null,
       // for wilds
-      wildColor: PD.state.NO_COLOR,
-      // list of concrete engine commands (subset of PD.engine.legalMoves)
+      wildColor: MC.state.NO_COLOR,
+      // list of concrete engine commands (subset of MC.engine.legalMoves)
       cmds: [],
       cmdI: 0
     },
@@ -4513,7 +4537,7 @@ PD.ui.newView = function () {
       lastActiveP: null,
       lastPlaysLeft: null,
       lastHandLenP0: null,
-      lastWinnerP: PD.state.NO_WINNER,
+      lastWinnerP: MC.state.NO_WINNER,
       lastPromptKind: "",
       lastPromptForP0: false,
       lastCenterBtnPressedId: "",
@@ -4525,7 +4549,7 @@ PD.ui.newView = function () {
   };
 };
 
-PD.ui.toastPush = function (view, toast) {
+MC.ui.toastPush = function (view, toast) {
   var t = {
     id: toast.id,
     kind: toast.kind,
@@ -4543,7 +4567,7 @@ PD.ui.toastPush = function (view, toast) {
   view.toasts.push(t);
 };
 
-PD.ui.toastsTick = function (view) {
+MC.ui.toastsTick = function (view) {
   var out = [];
   var i;
   for (i = 0; i < view.toasts.length; i++) {
@@ -4555,9 +4579,9 @@ PD.ui.toastsTick = function (view) {
   view.toasts = out;
 };
 
-PD.ui.syncPromptToast = function (state, view) {
+MC.ui.syncPromptToast = function (state, view) {
   // Game over: hide prompt toast so Winner toast can take over.
-  if (state && state.winnerP !== PD.state.NO_WINNER) {
+  if (state && state.winnerP !== MC.state.NO_WINNER) {
     var iGo;
     for (iGo = 0; iGo < view.toasts.length; iGo++) {
       var tGo = view.toasts[iGo];
@@ -4582,11 +4606,11 @@ PD.ui.syncPromptToast = function (state, view) {
 
   var txt = "";
   if (pr.kind === "discardDown") {
-    var over = state.players[0].hand.length - PD.state.HAND_MAX;
+    var over = state.players[0].hand.length - MC.state.HAND_MAX;
     txt = "Too many cards. Discard " + over;
   } else if (pr.kind === "payDebt") {
     // Phase 08+: if action-sourced debt and JSN is available, teach the response window.
-    var jsnAvail = !!(pr.srcAction && pr.buf && pr.buf.length === 0 && PD.rules.handHasActionKind(state, 0, PD.ActionKind.JustSayNo));
+    var jsnAvail = !!(pr.srcAction && pr.buf && pr.buf.length === 0 && MC.rules.handHasActionKind(state, 0, MC.ActionKind.JustSayNo));
     if (jsnAvail && pr.srcAction && String(pr.srcAction.kind || "") === "rent") {
       txt = "Rent: Pay $" + pr.rem + " or Just Say No";
     } else if (jsnAvail) {
@@ -4600,7 +4624,7 @@ PD.ui.syncPromptToast = function (state, view) {
     txt = "Move a Wild? A: move  B: skip";
   } else if (pr.kind === "respondAction") {
     // Phase 08: Sly Deal response prompt.
-    var col = PD.state.NO_COLOR;
+    var col = MC.state.NO_COLOR;
     if (pr.target && pr.target.loc && pr.target.loc.zone === "setProps") {
       var tp = pr.target.loc.p;
       var setI = pr.target.loc.setI;
@@ -4608,7 +4632,7 @@ PD.ui.syncPromptToast = function (state, view) {
       var set = state.players[tp].sets[setI];
       if (set && set.props && set.props[iP]) col = set.props[iP][1];
     }
-    txt = "Sly Deal: " + PD.fmt.colorName(col) + " or Just Say No";
+    txt = "Sly Deal: " + MC.fmt.colorName(col) + " or Just Say No";
   } else {
     txt = "Prompt: " + pr.kind;
   }
@@ -4626,9 +4650,9 @@ PD.ui.syncPromptToast = function (state, view) {
   }
 };
 
-PD.ui.syncWinnerToast = function (state, view) {
+MC.ui.syncWinnerToast = function (state, view) {
   if (!state || !view) return;
-  var has = (state.winnerP !== PD.state.NO_WINNER);
+  var has = (state.winnerP !== MC.state.NO_WINNER);
   var i;
   var idx = -1;
   for (i = 0; i < view.toasts.length; i++) {
@@ -4654,14 +4678,14 @@ PD.ui.syncWinnerToast = function (state, view) {
   }
 };
 
-PD.ui.clampI = function (i, n) {
+MC.ui.clampI = function (i, n) {
   if (n <= 0) return 0;
   if (i < 0) return 0;
   if (i >= n) return n - 1;
   return i;
 };
 
-PD.ui.itemMatchesUidLoc = function (it, uid, loc) {
+MC.ui.itemMatchesUidLoc = function (it, uid, loc) {
   if (!it || !it.loc || !loc) return false;
   if (it.uid !== uid) return false;
   if (it.loc.p !== loc.p) return false;
@@ -4671,14 +4695,14 @@ PD.ui.itemMatchesUidLoc = function (it, uid, loc) {
   return true;
 };
 
-PD.ui.wrapI = function (i, n) {
+MC.ui.wrapI = function (i, n) {
   if (n <= 0) return 0;
   i = i % n;
   if (i < 0) i = i + n;
   return i;
 };
 
-PD.ui.cmdsWithoutSource = function (cmds) {
+MC.ui.cmdsWithoutSource = function (cmds) {
   if (!cmds || cmds.length === 0) return [];
   var out = [];
   var i;
@@ -4693,7 +4717,7 @@ PD.ui.cmdsWithoutSource = function (cmds) {
 
 // Pick the first item matching a predicate from the given row order.
 // Returns { row, i, item } or null.
-PD.ui.findBestCursorTarget = function (models, rowOrder, predicate) {
+MC.ui.findBestCursorTarget = function (models, rowOrder, predicate) {
   if (!models) return null;
   rowOrder = rowOrder || [0, 1, 2, 3, 4];
   predicate = predicate || function () { return true; };
@@ -4717,7 +4741,7 @@ PD.ui.findBestCursorTarget = function (models, rowOrder, predicate) {
   return null;
 };
 
-PD.ui.pickReplaceWindowWild = function (state, computed) {
+MC.ui.pickReplaceWindowWild = function (state, computed) {
   var pr = state ? state.prompt : null;
   if (!pr || String(pr.kind || "") !== "replaceWindow" || pr.p !== 0) return null;
   var models = computed ? computed.models : null;
@@ -4725,24 +4749,24 @@ PD.ui.pickReplaceWindowWild = function (state, computed) {
 
   var srcSetI = pr.srcSetI;
   var excludeUid = pr.excludeUid;
-  return PD.ui.findBestCursorTarget(models, [PD.render.ROW_P_TABLE], function (it) {
+  return MC.ui.findBestCursorTarget(models, [MC.render.ROW_P_TABLE], function (it) {
     if (!it || it.kind !== "setProp" || !it.loc) return false;
     if (it.loc.p !== 0) return false;
     if (it.loc.zone !== "setProps") return false;
     if (it.loc.setI !== srcSetI) return false;
     if (it.uid === excludeUid) return false;
-    var def = PD.state.defByUid(state, it.uid);
-    return !!(def && PD.rules.isWildDef(def));
+    var def = MC.state.defByUid(state, it.uid);
+    return !!(def && MC.rules.isWildDef(def));
   });
 };
 
-PD.ui.cursorMoveTo = function (view, pick) {
+MC.ui.cursorMoveTo = function (view, pick) {
   if (!view || !view.cursor || !pick) return;
   view.cursor.row = pick.row;
   view.cursor.i = pick.i;
 };
 
-PD.ui.nearestByX = function (items, xCenter) {
+MC.ui.nearestByX = function (items, xCenter) {
   if (!items || items.length === 0) return 0;
   var bestI = 0;
   var bestD = 999999;
@@ -4760,7 +4784,7 @@ PD.ui.nearestByX = function (items, xCenter) {
 // Directional navigation (Phase 04 polish): pick closest selectable in a direction,
 // based on screen-space geometry (includes row camera offsets).
 
-PD.ui.itemScreenCenter = function (view, item) {
+MC.ui.itemScreenCenter = function (view, item) {
   if (!item) return { cx: 0, cy: 0 };
   var row = item.row;
   var cam = view.camX[row];
@@ -4771,13 +4795,13 @@ PD.ui.itemScreenCenter = function (view, item) {
   return { cx: x + (w / 2), cy: y + (h / 2) };
 };
 
-PD.ui.navPickInDirection = function (view, computed, dir) {
+MC.ui.navPickInDirection = function (view, computed, dir) {
   if (!view || !computed || !computed.models) return null;
   if (!computed.selected) return null;
 
   dir = String(dir || "");
   var cur = computed.selected;
-  var curC = PD.ui.itemScreenCenter(view, cur);
+  var curC = MC.ui.itemScreenCenter(view, cur);
   var curCx = curC.cx;
   var curCy = curC.cy;
 
@@ -4792,7 +4816,7 @@ PD.ui.navPickInDirection = function (view, computed, dir) {
       var it = rm.items[i];
       if (!it) continue;
       if (it === cur) continue;
-      var c = PD.ui.itemScreenCenter(view, it);
+      var c = MC.ui.itemScreenCenter(view, it);
       cand.push({ row: row, i: i, it: it, cx: c.cx, cy: c.cy });
     }
   }
@@ -4812,7 +4836,7 @@ PD.ui.navPickInDirection = function (view, computed, dir) {
     var along = (dir === "left" || dir === "right") ? Math.abs(dx) : Math.abs(dy);
     var perp = (dir === "left" || dir === "right") ? Math.abs(dy) : Math.abs(dx);
     // Config is validated in tests (avoid runtime fallbacks in the cartridge).
-    var uiCfg = PD.config.ui;
+    var uiCfg = MC.config.ui;
     var k = (dir === "left" || dir === "right") ? uiCfg.navConeKLeftRight : uiCfg.navConeKUpDown;
     return (along * along) + (perp * perp) * k;
   }
@@ -4876,7 +4900,7 @@ PD.ui.navPickInDirection = function (view, computed, dir) {
   return null;
 };
 
-PD.ui.layoutHint = function (state, view) {
+MC.ui.layoutHint = function (state, view) {
   // Reservation hint: which stacks need an extra slot so ghosts/previews don't overlap.
   // Keep the policy here so buildRowItems + computeRowModels stay consistent.
   var hint = { bankReserve: false, needsExtraSlotBySetI: null, menuHoverCmd: null };
@@ -4889,7 +4913,7 @@ PD.ui.layoutHint = function (state, view) {
     var i;
     for (i = 0; i < cmds.length; i++) {
       var c = cmds[i];
-      var d = PD.moves.destForCmd(c);
+      var d = MC.moves.destForCmd(c);
       if (!d) continue;
       if (d.kind === "bankEnd") hint.bankReserve = true;
       if (d.kind === "setEnd") needs[d.setI] = true;
@@ -4901,7 +4925,7 @@ PD.ui.layoutHint = function (state, view) {
   // Menu-hover preview: reserve only when unambiguous (exactly 1 legal cmd).
   if (view.mode === "menu" && view.menu && view.menu.items && view.menu.items.length > 0 && view.menu.src && view.menu.src.uid) {
     var nMenuItems = view.menu.items.length;
-    var mi = PD.ui.clampI(view.menu.i, nMenuItems);
+    var mi = MC.ui.clampI(view.menu.i, nMenuItems);
     view.menu.i = mi;
     var it = view.menu.items[mi];
     var src = view.menu.src;
@@ -4909,19 +4933,19 @@ PD.ui.layoutHint = function (state, view) {
 
     var uid = src.uid;
     var kindM = String(it.id || "");
-    var profM = PD.cmd.getProfile(kindM);
+    var profM = MC.cmd.getProfile(kindM);
     if (!profM) return hint;
     if (kindM === "sly") return hint; // No implied default destination while hovering Sly (cursor-mode targeting).
 
-    var rM = PD.moves.cmdsForTargeting(state, kindM, uid, src.loc || null);
+    var rM = MC.moves.cmdsForTargeting(state, kindM, uid, src.loc || null);
     if (!rM || !rM.cmds) return hint;
-    var cmdsM = PD.ui.cmdsWithoutSource(rM.cmds);
+    var cmdsM = MC.ui.cmdsWithoutSource(rM.cmds);
 
     // Only preview when unambiguous (exactly 1 legal cmd). Multi-target actions show "..." and should not
     // imply a default destination highlight while browsing the menu.
     if (cmdsM.length === 1) {
       hint.menuHoverCmd = cmdsM[0];
-      var d2 = PD.moves.destForCmd(hint.menuHoverCmd);
+      var d2 = MC.moves.destForCmd(hint.menuHoverCmd);
       if (d2 && d2.kind === "bankEnd") hint.bankReserve = true;
       if (d2 && d2.kind === "setEnd") {
         var needs2 = {};
@@ -4934,13 +4958,13 @@ PD.ui.layoutHint = function (state, view) {
   return hint;
 };
 
-PD.ui.buildRowItems = function (state, view, row, hint) {
-  var L = PD.config.render.layout;
+MC.ui.buildRowItems = function (state, view, row, hint) {
+  var L = MC.config.render.layout;
 
   var out = { items: [], minX: 0, maxX: 0 };
-  var isOp = PD.layout.isOpponentRow(row);
-  var p = PD.layout.playerForRow(row);
-  var yFace = PD.layout.faceYForRow(row);
+  var isOp = MC.layout.isOpponentRow(row);
+  var p = MC.layout.playerForRow(row);
+  var yFace = MC.layout.faceYForRow(row);
   var padX = L.rowPadX;
 
   var i;
@@ -5205,7 +5229,7 @@ PD.ui.buildRowItems = function (state, view, row, hint) {
 
   if (row === 2) {
     // Center row: deck, discard, and UI buttons.
-    var C = PD.config.render.layout;
+    var C = MC.config.render.layout;
     var top = C.rowY[2] + C.centerTopInsetY;
     var deckX = C.centerDeckX;
     var gapX = C.centerPileGapX;
@@ -5213,7 +5237,7 @@ PD.ui.buildRowItems = function (state, view, row, hint) {
     out.items.push({ kind: "deck", row: 2, x: x0, y: top, w: C.faceW, h: C.faceH });
     out.items.push({ kind: "discard", row: 2, x: x0 + C.faceW + gapX, y: top, w: C.faceW, h: C.faceH });
 
-    var dbgEnabled = !!PD.config.debug.enabled;
+    var dbgEnabled = !!MC.config.debug.enabled;
 
     // Hide buttons while an overlay is active (menu/targeting).
     // Inspect should keep buttons visible/selectable so they can be inspected too.
@@ -5231,12 +5255,12 @@ PD.ui.buildRowItems = function (state, view, row, hint) {
       }
 
       // End is always available on your turn; if hand > HAND_MAX the engine enters a discard-down prompt.
-      var endDisabled = (state.winnerP !== PD.state.NO_WINNER) || (state.activeP !== 0);
+      var endDisabled = (state.winnerP !== MC.state.NO_WINNER) || (state.activeP !== 0);
       pushBtn("endTurn", "End", stripY0, endDisabled);
       if (dbgEnabled) {
         // Game over: Step would attempt to mutate state via debugStep and can throw.
         // Keep Reset/Next available for recovery.
-        pushBtn("step", "Step", stripY0 + 11, (state.winnerP !== PD.state.NO_WINNER));
+        pushBtn("step", "Step", stripY0 + 11, (state.winnerP !== MC.state.NO_WINNER));
         pushBtn("reset", "Reset", stripY0 + 22, false);
         pushBtn("nextScenario", "Next", stripY0 + 33, false);
       }
@@ -5259,14 +5283,14 @@ PD.ui.buildRowItems = function (state, view, row, hint) {
   return out;
 };
 
-PD.ui.computeRowModels = function (state, view) {
-  var hint = PD.ui.layoutHint(state, view);
+MC.ui.computeRowModels = function (state, view) {
+  var hint = MC.ui.layoutHint(state, view);
   var models = [
-    PD.ui.buildRowItems(state, view, 0, hint),
-    PD.ui.buildRowItems(state, view, 1, hint),
-    PD.ui.buildRowItems(state, view, 2, hint),
-    PD.ui.buildRowItems(state, view, 3, hint),
-    PD.ui.buildRowItems(state, view, 4, hint)
+    MC.ui.buildRowItems(state, view, 0, hint),
+    MC.ui.buildRowItems(state, view, 1, hint),
+    MC.ui.buildRowItems(state, view, 2, hint),
+    MC.ui.buildRowItems(state, view, 3, hint),
+    MC.ui.buildRowItems(state, view, 4, hint)
   ];
 
   // Render overlays (ghosts/previews) live alongside row models, not in the renderer.
@@ -5285,14 +5309,14 @@ PD.ui.computeRowModels = function (state, view) {
 
   var rm = models[row];
   var n = (rm && rm.items) ? rm.items.length : 0;
-  view.cursor.i = PD.ui.clampI(view.cursor.i, n);
+  view.cursor.i = MC.ui.clampI(view.cursor.i, n);
 
   var sel = (rm && rm.items && rm.items.length) ? rm.items[view.cursor.i] : null;
 
-  // Note: cursor relocation off empty selections is handled by PD.ui.focus.preserve().
+  // Note: cursor relocation off empty selections is handled by MC.ui.focus.preserve().
 
-  var L = PD.config.render.layout;
-  var yTable = PD.layout.faceYForRow(3);
+  var L = MC.config.render.layout;
+  var yTable = MC.layout.faceYForRow(3);
 
   function pushOverlay(row0, it0) {
     if (row0 == null) return;
@@ -5327,13 +5351,13 @@ PD.ui.computeRowModels = function (state, view) {
   }
 
   function tableStack(setI) {
-    var rmTable = models[PD.render.ROW_P_TABLE];
+    var rmTable = models[MC.render.ROW_P_TABLE];
     var stacks = (rmTable && rmTable.stacks) ? rmTable.stacks : null;
     return stacks ? stacks["set:p0:set" + setI] : null;
   }
 
   function slotNewSet() {
-    var rmTable = models[PD.render.ROW_P_TABLE];
+    var rmTable = models[MC.render.ROW_P_TABLE];
     var newSetX = (rmTable && rmTable.newSetX != null) ? rmTable.newSetX : L.rowPadX;
     return { row: 3, x: newSetX, y: yTable, stackKey: "newSet:p0:row3", depth: 0 };
   }
@@ -5351,14 +5375,14 @@ PD.ui.computeRowModels = function (state, view) {
   }
 
   function slotBankEnd() {
-    var rmHand = models[PD.render.ROW_P_HAND];
+    var rmHand = models[MC.render.ROW_P_HAND];
     var bankSt = (rmHand && rmHand.stacks) ? rmHand.stacks["bank:p0:row4"] : null;
     if (!bankSt) return null;
     return { row: 4, x: stackX(bankSt, bankSt.nReal), y: bankSt.y, stackKey: "bank:p0:row4", depth: bankSt.nReal };
   }
 
   function slotForCmd(cmd, srcSlot) {
-    var d = PD.moves.destForCmd(cmd);
+    var d = MC.moves.destForCmd(cmd);
     if (!d) return null;
     if (d.kind === "newSet") return slotNewSet();
     if (d.kind === "setEnd") return slotSetEnd(d.setI);
@@ -5416,7 +5440,7 @@ PD.ui.computeRowModels = function (state, view) {
     if (!slot) return null;
 
     var col = null;
-    if (def && PD.rules.isWildDef(def)) {
+    if (def && MC.rules.isWildDef(def)) {
       if (k === "source") col = wildColor;
       else if (cmd.color != null) col = cmd.color;
       else col = wildColor;
@@ -5435,10 +5459,10 @@ PD.ui.computeRowModels = function (state, view) {
   if (view.mode === "targeting" && view.targeting && view.targeting.active) {
     var t = view.targeting;
     var cmds = t.cmds;
-    var cmdI = PD.ui.clampI(t.cmdI, cmds.length);
+    var cmdI = MC.ui.clampI(t.cmdI, cmds.length);
     t.cmdI = cmdI;
     var cmdSel0 = (cmds && cmds.length) ? cmds[cmdI] : null;
-    var profT = PD.cmd.getProfile(t.kind);
+    var profT = MC.cmd.getProfile(t.kind);
     var uiT = (profT && profT.ui) ? profT.ui : null;
     var uiMode = (uiT && uiT.mode) ? String(uiT.mode) : "preview";
     var isCursorMode = (uiMode === "cursor");
@@ -5450,7 +5474,7 @@ PD.ui.computeRowModels = function (state, view) {
       var srcLoc = t.card.loc;
       var z = String(srcLoc.zone || "");
       if (z === "hand" || z === "recvProps") {
-        var rowHand = PD.render.ROW_P_HAND;
+        var rowHand = MC.render.ROW_P_HAND;
         var rmHand = models[rowHand];
         if (rmHand && rmHand.items) {
           var hi;
@@ -5496,7 +5520,7 @@ PD.ui.computeRowModels = function (state, view) {
       }
 
       // Optional: ghost outlines for non-selected targets.
-      var showGhosts = !!PD.config.ui.slyShowTargetGhosts;
+      var showGhosts = !!MC.config.ui.slyShowTargetGhosts;
       if (showGhosts && cmds && cmds.length && uiT && uiT.findItemForCmd) {
         var ctxC = { state: state, view: view, computed: computed };
         var jS;
@@ -5554,8 +5578,8 @@ PD.ui.computeRowModels = function (state, view) {
     var uidM = (srcM && srcM.uid) ? srcM.uid : 0;
     var cm = (hint && hint.menuHoverCmd) ? hint.menuHoverCmd : null;
     if (uidM && cm) {
-      var defM = PD.state.defByUid(state, uidM);
-      setFocusForCmd(cm, null, { uid: uidM, def: defM, wildColor: (defM && PD.rules.isWildDef(defM)) ? cm.color : null });
+      var defM = MC.state.defByUid(state, uidM);
+      setFocusForCmd(cm, null, { uid: uidM, def: defM, wildColor: (defM && MC.rules.isWildDef(defM)) ? cm.color : null });
     }
 
     // When menu hover produces a preview of the same uid (or Rent preview where the preview card differs),
@@ -5564,7 +5588,7 @@ PD.ui.computeRowModels = function (state, view) {
       if (srcM.uid && srcM.loc && (srcM.loc.zone === "hand" || srcM.loc.zone === "recvProps")) {
         meta.hideSrc = { uid: srcM.uid, loc: srcM.loc };
       }
-      var rowHandM = PD.render.ROW_P_HAND;
+      var rowHandM = MC.render.ROW_P_HAND;
       var rmHandM = models[rowHandM];
       if (rmHandM && rmHandM.items) {
         var hiM;
@@ -5588,7 +5612,7 @@ PD.ui.computeRowModels = function (state, view) {
     var tgt = pr.target;
     var onTarget = false;
     if (sel && sel.loc) {
-      onTarget = PD.ui.itemMatchesUidLoc(sel, tgt.uid, tgt.loc);
+      onTarget = MC.ui.itemMatchesUidLoc(sel, tgt.uid, tgt.loc);
     }
     if (!onTarget) {
       var itT2 = findItemByUidLoc(tgt.uid, tgt.loc);
@@ -5599,12 +5623,12 @@ PD.ui.computeRowModels = function (state, view) {
   }
 
   var computed = { models: models, selected: sel, meta: meta };
-  computed = PD.anim.present(state, view, computed) || computed;
+  computed = MC.anim.present(state, view, computed) || computed;
   return computed;
 };
 
-PD.ui.ensureCamForSelection = function (rowModel, row, selItem, camArr) {
-  var L = PD.config.render.layout;
+MC.ui.ensureCamForSelection = function (rowModel, row, selItem, camArr) {
+  var L = MC.config.render.layout;
   if (!camArr) return;
 
   var cam = camArr[row];
@@ -5635,7 +5659,7 @@ PD.ui.ensureCamForSelection = function (rowModel, row, selItem, camArr) {
   camArr[row] = Math.floor(cam);
 };
 
-PD.ui.updateCameras = function (state, view, computed) {
+MC.ui.updateCameras = function (state, view, computed) {
   if (!view || !view.camX) return;
   if (!computed || !computed.models) return;
 
@@ -5649,7 +5673,7 @@ PD.ui.updateCameras = function (state, view, computed) {
     if (view.cursor.row === row) {
       var rm = models[row];
       if (rm && rm.items && rm.items.length) {
-        var i = PD.ui.clampI(view.cursor.i, rm.items.length);
+        var i = MC.ui.clampI(view.cursor.i, rm.items.length);
         selItem = rm.items[i];
       }
     } else {
@@ -5661,13 +5685,13 @@ PD.ui.updateCameras = function (state, view, computed) {
     // In overlay modes, have the preview destination row camera follow the preview.
     if ((view.mode === "targeting" || view.mode === "menu") && computed.meta && computed.meta.focus && row === computed.meta.focus.row) selItem = computed.meta.focus;
 
-    PD.ui.ensureCamForSelection(models[row], row, selItem, view.camX);
+    MC.ui.ensureCamForSelection(models[row], row, selItem, view.camX);
   }
 };
 
-PD.ui.menuOpenForSelection = function (state, view, sel) {
+MC.ui.menuOpenForSelection = function (state, view, sel) {
   if (!view || !view.menu) return;
-  if (state && state.winnerP !== PD.state.NO_WINNER) return;
+  if (state && state.winnerP !== MC.state.NO_WINNER) return;
   view.menu.items = [];
   view.menu.i = 0;
   view.menu.src = sel ? { row: sel.row, i: view.cursor.i, uid: sel.uid, loc: sel.loc || null } : null;
@@ -5678,37 +5702,38 @@ PD.ui.menuOpenForSelection = function (state, view, sel) {
   if (sel.loc.p !== 0) return;
 
   var uid = sel.uid;
-  var kinds = PD.cmd.menuKinds;
+  var kinds = MC.cmd.menuKinds;
   var iKind;
   for (iKind = 0; iKind < kinds.length; iKind++) {
     var kind = kinds[iKind];
-    var prof = PD.cmd.getProfile(kind);
+    var prof = MC.cmd.getProfile(kind);
     if (!prof) continue;
 
-    var r = PD.moves.cmdsForTargeting(state, kind, uid, sel.loc || null);
+    var r = MC.moves.cmdsForTargeting(state, kind, uid, sel.loc || null);
     if (!r || !r.cmds) continue;
-    var realCmds = PD.ui.cmdsWithoutSource(r.cmds);
+    var realCmds = MC.ui.cmdsWithoutSource(r.cmds);
     if (!realCmds || realCmds.length === 0) continue; // actionable-only
 
     var label = "";
-    if (kind === "rent") label = PD.fmt.menuLabelForRentMoves(state, realCmds);
+    if (kind === "rent") label = MC.fmt.menuLabelForRentMoves(state, realCmds);
     else if (kind === "sly") label = "Sly Deal...";
     else {
       var baseLabel = "";
       if (prof.title) baseLabel = (typeof prof.title === "function") ? String(prof.title(null, realCmds[0] || null)) : String(prof.title);
       if (!baseLabel) baseLabel = "Action";
-      label = PD.fmt.menuLabelForCmds(baseLabel, state, realCmds);
+      label = MC.fmt.menuLabelForCmds(baseLabel, state, realCmds);
     }
     view.menu.items.push({ id: kind, label: label });
   }
 
   // Explicit cancel option so A-confirm can cancel too (in addition to B).
-  view.menu.items.push({ id: "source", label: "Cancel" });
+  // Only add when there's at least one actionable item; otherwise let callers treat it as "no actions".
+  if (view.menu.items.length > 0) view.menu.items.push({ id: "source", label: "Cancel" });
 
   // Always allow cancel/back with B; no explicit menu item needed.
 };
 
-PD.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
+MC.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
   if (!view || !view.targeting) return;
   var t = view.targeting;
   t.active = true;
@@ -5719,10 +5744,10 @@ PD.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
   t.cmds = [];
   t.cmdI = 0;
 
-  var def = PD.state.defByUid(state, uid);
+  var def = MC.state.defByUid(state, uid);
   t.card = { uid: uid, loc: loc || null, def: def || null };
 
-  var r = PD.moves.cmdsForTargeting(state, t.kind, uid, t.card ? t.card.loc : null);
+  var r = MC.moves.cmdsForTargeting(state, t.kind, uid, t.card ? t.card.loc : null);
   if (!r) {
     t.active = false;
     view.mode = "browse";
@@ -5730,7 +5755,7 @@ PD.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
   }
 
   t.cmds = r.cmds;
-  t.wildColor = (r.wildColor != null) ? r.wildColor : PD.state.NO_COLOR;
+  t.wildColor = (r.wildColor != null) ? r.wildColor : MC.state.NO_COLOR;
   t.cmdI = 0; // default always-existing if any
 
   // Unknown targeting kind.
@@ -5740,15 +5765,23 @@ PD.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
     return;
   }
 
+  // Phase 09b: if the only legal destination is Source/cancel, disallow entering targeting.
+  if (MC.ui.cmdsWithoutSource(t.cmds).length === 0) {
+    MC.anim.feedbackError(view, "no_actions", "No actions");
+    t.active = false;
+    view.mode = "browse";
+    return;
+  }
+
   view.mode = "targeting";
 };
 
-PD.ui.targetingRetargetWild = function (state, view, dir) {
+MC.ui.targetingRetargetWild = function (state, view, dir) {
   if (!view || !view.targeting || !view.targeting.active) return;
   var t = view.targeting;
-  var prof = PD.cmd.getProfile(t.kind);
+  var prof = MC.cmd.getProfile(t.kind);
   if (!prof || !prof.cmdsForWildColor) return;
-  if (!t.card || !t.card.def || !PD.rules.isWildDef(t.card.def)) return;
+  if (!t.card || !t.card.def || !MC.rules.isWildDef(t.card.def)) return;
 
   var def = t.card.def;
   var c0 = def.wildColors[0];
@@ -5757,7 +5790,7 @@ PD.ui.targetingRetargetWild = function (state, view, dir) {
   var nextColor = (prevColor === c0) ? c1 : c0;
   if (dir < 0) nextColor = (prevColor === c1) ? c0 : c1;
 
-  var prevCmd = (t.cmds && t.cmds.length) ? t.cmds[PD.ui.clampI(t.cmdI, t.cmds.length)] : null;
+  var prevCmd = (t.cmds && t.cmds.length) ? t.cmds[MC.ui.clampI(t.cmdI, t.cmds.length)] : null;
   var keepNewSet = !!(prevCmd && prevCmd.dest && prevCmd.dest.newSet);
   var keepSetI = (prevCmd && prevCmd.dest && prevCmd.dest.setI != null) ? prevCmd.dest.setI : null;
   var keepSource = !!(prevCmd && prevCmd.kind === "source");
@@ -5785,19 +5818,19 @@ PD.ui.targetingRetargetWild = function (state, view, dir) {
   t.cmdI = selI;
 };
 
-PD.ui.step = function (state, view, actions) {
+MC.ui.step = function (state, view, actions) {
   if (!state || !view) return null;
 
   // Tick feedback timers.
-  PD.anim.feedbackTick(view);
-  PD.ui.toastsTick(view);
-  PD.ui.syncPromptToast(state, view);
-  PD.ui.syncWinnerToast(state, view);
-  PD.anim.tick(state, view);
+  MC.anim.feedbackTick(view);
+  MC.ui.toastsTick(view);
+  MC.ui.syncPromptToast(state, view);
+  MC.ui.syncWinnerToast(state, view);
+  MC.anim.tick(state, view);
 
-  var gameOver = (state.winnerP !== PD.state.NO_WINNER);
-  var prevWinner = (view.ux && view.ux.lastWinnerP != null) ? view.ux.lastWinnerP : PD.state.NO_WINNER;
-  var justEnded = (gameOver && prevWinner === PD.state.NO_WINNER);
+  var gameOver = (state.winnerP !== MC.state.NO_WINNER);
+  var prevWinner = (view.ux && view.ux.lastWinnerP != null) ? view.ux.lastWinnerP : MC.state.NO_WINNER;
+  var justEnded = (gameOver && prevWinner === MC.state.NO_WINNER);
 
   // Game over: close overlays and allow free navigation/inspect.
   if (gameOver) {
@@ -5836,13 +5869,13 @@ PD.ui.step = function (state, view, actions) {
   view.inspectActive = !!((view.mode === "browse" || view.mode === "prompt") && actions.x && actions.x.inspectActive);
 
   // Compute models for navigation helpers.
-  var computed = PD.ui.computeRowModels(state, view);
-  PD.ui.updateCameras(state, view, computed);
+  var computed = MC.ui.computeRowModels(state, view);
+  MC.ui.updateCameras(state, view, computed);
 
   // While animating (shuffle/deal), lock input and just keep the view stable.
   if (view.anim && view.anim.lock) {
-    computed = PD.ui.computeRowModels(state, view);
-    PD.ui.updateCameras(state, view, computed);
+    computed = MC.ui.computeRowModels(state, view);
+    MC.ui.updateCameras(state, view, computed);
     return null;
   }
 
@@ -5851,10 +5884,10 @@ PD.ui.step = function (state, view, actions) {
   var allowFocus = (view.mode === "browse" || view.mode === "prompt");
   var isHardLockedPrompt = !!(promptForP0 && pr && pr.kind === "discardDown");
   if (allowFocus && !isHardLockedPrompt) {
-    var didFocus = PD.ui.focus.apply(state, view, computed, actions);
+    var didFocus = MC.ui.focus.apply(state, view, computed, actions);
     if (didFocus) {
-      computed = PD.ui.computeRowModels(state, view);
-      PD.ui.updateCameras(state, view, computed);
+      computed = MC.ui.computeRowModels(state, view);
+      MC.ui.updateCameras(state, view, computed);
     }
   }
 
@@ -5869,12 +5902,12 @@ PD.ui.step = function (state, view, actions) {
   // Prevent accidental immediate Reset/Next activation if the player is pressing A
   // during the same frame the win becomes visible.
   if (justEnded && actions && actions.a && (actions.a.tap || actions.a.grabStart)) {
-    PD.anim.feedbackError(view, "game_over", "");
+    MC.anim.feedbackError(view, "game_over", "");
     return null;
   }
 
   function focusSnapshot() {
-    PD.ui.focus.snapshot(state, view, computed);
+    MC.ui.focus.snapshot(state, view, computed);
   }
 
   function setAutoFocusPauseForCenterBtn(id) {
@@ -5888,14 +5921,14 @@ PD.ui.step = function (state, view, actions) {
     var row = view.cursor.row;
     var rm = computed.models[row];
     if (!rm || !rm.items || rm.items.length === 0) return null;
-    var i = PD.ui.clampI(view.cursor.i, rm.items.length);
+    var i = MC.ui.clampI(view.cursor.i, rm.items.length);
     return rm.items[i];
   }
 
   function promptPickHandItemIndices() {
     var out = [];
     if (!computed || !computed.models) return out;
-    var rowHand = PD.render.ROW_P_HAND;
+    var rowHand = MC.render.ROW_P_HAND;
     var rm = computed.models[rowHand];
     if (!rm || !rm.items) return out;
     var i;
@@ -5910,12 +5943,12 @@ PD.ui.step = function (state, view, actions) {
   }
 
   function promptSnapCursorToHand(handItemIs) {
-    var rowHand = PD.render.ROW_P_HAND;
+    var rowHand = MC.render.ROW_P_HAND;
     view.cursor.row = rowHand;
     if (!handItemIs || handItemIs.length === 0) { view.cursor.i = 0; return; }
     // If current cursor isn't on a hand card, snap to the first hand card.
     var rm = computed.models[rowHand];
-    var cur = rm && rm.items ? rm.items[PD.ui.clampI(view.cursor.i, rm.items.length)] : null;
+    var cur = rm && rm.items ? rm.items[MC.ui.clampI(view.cursor.i, rm.items.length)] : null;
     if (!cur || cur.kind !== "hand" || !cur.loc || cur.loc.zone !== "hand") {
       view.cursor.i = handItemIs[0];
       return;
@@ -5933,7 +5966,7 @@ PD.ui.step = function (state, view, actions) {
     var curK = 0;
     for (k = 0; k < handItemIs.length; k++) if (handItemIs[k] === curI) { curK = k; break; }
     var nextK = curK + dir;
-    nextK = PD.ui.wrapI(nextK, handItemIs.length);
+    nextK = MC.ui.wrapI(nextK, handItemIs.length);
     view.cursor.i = handItemIs[nextK];
   }
 
@@ -5947,8 +5980,8 @@ PD.ui.step = function (state, view, actions) {
 
     var nItems = view.menu.items ? view.menu.items.length : 0;
     if (nItems > 0) {
-      if (actions.nav && actions.nav.up) view.menu.i = PD.ui.wrapI(view.menu.i - 1, nItems);
-      if (actions.nav && actions.nav.down) view.menu.i = PD.ui.wrapI(view.menu.i + 1, nItems);
+      if (actions.nav && actions.nav.up) view.menu.i = MC.ui.wrapI(view.menu.i - 1, nItems);
+      if (actions.nav && actions.nav.down) view.menu.i = MC.ui.wrapI(view.menu.i + 1, nItems);
     }
 
     if (actions.a && actions.a.tap) {
@@ -5956,7 +5989,7 @@ PD.ui.step = function (state, view, actions) {
         view.mode = "browse";
         return null;
       }
-      var mi = PD.ui.clampI(view.menu.i, view.menu.items.length);
+      var mi = MC.ui.clampI(view.menu.i, view.menu.items.length);
       var it = view.menu.items[mi];
       var src = view.menu.src;
       view.mode = "browse";
@@ -5970,15 +6003,15 @@ PD.ui.step = function (state, view, actions) {
 
       // Cmd-profile-driven menu execution.
       var kind = String(it.id || "");
-      var prof = PD.cmd.getProfile(kind);
+      var prof = MC.cmd.getProfile(kind);
       if (!prof) return null;
 
       // Sly is hand-only in the current rules/UI; keep this hard guard to avoid entering a mode that can't act.
       if (kind === "sly" && srcZone !== "hand") return null;
 
-      var r = PD.moves.cmdsForTargeting(state, kind, uid, src.loc || null);
+      var r = MC.moves.cmdsForTargeting(state, kind, uid, src.loc || null);
       if (!r || !r.cmds) return null;
-      var realCmds = PD.ui.cmdsWithoutSource(r.cmds);
+      var realCmds = MC.ui.cmdsWithoutSource(r.cmds);
       if (!realCmds || realCmds.length === 0) return null;
 
       // Auto-apply when unambiguous, except Sly which always targets.
@@ -5987,7 +6020,7 @@ PD.ui.step = function (state, view, actions) {
         return { kind: "applyCmd", cmd: realCmds[0] };
       }
 
-      PD.ui.targetingEnter(state, view, kind, false, uid, src.loc);
+      MC.ui.targetingEnter(state, view, kind, false, uid, src.loc);
       return null;
     }
 
@@ -6023,7 +6056,7 @@ PD.ui.step = function (state, view, actions) {
     }
 
     // Optional: profile-driven screen-space sorting and cursor-moving targeting.
-    var prof = PD.cmd.getProfile(t.kind);
+    var prof = MC.cmd.getProfile(t.kind);
     var ui = (prof && prof.ui) ? prof.ui : null;
     var ctxT = { state: state, view: view, computed: computed };
 
@@ -6032,7 +6065,7 @@ PD.ui.step = function (state, view, actions) {
       if (!t.cmds || t.cmds.length === 0) return;
       if (t._profileSorted) return;
 
-      var prev = t.cmds[PD.ui.clampI(t.cmdI, t.cmds.length)];
+      var prev = t.cmds[MC.ui.clampI(t.cmdI, t.cmds.length)];
       var keepSource = !!(prev && prev.kind === "source");
       var keepNewSet = !!(prev && prev.dest && prev.dest.newSet);
       var keepSetI = (prev && prev.dest && prev.dest.setI != null) ? prev.dest.setI : null;
@@ -6062,12 +6095,12 @@ PD.ui.step = function (state, view, actions) {
     function profileSyncCursor() {
       if (!ui || ui.mode !== "cursor" || !ui.findItemForCmd) return false;
       if (!t.cmds || t.cmds.length === 0) return false;
-      var cmdI = PD.ui.clampI(t.cmdI, t.cmds.length);
+      var cmdI = MC.ui.clampI(t.cmdI, t.cmds.length);
       t.cmdI = cmdI;
       if (t._profileSyncCmdI === cmdI) return false;
       var cmdSel = t.cmds[cmdI];
       var pick = ui.findItemForCmd(ctxT, cmdSel);
-      if (pick) PD.ui.cursorMoveTo(view, pick);
+      if (pick) MC.ui.cursorMoveTo(view, pick);
       t._profileSyncCmdI = cmdI;
       return true;
     }
@@ -6077,14 +6110,14 @@ PD.ui.step = function (state, view, actions) {
     // Cycle destinations
     var nCmds = t.cmds ? t.cmds.length : 0;
     if (nCmds > 0) {
-      if (actions.nav && actions.nav.left) t.cmdI = PD.ui.wrapI(t.cmdI - 1, nCmds);
-      if (actions.nav && actions.nav.right) t.cmdI = PD.ui.wrapI(t.cmdI + 1, nCmds);
+      if (actions.nav && actions.nav.left) t.cmdI = MC.ui.wrapI(t.cmdI - 1, nCmds);
+      if (actions.nav && actions.nav.right) t.cmdI = MC.ui.wrapI(t.cmdI + 1, nCmds);
     }
 
     // Wild color toggle (Up/Down)
     if (actions.nav && (actions.nav.up || actions.nav.down)) {
       var dir = actions.nav.down ? 1 : -1;
-      PD.ui.targetingRetargetWild(state, view, dir);
+      MC.ui.targetingRetargetWild(state, view, dir);
     }
 
     // Confirm: tap-A (menu targeting) OR release-A (hold targeting).
@@ -6093,20 +6126,20 @@ PD.ui.step = function (state, view, actions) {
     if (t.hold && actions.a && actions.a.released) shouldConfirm = true;
     if (!shouldConfirm) {
       // Update cameras to follow destination preview / cursor-moving selection.
-      computed = PD.ui.computeRowModels(state, view);
+      computed = MC.ui.computeRowModels(state, view);
       profileSyncCursor();
-      PD.ui.updateCameras(state, view, computed);
+      MC.ui.updateCameras(state, view, computed);
       return null;
     }
 
     if (!t.cmds || t.cmds.length === 0) {
-      PD.anim.feedbackError(view, "no_targets", "No valid destination");
+      MC.anim.feedbackError(view, "no_targets", "No valid destination");
       t.active = false;
       view.mode = "browse";
       return null;
     }
 
-    var cmdI = PD.ui.clampI(t.cmdI, t.cmds.length);
+    var cmdI = MC.ui.clampI(t.cmdI, t.cmds.length);
     var cmdSel = t.cmds[cmdI];
     t.active = false;
     view.mode = "browse";
@@ -6136,7 +6169,7 @@ PD.ui.step = function (state, view, actions) {
       else if (actions.nav.left) dir = "left";
       else if (actions.nav.right) dir = "right";
       if (!dir) return;
-      var pick = PD.ui.navPickInDirection(view, computed, dir);
+      var pick = MC.ui.navPickInDirection(view, computed, dir);
       if (pick) {
         view.cursor.row = pick.row;
         view.cursor.i = pick.i;
@@ -6144,15 +6177,15 @@ PD.ui.step = function (state, view, actions) {
     }
 
     function snapCursorToFirstRecv() {
-      var pick = PD.ui.findBestCursorTarget(computed.models, [PD.render.ROW_P_HAND], function (it) {
+      var pick = MC.ui.findBestCursorTarget(computed.models, [MC.render.ROW_P_HAND], function (it) {
         return it && it.kind === "hand" && it.loc && it.loc.zone === "recvProps" && it.loc.p === 0;
       });
-      if (pick) PD.ui.cursorMoveTo(view, pick);
+      if (pick) MC.ui.cursorMoveTo(view, pick);
     }
 
     function snapCursorToFirstReplaceWild() {
-      var pick = PD.ui.pickReplaceWindowWild(state, computed);
-      if (pick) PD.ui.cursorMoveTo(view, pick);
+      var pick = MC.ui.pickReplaceWindowWild(state, computed);
+      if (pick) MC.ui.cursorMoveTo(view, pick);
     }
 
     if (prompt.kind === "discardDown") {
@@ -6161,8 +6194,8 @@ PD.ui.step = function (state, view, actions) {
       promptSnapCursorToHand(handIs);
 
       // Recompute after snapping cursor.
-      computed = PD.ui.computeRowModels(state, view);
-      PD.ui.updateCameras(state, view, computed);
+      computed = MC.ui.computeRowModels(state, view);
+      MC.ui.updateCameras(state, view, computed);
 
       // Left/Right cycle within hand.
       if (actions.nav && actions.nav.left) promptCycleHand(handIs, -1);
@@ -6174,14 +6207,14 @@ PD.ui.step = function (state, view, actions) {
           focusSnapshot();
           return { kind: "applyCmd", cmd: { kind: "cancelPrompt" } };
         }
-        PD.anim.feedbackError(view, "prompt_forced", "Must discard");
+        MC.anim.feedbackError(view, "prompt_forced", "Must discard");
         return null;
       }
 
       // Discard with A tap.
       if (actions.a && actions.a.tap) {
-        computed = PD.ui.computeRowModels(state, view);
-        PD.ui.updateCameras(state, view, computed);
+        computed = MC.ui.computeRowModels(state, view);
+        MC.ui.updateCameras(state, view, computed);
         var selP = currentSelection();
         if (selP && selP.loc && selP.loc.zone === "hand" && selP.loc.p === 0) {
           focusSnapshot();
@@ -6196,48 +6229,48 @@ PD.ui.step = function (state, view, actions) {
     // grabStart doesn't also move the cursor to a different card in the same frame.
     if (prompt.kind === "placeReceived" && actions.a && actions.a.grabStart) {
       var selGrabP = currentSelection();
-      if (!selGrabP || !selGrabP.loc) { PD.anim.feedbackError(view, "no_actions", "No actions"); snapCursorToFirstRecv(); return null; }
+      if (!selGrabP || !selGrabP.loc) { MC.anim.feedbackError(view, "no_actions", "No actions"); snapCursorToFirstRecv(); return null; }
       if (selGrabP.loc.zone !== "recvProps") {
-        PD.anim.feedbackError(view, "place_recv_only", "Select a received property");
+        MC.anim.feedbackError(view, "place_recv_only", "Select a received property");
         snapCursorToFirstRecv();
         return null;
       }
-      PD.ui.targetingEnter(state, view, "place", true, selGrabP.uid, selGrabP.loc);
+      MC.ui.targetingEnter(state, view, "place", true, selGrabP.uid, selGrabP.loc);
       return null;
     }
     if (prompt.kind === "replaceWindow" && actions.a && actions.a.grabStart) {
       var selGrabW = currentSelection();
-      if (!selGrabW || !selGrabW.loc) { PD.anim.feedbackError(view, "no_actions", "No actions"); snapCursorToFirstReplaceWild(); return null; }
+      if (!selGrabW || !selGrabW.loc) { MC.anim.feedbackError(view, "no_actions", "No actions"); snapCursorToFirstReplaceWild(); return null; }
       if (selGrabW.loc.zone !== "setProps" || selGrabW.loc.p !== 0 || selGrabW.loc.setI == null || selGrabW.loc.setI !== prompt.srcSetI) {
-        PD.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
+        MC.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
         snapCursorToFirstReplaceWild();
         return null;
       }
       if (selGrabW.uid === prompt.excludeUid) {
-        PD.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
+        MC.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
         snapCursorToFirstReplaceWild();
         return null;
       }
-      var defW = PD.state.defByUid(state, selGrabW.uid);
-      if (!defW || !PD.rules.isWildDef(defW)) {
-        PD.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
+      var defW = MC.state.defByUid(state, selGrabW.uid);
+      if (!defW || !MC.rules.isWildDef(defW)) {
+        MC.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
         snapCursorToFirstReplaceWild();
         return null;
       }
-      PD.ui.targetingEnter(state, view, "moveWild", true, selGrabW.uid, selGrabW.loc);
+      MC.ui.targetingEnter(state, view, "moveWild", true, selGrabW.uid, selGrabW.loc);
       return null;
     }
 
     // For Phase 06 prompts, allow normal directional navigation (screen-space).
     applyPromptNav();
-    computed = PD.ui.computeRowModels(state, view);
-    PD.ui.updateCameras(state, view, computed);
+    computed = MC.ui.computeRowModels(state, view);
+    MC.ui.updateCameras(state, view, computed);
     // Refresh selection anchor during prompt ticks so selection preservation doesn't fight user navigation.
-    PD.ui.focus.snapshot(state, view, computed);
+    MC.ui.focus.snapshot(state, view, computed);
 
     if (prompt.kind === "payDebt") {
       if (actions.b && actions.b.pressed) {
-        PD.anim.feedbackError(view, "prompt_forced", "Must pay");
+        MC.anim.feedbackError(view, "prompt_forced", "Must pay");
         return null;
       }
 
@@ -6248,16 +6281,16 @@ PD.ui.step = function (state, view, actions) {
           if (selD.id === "step") { setAutoFocusPauseForCenterBtn("step"); focusSnapshot(); return { kind: "debug", action: "step" }; }
           if (selD.id === "reset") { setAutoFocusPauseForCenterBtn("reset"); focusSnapshot(); return { kind: "debug", action: "reset" }; }
           if (selD.id === "nextScenario") { setAutoFocusPauseForCenterBtn("nextScenario"); focusSnapshot(); return { kind: "debug", action: "nextScenario" }; }
-          if (selD.id === "endTurn") { PD.anim.feedbackError(view, "prompt_forced", "Must pay"); return null; }
+          if (selD.id === "endTurn") { MC.anim.feedbackError(view, "prompt_forced", "Must pay"); return null; }
         }
-        if (!selD || !selD.loc) { PD.anim.feedbackError(view, "no_actions", "No actions"); return null; }
+        if (!selD || !selD.loc) { MC.anim.feedbackError(view, "no_actions", "No actions"); return null; }
 
         // Phase 08+: JSN response for action-sourced debt before any payment is made.
         if (selD.loc.zone === "hand" && selD.loc.p === 0) {
           var canJsn = !!(prompt.srcAction && prompt.buf && prompt.buf.length === 0);
           if (canJsn) {
-            var defJ = PD.state.defByUid(state, selD.uid);
-            if (defJ && defJ.kind === PD.CardKind.Action && defJ.actionKind === PD.ActionKind.JustSayNo) {
+            var defJ = MC.state.defByUid(state, selD.uid);
+            if (defJ && defJ.kind === MC.CardKind.Action && defJ.actionKind === MC.ActionKind.JustSayNo) {
               focusSnapshot();
               return { kind: "applyCmd", cmd: { kind: "playJustSayNo", card: { uid: selD.uid, loc: selD.loc } } };
             }
@@ -6269,7 +6302,7 @@ PD.ui.step = function (state, view, actions) {
           var setI = selD.loc.setI;
           var set = state.players[0].sets[setI];
           if (set && set.houseUid) {
-            var rmT = computed.models[PD.render.ROW_P_TABLE];
+            var rmT = computed.models[MC.render.ROW_P_TABLE];
             if (rmT && rmT.items) {
               var ii;
               for (ii = 0; ii < rmT.items.length; ii++) {
@@ -6277,14 +6310,14 @@ PD.ui.step = function (state, view, actions) {
                 if (!itH || itH.kind !== "setHouse" || !itH.loc) continue;
                 if (itH.loc.p !== 0) continue;
                 if (itH.loc.setI !== setI) continue;
-                view.cursor.row = PD.render.ROW_P_TABLE;
+                view.cursor.row = MC.render.ROW_P_TABLE;
                 view.cursor.i = ii;
-                PD.ui.toastPush(view, { id: "debt:houseFirst", kind: "info", text: "House must be paid first", frames: 45 });
-                PD.anim.feedbackError(view, "house_pay_first", "");
+                MC.ui.toastPush(view, { id: "debt:houseFirst", kind: "info", text: "House must be paid first", frames: 45 });
+                MC.anim.feedbackError(view, "house_pay_first", "");
                 return null;
               }
             }
-            PD.anim.feedbackError(view, "house_pay_first", "House must be paid first");
+            MC.anim.feedbackError(view, "house_pay_first", "House must be paid first");
             return null;
           }
         }
@@ -6294,7 +6327,7 @@ PD.ui.step = function (state, view, actions) {
           return { kind: "applyCmd", cmd: { kind: "payDebt", card: { uid: selD.uid, loc: selD.loc } } };
         }
 
-        PD.anim.feedbackError(view, "cant_pay", "Can't pay with that");
+        MC.anim.feedbackError(view, "cant_pay", "Can't pay with that");
       }
 
       return null;
@@ -6302,13 +6335,13 @@ PD.ui.step = function (state, view, actions) {
 
     if (prompt.kind === "respondAction") {
       if (actions.b && actions.b.pressed) {
-        PD.anim.feedbackError(view, "prompt_forced", "Must respond");
+        MC.anim.feedbackError(view, "prompt_forced", "Must respond");
         return null;
       }
 
       if (actions.a && actions.a.tap) {
         var selR0 = currentSelection();
-        if (!selR0 || !selR0.loc) { PD.anim.feedbackError(view, "no_actions", "No actions"); return null; }
+        if (!selR0 || !selR0.loc) { MC.anim.feedbackError(view, "no_actions", "No actions"); return null; }
 
         var tgt = prompt.target;
         var isTarget =
@@ -6326,14 +6359,14 @@ PD.ui.step = function (state, view, actions) {
         }
 
         if (selR0.loc.zone === "hand" && selR0.loc.p === 0) {
-          var defRJ = PD.state.defByUid(state, selR0.uid);
-          if (defRJ && defRJ.kind === PD.CardKind.Action && defRJ.actionKind === PD.ActionKind.JustSayNo) {
+          var defRJ = MC.state.defByUid(state, selR0.uid);
+          if (defRJ && defRJ.kind === MC.CardKind.Action && defRJ.actionKind === MC.ActionKind.JustSayNo) {
             focusSnapshot();
             return { kind: "applyCmd", cmd: { kind: "playJustSayNo", card: { uid: selR0.uid, loc: selR0.loc } } };
           }
         }
 
-        PD.anim.feedbackError(view, "must_respond", "Select the target or Just Say No");
+        MC.anim.feedbackError(view, "must_respond", "Select the target or Just Say No");
         return null;
       }
 
@@ -6342,7 +6375,7 @@ PD.ui.step = function (state, view, actions) {
 
     if (prompt.kind === "placeReceived") {
       if (actions.b && actions.b.pressed) {
-        PD.anim.feedbackError(view, "prompt_forced", "Must place");
+        MC.anim.feedbackError(view, "prompt_forced", "Must place");
         snapCursorToFirstRecv();
         return null;
       }
@@ -6355,19 +6388,19 @@ PD.ui.step = function (state, view, actions) {
           if (selR.id === "reset") { setAutoFocusPauseForCenterBtn("reset"); focusSnapshot(); return { kind: "debug", action: "reset" }; }
           if (selR.id === "nextScenario") { setAutoFocusPauseForCenterBtn("nextScenario"); focusSnapshot(); return { kind: "debug", action: "nextScenario" }; }
           if (selR.id === "endTurn") {
-            PD.anim.feedbackError(view, "prompt_forced", "Must place");
+            MC.anim.feedbackError(view, "prompt_forced", "Must place");
             snapCursorToFirstRecv();
             return null;
           }
         }
-        if (!selR || !selR.loc) { PD.anim.feedbackError(view, "no_actions", "No actions"); snapCursorToFirstRecv(); return null; }
+        if (!selR || !selR.loc) { MC.anim.feedbackError(view, "no_actions", "No actions"); snapCursorToFirstRecv(); return null; }
         if (selR.loc.zone !== "recvProps") {
-          PD.anim.feedbackError(view, "place_recv_only", "Select a received property");
+          MC.anim.feedbackError(view, "place_recv_only", "Select a received property");
           snapCursorToFirstRecv();
           return null;
         }
         // Tap-A workflow: go directly to placement targeting (only action in this prompt).
-        PD.ui.targetingEnter(state, view, "place", false, selR.uid, selR.loc);
+        MC.ui.targetingEnter(state, view, "place", false, selR.uid, selR.loc);
         return null;
       }
 
@@ -6387,27 +6420,27 @@ PD.ui.step = function (state, view, actions) {
           if (selW.id === "step") { setAutoFocusPauseForCenterBtn("step"); focusSnapshot(); return { kind: "debug", action: "step" }; }
           if (selW.id === "reset") { setAutoFocusPauseForCenterBtn("reset"); focusSnapshot(); return { kind: "debug", action: "reset" }; }
           if (selW.id === "nextScenario") { setAutoFocusPauseForCenterBtn("nextScenario"); focusSnapshot(); return { kind: "debug", action: "nextScenario" }; }
-          if (selW.id === "endTurn") { PD.anim.feedbackError(view, "prompt_forced", "Move a Wild or skip"); snapCursorToFirstReplaceWild(); return null; }
+          if (selW.id === "endTurn") { MC.anim.feedbackError(view, "prompt_forced", "Move a Wild or skip"); snapCursorToFirstReplaceWild(); return null; }
         }
-        if (!selW || !selW.loc) { PD.anim.feedbackError(view, "no_actions", "No actions"); snapCursorToFirstReplaceWild(); return null; }
+        if (!selW || !selW.loc) { MC.anim.feedbackError(view, "no_actions", "No actions"); snapCursorToFirstReplaceWild(); return null; }
         if (selW.loc.zone !== "setProps" || selW.loc.p !== 0 || selW.loc.setI == null || selW.loc.setI !== prompt.srcSetI) {
-          PD.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
+          MC.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
           snapCursorToFirstReplaceWild();
           return null;
         }
         if (selW.uid === prompt.excludeUid) {
-          PD.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
+          MC.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
           snapCursorToFirstReplaceWild();
           return null;
         }
-        var defW2 = PD.state.defByUid(state, selW.uid);
-        if (!defW2 || !PD.rules.isWildDef(defW2)) {
-          PD.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
+        var defW2 = MC.state.defByUid(state, selW.uid);
+        if (!defW2 || !MC.rules.isWildDef(defW2)) {
+          MC.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
           snapCursorToFirstReplaceWild();
           return null;
         }
         // Tap-A workflow: enter moveWild targeting.
-        PD.ui.targetingEnter(state, view, "moveWild", false, selW.uid, selW.loc);
+        MC.ui.targetingEnter(state, view, "moveWild", false, selW.uid, selW.loc);
         return null;
       }
 
@@ -6423,31 +6456,31 @@ PD.ui.step = function (state, view, actions) {
   // Hold-A grab: enter targeting *before* directional nav so the nudge that triggers
   // grabStart doesn't also move the cursor to a different card in the same frame.
   if (gameOver && actions.a && actions.a.grabStart) {
-    PD.anim.feedbackError(view, "game_over", "");
+    MC.anim.feedbackError(view, "game_over", "");
     return null;
   }
   if (actions.a && actions.a.grabStart) {
     var selGrab = currentSelection();
     if (selGrab && selGrab.loc && selGrab.loc.zone === "hand" && selGrab.loc.p === 0) {
       var uidGrab = selGrab.uid;
-      var defGrab = PD.state.defByUid(state, uidGrab);
-      if (defGrab && defGrab.kind === PD.CardKind.Property) {
-        PD.ui.targetingEnter(state, view, "place", true, uidGrab, selGrab.loc);
+      var defGrab = MC.state.defByUid(state, uidGrab);
+      if (defGrab && defGrab.kind === MC.CardKind.Property) {
+        MC.ui.targetingEnter(state, view, "place", true, uidGrab, selGrab.loc);
         return null;
-      } else if (defGrab && defGrab.kind === PD.CardKind.Action && defGrab.actionKind === PD.ActionKind.SlyDeal) {
+      } else if (defGrab && defGrab.kind === MC.CardKind.Action && defGrab.actionKind === MC.ActionKind.SlyDeal) {
         // Phase 08b: if there are no Sly targets, fall back to Quick so Bank remains available.
-        var slyMoves = PD.moves.slyDealMovesForUid(state, uidGrab);
-        if (slyMoves && slyMoves.length > 0) PD.ui.targetingEnter(state, view, "sly", true, uidGrab, selGrab.loc);
-        else PD.ui.targetingEnter(state, view, "quick", true, uidGrab, selGrab.loc);
+        var slyMoves = MC.moves.slyDealMovesForUid(state, uidGrab);
+        if (slyMoves && slyMoves.length > 0) MC.ui.targetingEnter(state, view, "sly", true, uidGrab, selGrab.loc);
+        else MC.ui.targetingEnter(state, view, "quick", true, uidGrab, selGrab.loc);
         return null;
-      } else if (defGrab && (defGrab.kind === PD.CardKind.House || (defGrab.kind === PD.CardKind.Action && defGrab.actionKind === PD.ActionKind.Rent))) {
-        PD.ui.targetingEnter(state, view, "quick", true, uidGrab, selGrab.loc);
+      } else if (defGrab && (defGrab.kind === MC.CardKind.House || (defGrab.kind === MC.CardKind.Action && defGrab.actionKind === MC.ActionKind.Rent))) {
+        MC.ui.targetingEnter(state, view, "quick", true, uidGrab, selGrab.loc);
         return null;
-      } else if (defGrab && PD.rules.isBankableDef(defGrab)) {
-        PD.ui.targetingEnter(state, view, "bank", true, uidGrab, selGrab.loc);
+      } else if (defGrab && MC.rules.isBankableDef(defGrab)) {
+        MC.ui.targetingEnter(state, view, "bank", true, uidGrab, selGrab.loc);
         return null;
       }
-      PD.anim.feedbackError(view, "hold_noop", "Can't do that");
+      MC.anim.feedbackError(view, "hold_noop", "Can't do that");
       return null;
     }
   }
@@ -6460,7 +6493,7 @@ PD.ui.step = function (state, view, actions) {
     else if (actions.nav.right) dir = "right";
 
     if (dir) {
-      var pick = PD.ui.navPickInDirection(view, computed, dir);
+      var pick = MC.ui.navPickInDirection(view, computed, dir);
       if (pick) {
         view.cursor.row = pick.row;
         view.cursor.i = pick.i;
@@ -6469,8 +6502,8 @@ PD.ui.step = function (state, view, actions) {
   }
 
   // Recompute after nav, then update cameras.
-  computed = PD.ui.computeRowModels(state, view);
-  PD.ui.updateCameras(state, view, computed);
+  computed = MC.ui.computeRowModels(state, view);
+  MC.ui.updateCameras(state, view, computed);
 
   // Context actions on tap A.
   if (actions.a && actions.a.tap) {
@@ -6481,7 +6514,7 @@ PD.ui.step = function (state, view, actions) {
     if (gameOver) {
       var allowBtn = !!(sel.row === 2 && sel.kind === "btn" && (sel.id === "reset" || sel.id === "nextScenario"));
       if (!allowBtn) {
-        PD.anim.feedbackError(view, "game_over", "");
+        MC.anim.feedbackError(view, "game_over", "");
         return null;
       }
     }
@@ -6491,24 +6524,24 @@ PD.ui.step = function (state, view, actions) {
       if (sel.disabled) {
         var msg = "Not available";
         if (sel.id === "endTurn" && state.activeP !== 0) msg = "Opponent turn";
-        PD.anim.feedbackError(view, "disabled_btn", msg);
+        MC.anim.feedbackError(view, "disabled_btn", msg);
 
         // Move selection to next available center button (prefer Step).
         var pickNext =
-          PD.ui.findBestCursorTarget(computed.models, [2], function (it) {
+          MC.ui.findBestCursorTarget(computed.models, [2], function (it) {
             return it && it.kind === "btn" && it.id === "step" && !it.disabled;
           }) ||
-          PD.ui.findBestCursorTarget(computed.models, [2], function (it) {
+          MC.ui.findBestCursorTarget(computed.models, [2], function (it) {
             return it && it.kind === "btn" && !it.disabled && it.id !== "endTurn";
           }) ||
-          PD.ui.findBestCursorTarget(computed.models, [2], function (it) {
+          MC.ui.findBestCursorTarget(computed.models, [2], function (it) {
             return it && (it.kind === "discard" || it.kind === "deck");
           });
 
         if (pickNext) {
-          PD.ui.cursorMoveTo(view, pickNext);
-          computed = PD.ui.computeRowModels(state, view);
-          PD.ui.updateCameras(state, view, computed);
+          MC.ui.cursorMoveTo(view, pickNext);
+          computed = MC.ui.computeRowModels(state, view);
+          MC.ui.updateCameras(state, view, computed);
         }
 
         return null;
@@ -6523,11 +6556,11 @@ PD.ui.step = function (state, view, actions) {
 
     // Hand card menu (P0 only).
     if (sel.loc && sel.loc.zone === "hand" && sel.loc.p === 0) {
-      PD.ui.menuOpenForSelection(state, view, sel);
+      MC.ui.menuOpenForSelection(state, view, sel);
       if (view.menu.items && view.menu.items.length > 0) {
         view.mode = "menu";
       } else {
-        PD.anim.feedbackError(view, "no_actions", "No actions");
+        MC.anim.feedbackError(view, "no_actions", "No actions");
       }
     }
   }
@@ -6540,11 +6573,11 @@ PD.ui.step = function (state, view, actions) {
 };
 
 // ---- src/66_focus.js ----
-// PD.ui.focus: centralized focus policy (autofocus + selection preservation).
+// MC.ui.focus: centralized focus policy (autofocus + selection preservation).
 
-PD.ui.focus = {};
+MC.ui.focus = {};
 
-PD.ui.focus._screenCenter = function (view, item) {
+MC.ui.focus._screenCenter = function (view, item) {
   var row = item.row;
   var cam = view.camX[row];
   var x = item.x;
@@ -6554,14 +6587,14 @@ PD.ui.focus._screenCenter = function (view, item) {
   return { cx: (x - cam) + (w / 2), cy: y + (h / 2) };
 };
 
-PD.ui.focus.snapshot = function (state, view, computed) {
+MC.ui.focus.snapshot = function (state, view, computed) {
   var row = view.cursor.row;
   var rm = computed.models[row];
   var items = rm.items;
-  var sel = items[PD.ui.clampI(view.cursor.i, items.length)];
+  var sel = items[MC.ui.clampI(view.cursor.i, items.length)];
   if (!sel) { view.ux.selAnchor = null; return; }
 
-  var c = PD.ui.focus._screenCenter(view, sel);
+  var c = MC.ui.focus._screenCenter(view, sel);
   view.ux.selAnchor = {
     row: sel.row,
     kind: sel.kind,
@@ -6572,7 +6605,7 @@ PD.ui.focus.snapshot = function (state, view, computed) {
   };
 };
 
-PD.ui.focus._findItemByUidLoc = function (computed, uid, loc) {
+MC.ui.focus._findItemByUidLoc = function (computed, uid, loc) {
   var models = computed.models;
   var row;
   for (row = 0; row < models.length; row++) {
@@ -6597,7 +6630,7 @@ PD.ui.focus._findItemByUidLoc = function (computed, uid, loc) {
   return null;
 };
 
-PD.ui.focus._nearestByGeometry = function (view, computed, anchor) {
+MC.ui.focus._nearestByGeometry = function (view, computed, anchor) {
   var models = computed.models;
   var best = null;
   var bestScore = 999999999;
@@ -6612,7 +6645,7 @@ PD.ui.focus._nearestByGeometry = function (view, computed, anchor) {
     for (i = 0; i < rm.items.length; i++) {
       var it = rm.items[i];
       if (!it) continue;
-      var c = PD.ui.focus._screenCenter(view, it);
+      var c = MC.ui.focus._screenCenter(view, it);
       var dx = c.cx - ax;
       var dy = c.cy - ay;
       var d2 = dx * dx + dy * dy;
@@ -6625,7 +6658,7 @@ PD.ui.focus._nearestByGeometry = function (view, computed, anchor) {
   return best;
 };
 
-PD.ui.focus.preserve = function (state, view, computed) {
+MC.ui.focus.preserve = function (state, view, computed) {
   var sel = computed.selected;
 
   // Try anchor restore first; otherwise relocate to any selectable when selection is missing.
@@ -6640,19 +6673,19 @@ PD.ui.focus.preserve = function (state, view, computed) {
       }
     }
 
-    if (a.uid) pick = PD.ui.focus._findItemByUidLoc(computed, a.uid, a.loc);
-    if (!pick) pick = PD.ui.focus._nearestByGeometry(view, computed, a);
+    if (a.uid) pick = MC.ui.focus._findItemByUidLoc(computed, a.uid, a.loc);
+    if (!pick) pick = MC.ui.focus._nearestByGeometry(view, computed, a);
   }
 
   // If we have no anchor-based pick and selection is missing, pick any valid item.
   if (!pick && !sel) {
-    pick = PD.ui.findBestCursorTarget(computed.models, [4, 3, 2, 1, 0], function () { return true; });
+    pick = MC.ui.findBestCursorTarget(computed.models, [4, 3, 2, 1, 0], function () { return true; });
   }
 
   if (pick) {
     // Avoid churn if already there.
     if (view.cursor && view.cursor.row === pick.row && view.cursor.i === pick.i) return false;
-    PD.ui.cursorMoveTo(view, pick);
+    MC.ui.cursorMoveTo(view, pick);
     view.ux.lastFocusRuleId = "preserve";
     return true;
   }
@@ -6660,22 +6693,22 @@ PD.ui.focus.preserve = function (state, view, computed) {
   return false;
 };
 
-PD.ui.focus._pickCenterBtn = function (computed, id) {
-  return PD.ui.findBestCursorTarget(computed.models, [2], function (it) {
+MC.ui.focus._pickCenterBtn = function (computed, id) {
+  return MC.ui.findBestCursorTarget(computed.models, [2], function (it) {
     return it && it.kind === "btn" && it.id === id && !it.disabled;
   });
 };
 
-PD.ui.focus._pickPayDebtDefault = function (computed) {
-  var rmHand = computed.models[PD.render.ROW_P_HAND];
-  var rmTable = computed.models[PD.render.ROW_P_TABLE];
+MC.ui.focus._pickPayDebtDefault = function (computed) {
+  var rmHand = computed.models[MC.render.ROW_P_HAND];
+  var rmTable = computed.models[MC.render.ROW_P_TABLE];
 
   // Prefer bank if any cards exist.
   if (rmHand && rmHand.items) {
     var i;
     for (i = rmHand.items.length - 1; i >= 0; i--) {
       var it = rmHand.items[i];
-      if (it && it.loc && it.loc.p === 0 && it.loc.zone === "bank") return { row: PD.render.ROW_P_HAND, i: i, item: it };
+      if (it && it.loc && it.loc.p === 0 && it.loc.zone === "bank") return { row: MC.render.ROW_P_HAND, i: i, item: it };
     }
   }
 
@@ -6684,24 +6717,24 @@ PD.ui.focus._pickPayDebtDefault = function (computed) {
     var j;
     for (j = 0; j < rmTable.items.length; j++) {
       var itH = rmTable.items[j];
-      if (itH && itH.loc && itH.loc.p === 0 && itH.loc.zone === "setHouse") return { row: PD.render.ROW_P_TABLE, i: j, item: itH };
+      if (itH && itH.loc && itH.loc.p === 0 && itH.loc.zone === "setHouse") return { row: MC.render.ROW_P_TABLE, i: j, item: itH };
     }
     for (j = 0; j < rmTable.items.length; j++) {
       var itP = rmTable.items[j];
-      if (itP && itP.loc && itP.loc.p === 0 && itP.loc.zone === "setProps") return { row: PD.render.ROW_P_TABLE, i: j, item: itP };
+      if (itP && itP.loc && itP.loc.p === 0 && itP.loc.zone === "setProps") return { row: MC.render.ROW_P_TABLE, i: j, item: itP };
     }
   }
 
   return null;
 };
 
-PD.ui.focus._pickHandCard = function (computed) {
-  return PD.ui.findBestCursorTarget(computed.models, [PD.render.ROW_P_HAND], function (it) {
+MC.ui.focus._pickHandCard = function (computed) {
+  return MC.ui.findBestCursorTarget(computed.models, [MC.render.ROW_P_HAND], function (it) {
     return it && it.kind === "hand" && it.loc && it.loc.p === 0 && it.loc.zone === "hand";
   });
 };
 
-PD.ui.focus.rules = [
+MC.ui.focus.rules = [
   {
     id: "PauseAfterDebug",
     enabled: function () { return true; },
@@ -6713,43 +6746,43 @@ PD.ui.focus.rules = [
   },
   {
     id: "OnGameOverEntered_Reset",
-    enabled: function (ctx) { return !!(PD.config && PD.config.debug && PD.config.debug.enabled); },
-    when: function (ctx) { return (ctx.view.ux.lastWinnerP === PD.state.NO_WINNER && ctx.state.winnerP !== PD.state.NO_WINNER); },
+    enabled: function (ctx) { return !!(MC.config && MC.config.debug && MC.config.debug.enabled); },
+    when: function (ctx) { return (ctx.view.ux.lastWinnerP === MC.state.NO_WINNER && ctx.state.winnerP !== MC.state.NO_WINNER); },
     pick: function (ctx) {
-      return PD.ui.focus._pickCenterBtn(ctx.computed, "reset");
+      return MC.ui.focus._pickCenterBtn(ctx.computed, "reset");
     }
   },
   {
     id: "OnInvalidActionGameOver_Reset",
-    enabled: function (ctx) { return !!(PD.config && PD.config.debug && PD.config.debug.enabled); },
+    enabled: function (ctx) { return !!(MC.config && MC.config.debug && MC.config.debug.enabled); },
     when: function (ctx) {
-      if (ctx.state.winnerP === PD.state.NO_WINNER) return false;
+      if (ctx.state.winnerP === MC.state.NO_WINNER) return false;
       if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
       return (ctx.view.ux.pendingFocusErrorCode === "game_over");
     },
     pick: function (ctx) {
       ctx.view.ux.pendingFocusErrorCode = "";
-      return PD.ui.focus._pickCenterBtn(ctx.computed, "reset");
+      return MC.ui.focus._pickCenterBtn(ctx.computed, "reset");
     }
   },
   {
     id: "OnPlaysExhausted_End",
     enabled: function () { return true; },
     when: function (ctx) {
-      if (ctx.state.winnerP !== PD.state.NO_WINNER) return false;
+      if (ctx.state.winnerP !== MC.state.NO_WINNER) return false;
       if (ctx.state.activeP !== 0) return false;
       if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
       return (ctx.view.ux.lastActiveP === 0 && ctx.view.ux.lastPlaysLeft > 0 && ctx.state.playsLeft <= 0);
     },
     pick: function (ctx) {
-      return PD.ui.focus._pickCenterBtn(ctx.computed, "endTurn");
+      return MC.ui.focus._pickCenterBtn(ctx.computed, "endTurn");
     }
   },
   {
     id: "OnHandBecameEmpty_End",
     enabled: function () { return true; },
     when: function (ctx) {
-      if (ctx.state.winnerP !== PD.state.NO_WINNER) return false;
+      if (ctx.state.winnerP !== MC.state.NO_WINNER) return false;
       if (ctx.state.activeP !== 0) return false;
       if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
       if (ctx.state.prompt) return false;
@@ -6757,14 +6790,14 @@ PD.ui.focus.rules = [
       return (ctx.view.ux.lastHandLenP0 > 0 && ctx.state.players[0].hand.length === 0);
     },
     pick: function (ctx) {
-      return PD.ui.focus._pickCenterBtn(ctx.computed, "endTurn");
+      return MC.ui.focus._pickCenterBtn(ctx.computed, "endTurn");
     }
   },
   {
     id: "OnPlayerTurnStart_FocusHandOrEnd",
     enabled: function () { return true; },
     when: function (ctx) {
-      if (ctx.state.winnerP !== PD.state.NO_WINNER) return false;
+      if (ctx.state.winnerP !== MC.state.NO_WINNER) return false;
       if (ctx.state.activeP !== 0) return false;
       if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
       if (ctx.state.prompt && ctx.state.prompt.p === 0) return false;
@@ -6773,8 +6806,8 @@ PD.ui.focus.rules = [
       return (ctx.view.ux.lastActiveP !== 0);
     },
     pick: function (ctx) {
-      if (ctx.state.players[0].hand.length > 0) return PD.ui.focus._pickHandCard(ctx.computed);
-      if (ctx.state.playsLeft > 0) return PD.ui.focus._pickCenterBtn(ctx.computed, "endTurn");
+      if (ctx.state.players[0].hand.length > 0) return MC.ui.focus._pickHandCard(ctx.computed);
+      if (ctx.state.playsLeft > 0) return MC.ui.focus._pickCenterBtn(ctx.computed, "endTurn");
       return null;
     }
   },
@@ -6782,7 +6815,7 @@ PD.ui.focus.rules = [
     id: "OnInvalidActionWhileHandEmpty_End",
     enabled: function () { return true; },
     when: function (ctx) {
-      if (ctx.state.winnerP !== PD.state.NO_WINNER) return false;
+      if (ctx.state.winnerP !== MC.state.NO_WINNER) return false;
       if (ctx.state.activeP !== 0) return false;
       if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
       if (ctx.state.prompt) return false;
@@ -6792,7 +6825,7 @@ PD.ui.focus.rules = [
     },
     pick: function (ctx) {
       ctx.view.ux.pendingFocusErrorCode = "";
-      return PD.ui.focus._pickCenterBtn(ctx.computed, "endTurn");
+      return MC.ui.focus._pickCenterBtn(ctx.computed, "endTurn");
     }
   },
   {
@@ -6805,7 +6838,7 @@ PD.ui.focus.rules = [
     },
     pick: function (ctx) {
       // First recvProps card in hand row.
-      return PD.ui.findBestCursorTarget(ctx.computed.models, [PD.render.ROW_P_HAND], function (it) {
+      return MC.ui.findBestCursorTarget(ctx.computed.models, [MC.render.ROW_P_HAND], function (it) {
         return it && it.kind === "hand" && it.loc && it.loc.zone === "recvProps" && it.loc.p === 0;
       });
     }
@@ -6819,14 +6852,14 @@ PD.ui.focus.rules = [
       return cur && (!ctx.view.ux.lastPromptForP0 || ctx.view.ux.lastPromptKind !== "replaceWindow");
     },
     pick: function (ctx) {
-      return PD.ui.pickReplaceWindowWild(ctx.state, ctx.computed);
+      return MC.ui.pickReplaceWindowWild(ctx.state, ctx.computed);
     }
   },
   {
     id: "OnExitPlaceReceivedPrompt_End",
     enabled: function () { return true; },
     when: function (ctx) {
-      if (ctx.state.winnerP !== PD.state.NO_WINNER) return false;
+      if (ctx.state.winnerP !== MC.state.NO_WINNER) return false;
       var pr = ctx.state.prompt;
       var cur = !!(pr && pr.kind === "placeReceived" && pr.p === 0);
       var exited = (ctx.view.ux.lastPromptForP0 && ctx.view.ux.lastPromptKind === "placeReceived" && !cur);
@@ -6836,7 +6869,7 @@ PD.ui.focus.rules = [
       return (ctx.state.playsLeft <= 0);
     },
     pick: function (ctx) {
-      return PD.ui.focus._pickCenterBtn(ctx.computed, "endTurn");
+      return MC.ui.focus._pickCenterBtn(ctx.computed, "endTurn");
     }
   },
   {
@@ -6853,11 +6886,11 @@ PD.ui.focus.rules = [
       var tgt = pr.target;
       // Prefer opponent table row, but fall back to any match.
       return (
-        PD.ui.findBestCursorTarget(ctx.computed.models, [PD.render.ROW_OP_TABLE], function (it) {
-          return PD.ui.itemMatchesUidLoc(it, tgt.uid, tgt.loc);
+        MC.ui.findBestCursorTarget(ctx.computed.models, [MC.render.ROW_OP_TABLE], function (it) {
+          return MC.ui.itemMatchesUidLoc(it, tgt.uid, tgt.loc);
         }) ||
-        PD.ui.findBestCursorTarget(ctx.computed.models, [0, 1, 2, 3, 4], function (it) {
-          return PD.ui.itemMatchesUidLoc(it, tgt.uid, tgt.loc);
+        MC.ui.findBestCursorTarget(ctx.computed.models, [0, 1, 2, 3, 4], function (it) {
+          return MC.ui.itemMatchesUidLoc(it, tgt.uid, tgt.loc);
         })
       );
     }
@@ -6871,7 +6904,7 @@ PD.ui.focus.rules = [
       return cur && (!ctx.view.ux.lastPromptForP0 || ctx.view.ux.lastPromptKind !== "payDebt");
     },
     pick: function (ctx) {
-      return PD.ui.focus._pickPayDebtDefault(ctx.computed);
+      return MC.ui.focus._pickPayDebtDefault(ctx.computed);
     }
   },
   {
@@ -6883,14 +6916,14 @@ PD.ui.focus.rules = [
       return (ctx.view.ux.pendingFocusErrorCode === "cant_pay");
     },
     pick: function (ctx) {
-      var pick = PD.ui.focus._pickPayDebtDefault(ctx.computed);
+      var pick = MC.ui.focus._pickPayDebtDefault(ctx.computed);
       if (pick) ctx.view.ux.pendingFocusErrorCode = "";
       return pick;
     }
   }
 ];
 
-PD.ui.focus.apply = function (state, view, computed, actions) {
+MC.ui.focus.apply = function (state, view, computed, actions) {
   var nav = actions.nav;
   var a = actions.a;
   var hasNav = !!(nav && (nav.up || nav.down || nav.left || nav.right));
@@ -6901,14 +6934,14 @@ PD.ui.focus.apply = function (state, view, computed, actions) {
     if (hasNav) { view.ux.autoFocusPausedByDebug = false; return false; }
     if (hasA) {
       var sel = computed.selected;
-      var isDebugBtn = !!(sel && sel.kind === "btn" && sel.row === PD.render.ROW_CENTER &&
+      var isDebugBtn = !!(sel && sel.kind === "btn" && sel.row === MC.render.ROW_CENTER &&
         (sel.id === "step" || sel.id === "reset" || sel.id === "nextScenario"));
       if (!isDebugBtn) view.ux.autoFocusPausedByDebug = false;
       return false;
     }
 
     // While latched, allow preservation only when selection disappears.
-    if (!computed.selected) return PD.ui.focus.preserve(state, view, computed);
+    if (!computed.selected) return MC.ui.focus.preserve(state, view, computed);
     return false;
   }
 
@@ -6918,18 +6951,18 @@ PD.ui.focus.apply = function (state, view, computed, actions) {
 
   // Always preserve selection stability first.
   var changed = false;
-  if (PD.ui.focus.preserve(state, view, computed)) changed = true;
+  if (MC.ui.focus.preserve(state, view, computed)) changed = true;
 
   var ctx = { state: state, view: view, computed: computed, actions: actions };
 
   var ri;
-  for (ri = 0; ri < PD.ui.focus.rules.length; ri++) {
-    var r = PD.ui.focus.rules[ri];
+  for (ri = 0; ri < MC.ui.focus.rules.length; ri++) {
+    var r = MC.ui.focus.rules[ri];
     if (!r.enabled(ctx)) continue;
     if (!r.when(ctx)) continue;
     var pick = r.pick(ctx);
     if (pick && pick.row != null && pick.i != null) {
-      PD.ui.cursorMoveTo(view, pick);
+      MC.ui.cursorMoveTo(view, pick);
       view.ux.lastFocusRuleId = r.id;
       return true;
     }
@@ -6939,11 +6972,11 @@ PD.ui.focus.apply = function (state, view, computed, actions) {
 };
 
 // ---- src/70_anim.js ----
-// PD.anim: UI-owned animation plumbing (turn events into timed, input-locking “watch moments”).
+// MC.anim: UI-owned animation plumbing (turn events into timed, input-locking “watch moments”).
 // This module owns view.anim queue/steps, but still manipulates UI view state
 // (mode/menu/targeting) because animations are a UI-owned “watch” moment.
 
-PD.anim.onEvents = function (state, view, events) {
+MC.anim.onEvents = function (state, view, events) {
   if (!state || !view || !events || events.length === 0) return;
   var anim = view.anim;
 
@@ -6953,7 +6986,7 @@ PD.anim.onEvents = function (state, view, events) {
   if (view.targeting) view.targeting.active = false;
 
   // Config knobs are validated in tests (avoid runtime fallbacks in the cartridge).
-  var uiCfg = PD.config.ui;
+  var uiCfg = MC.config.ui;
   var dealFrames = Math.floor(uiCfg.dealFramesPerCard);
   var dealGap = Math.floor(uiCfg.dealGapFrames);
   var shuffleFrames = Math.floor(uiCfg.shuffleAnimFrames);
@@ -6967,7 +7000,7 @@ PD.anim.onEvents = function (state, view, events) {
 
     if (ev.kind === "reshuffle") {
       // Toast + simple deck animation; input locked until finished.
-      PD.ui.toastPush(view, { id: "deck_shuffle", kind: "info", text: "Deck ran out. Shuffling", frames: shuffleToastFrames });
+      MC.ui.toastPush(view, { id: "deck_shuffle", kind: "info", text: "Deck ran out. Shuffling", frames: shuffleToastFrames });
       anim.q.push({
         kind: "shuffle",
         t: 0,
@@ -7018,7 +7051,7 @@ PD.anim.onEvents = function (state, view, events) {
   anim.lock = !!(anim.active || (anim.q && anim.q.length));
 };
 
-PD.anim.tick = function (state, view) {
+MC.anim.tick = function (state, view) {
   if (!view) return;
   var anim = view.anim;
 
@@ -7079,7 +7112,7 @@ PD.anim.tick = function (state, view) {
 };
 
 // Phase 05c+: treat cursor-flash feedback as an animation/fx owned here.
-PD.anim.feedbackError = function (view, code, msg) {
+MC.anim.feedbackError = function (view, code, msg) {
   if (!view || !view.feedback) return;
   code = String(code || "error");
   msg = String(msg || "");
@@ -7099,12 +7132,12 @@ PD.anim.feedbackError = function (view, code, msg) {
   fb.blinkPhase = 0;
 
   if (attempts >= 2 && msg) {
-    // Toast UI lives in PD.ui; this just triggers it as part of the feedback FX.
-    PD.ui.toastPush(view, { id: "err:" + code, kind: "error", text: msg, frames: 90 });
+    // Toast UI lives in MC.ui; this just triggers it as part of the feedback FX.
+    MC.ui.toastPush(view, { id: "err:" + code, kind: "error", text: msg, frames: 90 });
   }
 };
 
-PD.anim.feedbackTick = function (view) {
+MC.anim.feedbackTick = function (view) {
   if (!view || !view.feedback) return;
   var fb = view.feedback;
 
@@ -7124,7 +7157,7 @@ PD.anim.feedbackTick = function (view) {
 
 // Phase 05c: presentation (render-facing view of state/models).
 // Renderer should not depend on `view.anim`; instead, UI calls this after building models.
-PD.anim.present = function (state, view, computed) {
+MC.anim.present = function (state, view, computed) {
   if (!state || !view || !computed || !computed.models) return computed;
   var anim = view.anim;
   var a = anim ? anim.active : null;
@@ -7134,17 +7167,17 @@ PD.anim.present = function (state, view, computed) {
 
   // Provide highlight color for render (cursor flash on disallowed actions).
   // Default highlight color lives in render config.
-  var colDefault = PD.config.render.style.colHighlight;
+  var colDefault = MC.config.render.style.colHighlight;
   var hl = colDefault;
   if (view.feedback && view.feedback.blinkFrames > 0) {
-    if ((view.feedback.blinkPhase % 2) === 0) hl = PD.Pal.Red;
+    if ((view.feedback.blinkPhase % 2) === 0) hl = MC.Pal.Red;
   }
   computed.highlightCol = hl;
 
   // Phase 05c: hide in-flight dealt cards until revealed (presentation-only).
   if (anim && anim.hiddenByP) {
-    var rowPH = PD.render.ROW_P_HAND;
-    var rowOH = PD.render.ROW_OP_HAND;
+    var rowPH = MC.render.ROW_P_HAND;
+    var rowOH = MC.render.ROW_OP_HAND;
     var rows = [rowOH, rowPH];
     var ri;
     for (ri = 0; ri < rows.length; ri++) {
@@ -7170,7 +7203,7 @@ PD.anim.present = function (state, view, computed) {
       if (view.cursor && view.cursor.row === row) {
         if (rm.items.length === 0) computed.selected = null;
         else {
-          var ci = PD.ui.clampI(view.cursor.i, rm.items.length);
+          var ci = MC.ui.clampI(view.cursor.i, rm.items.length);
           computed.selected = rm.items[ci];
         }
       }
@@ -7179,7 +7212,7 @@ PD.anim.present = function (state, view, computed) {
 
   if (!a || !a.kind) return computed;
 
-  var rowCenter = PD.render.ROW_CENTER;
+  var rowCenter = MC.render.ROW_CENTER;
   var rmC = computed.models[rowCenter];
 
   if (a.kind === "shuffle") {
@@ -7233,12 +7266,12 @@ PD.anim.present = function (state, view, computed) {
     }
     if (deckX == null || deckY == null) return computed;
 
-    var rowHand = (p === 0) ? PD.render.ROW_P_HAND : PD.render.ROW_OP_HAND;
+    var rowHand = (p === 0) ? MC.render.ROW_P_HAND : MC.render.ROW_OP_HAND;
 
     var camCenter = view.camX[rowCenter];
     var camH = view.camX[rowHand];
 
-    var L = PD.config.render.layout;
+    var L = MC.config.render.layout;
     var padX = L.rowPadX;
     var xHandStart = (p === 0) ? padX : (L.screenW - padX - L.faceW);
     var handStep = (p === 0) ? L.handStrideX : (-L.handStrideX);
@@ -7271,33 +7304,33 @@ PD.anim.present = function (state, view, computed) {
 };
 
 // ---- src/90_debug.js ----
-// PD.debug: dev harness (scenario cycling/reset/step) + main tick wiring for playtesting.
-PD.debug.scenarioI = 0;
-PD.debug.scenarios = ["default"].concat(PD.scenarios.IDS);
-PD.debug.state = null;
-PD.debug.view = PD.ui.newView();
-PD.debug.ctrl = PD.controls.newState();
-PD.debug.ai = { wait: 0 };
-PD.debug.lastCmd = "";
-PD.debug.lastEvents = [];
-PD.debug.lastRaw = null;
-PD.debug.lastUiActions = null;
-PD.debug.lastUiIntentSummary = "";
+// MC.debug: dev harness (scenario cycling/reset/step) + main tick wiring for playtesting.
+MC.debug.scenarioI = 0;
+MC.debug.scenarios = ["default"].concat(MC.scenarios.IDS);
+MC.debug.state = null;
+MC.debug.view = MC.ui.newView();
+MC.debug.ctrl = MC.controls.newState();
+MC.debug.ai = { wait: 0 };
+MC.debug.lastCmd = "";
+MC.debug.lastEvents = [];
+MC.debug.lastRaw = null;
+MC.debug.lastUiActions = null;
+MC.debug.lastUiIntentSummary = "";
 
-PD.debug.reset = function (opts) {
-  var d = PD.debug;
+MC.debug.reset = function (opts) {
+  var d = MC.debug;
   var prevPaused = !!d.view.ux.autoFocusPausedByDebug;
   var shouldPause = !!(opts && opts.pauseAutoFocus) || prevPaused;
-  var seedU32 = PD.seed.computeSeedU32();
+  var seedU32 = MC.seed.computeSeedU32();
   var scenarioId = d.scenarios[d.scenarioI];
   if (scenarioId === "default") {
-    d.state = PD.state.newGame({ seedU32: seedU32 });
+    d.state = MC.state.newGame({ seedU32: seedU32 });
   } else {
-    d.state = PD.state.newGame({ seedU32: seedU32, scenarioId: scenarioId });
+    d.state = MC.state.newGame({ seedU32: seedU32, scenarioId: scenarioId });
   }
-  d.view = PD.ui.newView();
+  d.view = MC.ui.newView();
   if (shouldPause) d.view.ux.autoFocusPausedByDebug = true;
-  d.ctrl = PD.controls.newState();
+  d.ctrl = MC.controls.newState();
   d.ai = { wait: 0 };
   d.lastCmd = "";
   d.lastEvents = [];
@@ -7306,40 +7339,40 @@ PD.debug.reset = function (opts) {
   d.lastUiIntentSummary = "";
 };
 
-PD.debug.nextScenario = function () {
-  var d = PD.debug;
+MC.debug.nextScenario = function () {
+  var d = MC.debug;
   d.scenarioI = (d.scenarioI + 1) % d.scenarios.length;
-  PD.debug.reset({ pauseAutoFocus: true });
+  MC.debug.reset({ pauseAutoFocus: true });
 
   // Keep cursor on Next after switching scenarios (debug harness ergonomics).
   var view = d.view;
   var state = d.state;
-  if (view && state && PD.ui && PD.render) {
-    var computed = PD.ui.computeRowModels(state, view);
-    PD.ui.updateCameras(state, view, computed);
-    computed = PD.ui.computeRowModels(state, view);
-    var pick = PD.ui.findBestCursorTarget(computed.models, [PD.render.ROW_CENTER], function (it) {
+  if (view && state && MC.ui && MC.render) {
+    var computed = MC.ui.computeRowModels(state, view);
+    MC.ui.updateCameras(state, view, computed);
+    computed = MC.ui.computeRowModels(state, view);
+    var pick = MC.ui.findBestCursorTarget(computed.models, [MC.render.ROW_CENTER], function (it) {
       return it && it.kind === "btn" && it.id === "nextScenario" && !it.disabled;
     });
-    if (pick) PD.ui.cursorMoveTo(view, pick);
+    if (pick) MC.ui.cursorMoveTo(view, pick);
   }
 };
 
-PD.debug.step = function () {
-  var d = PD.debug;
+MC.debug.step = function () {
+  var d = MC.debug;
   var state = d.state;
-  var moves = PD.engine.legalMoves(state);
-  var p = PD.ai.actor(state);
-  var policy = PD.ai.policyForP(p);
-  var cmd = PD.ai.pickMove(state, moves, policy);
+  var moves = MC.engine.legalMoves(state);
+  var p = MC.ai.actor(state);
+  var policy = MC.ai.policyForP(p);
+  var cmd = MC.ai.pickMove(state, moves, policy);
   if (!cmd) return;
 
-  var res = PD.engine.applyCommand(state, cmd);
+  var res = MC.engine.applyCommand(state, cmd);
   d.lastCmd = cmd.kind;
   d.lastEvents = (res && res.events) ? res.events : [];
 };
 
-PD.debug.eventsToLine = function (events) {
+MC.debug.eventsToLine = function (events) {
   if (!events || events.length === 0) return "(none)";
   var parts = [];
   var i;
@@ -7349,14 +7382,14 @@ PD.debug.eventsToLine = function (events) {
   return parts.join(",");
 };
 
-PD.debug.tickTextMode = function () {
-  var d = PD.debug;
+MC.debug.tickTextMode = function () {
+  var d = MC.debug;
 
   if (typeof btnp === "function") {
     // A: step, B: next scenario, X: reset
-    if (btnp(4)) PD.debug.step();
-    if (btnp(5)) PD.debug.nextScenario();
-    if (btnp(6)) PD.debug.reset({ pauseAutoFocus: true });
+    if (btnp(4)) MC.debug.step();
+    if (btnp(5)) MC.debug.nextScenario();
+    if (btnp(6)) MC.debug.reset({ pauseAutoFocus: true });
   }
 
   var s = d.state;
@@ -7424,9 +7457,9 @@ PD.debug.tickTextMode = function () {
       var handLen = hand.length;
       var nDiscarded = pr.nDiscarded;
       // Stable target count: initialHand - HAND_MAX.
-      var nToDiscard = (handLen + nDiscarded) - PD.state.HAND_MAX;
+      var nToDiscard = (handLen + nDiscarded) - MC.state.HAND_MAX;
       if (nToDiscard < 0) nToDiscard = 0;
-      var left = handLen - PD.state.HAND_MAX;
+      var left = handLen - MC.state.HAND_MAX;
       if (left < 0) left = 0;
       return "Prompt:discardDown to:" + nToDiscard + " left:" + left;
     }
@@ -7442,14 +7475,14 @@ PD.debug.tickTextMode = function () {
 
   printSmall("Phase 02 Debug", x, y, 12); y += step;
   var sid = d.scenarios[d.scenarioI];
-  var info = (PD.scenarios.INFO && sid) ? PD.scenarios.INFO[String(sid)] : null;
+  var info = (MC.scenarios.INFO && sid) ? MC.scenarios.INFO[String(sid)] : null;
   var title = (info && info.title) ? String(info.title) : String(sid);
   printSmall("Scn:" + title, x, y, 12); y += step;
   var pendingDesc = (info && info.desc) ? String(info.desc) : "";
-  printSmall("Seed:" + PD.seed.computeSeedU32(), x, y, 12); y += step;
+  printSmall("Seed:" + MC.seed.computeSeedU32(), x, y, 12); y += step;
 
-  if (PD.render && PD.render.debug && typeof PD.render.debug.selectedLines === "function") {
-    var sel = PD.render.debug.selectedLines(d);
+  if (MC.render && MC.render.debug && typeof MC.render.debug.selectedLines === "function") {
+    var sel = MC.render.debug.selectedLines(d);
     if (sel && sel.length) {
       printSmall(sel[0] || "", x, y, 12); y += step;
       if (sel[1]) { printSmall(sel[1], x, y, 12); y += step; }
@@ -7459,24 +7492,24 @@ PD.debug.tickTextMode = function () {
   printSmall("Active:P" + s.activeP + " Plays:" + s.playsLeft, x, y, 12); y += step;
   printSmall(promptLine(s), x, y, 12); y += step;
   var w = s.winnerP;
-  if (w !== PD.state.NO_WINNER) { printSmall("Winner:P" + w, x, y, 11); y += step; }
+  if (w !== MC.state.NO_WINNER) { printSmall("Winner:P" + w, x, y, 11); y += step; }
 
   printSmall("Deck:" + s.deck.length + " Disc:" + s.discard.length, x, y, 12); y += step;
   printSmall("Hand0/1:" + s.players[0].hand.length + "/" + s.players[1].hand.length, x, y, 12); y += step;
   printSmall(
     "Bank0/1:" +
-    s.players[0].bank.length + "($" + PD.util.bankValueTotal(s, 0) + ")/" +
-    s.players[1].bank.length + "($" + PD.util.bankValueTotal(s, 1) + ")",
+    s.players[0].bank.length + "($" + MC.util.bankValueTotal(s, 0) + ")/" +
+    s.players[1].bank.length + "($" + MC.util.bankValueTotal(s, 1) + ")",
     x,
     y,
     12
   ); y += step;
   printSmall("Sets0/1:" + s.players[0].sets.length + "/" + s.players[1].sets.length, x, y, 12); y += step;
 
-  var moves = PD.engine.legalMoves(s);
+  var moves = MC.engine.legalMoves(s);
   printSmall("Legal:" + moves.length, x, y, 12); y += step;
   printSmall("LastCmd:" + (d.lastCmd || "(none)"), x, y, 12); y += step;
-  printSmall("Events:" + PD.debug.eventsToLine(d.lastEvents), x, y, 12); y += step;
+  printSmall("Events:" + MC.debug.eventsToLine(d.lastEvents), x, y, 12); y += step;
 
   // Long focus rule ids don't fit well in the right column; render them full-width here.
   var vFocus = d.view;
@@ -7521,7 +7554,7 @@ PD.debug.tickTextMode = function () {
 
     if (v.mode === "menu" && v.menu && v.menu.items) {
       var nM = v.menu.items.length;
-      var mi = (nM > 0) ? PD.ui.clampI(v.menu.i, nM) : 0;
+      var mi = (nM > 0) ? MC.ui.clampI(v.menu.i, nM) : 0;
       var it = (nM > 0) ? v.menu.items[mi] : null;
       var id = it ? String(it.id || "?") : "(none)";
       printSmall("Menu:" + mi + "/" + nM + " " + id, xR, yR, 12); yR += step;
@@ -7530,7 +7563,7 @@ PD.debug.tickTextMode = function () {
     if (v.mode === "targeting" && v.targeting && v.targeting.active) {
       var t = v.targeting;
       var nC = (t.cmds && t.cmds.length) ? t.cmds.length : 0;
-      var ci = (nC > 0) ? PD.ui.clampI(t.cmdI, nC) : 0;
+      var ci = (nC > 0) ? MC.ui.clampI(t.cmdI, nC) : 0;
       printSmall("Tgt:" + String(t.kind || "?") + " " + ci + "/" + nC + " h:" + bool01(t.hold), xR, yR, 12); yR += step;
     }
 
@@ -7576,19 +7609,19 @@ PD.debug.tickTextMode = function () {
   printSmall("A:Step  B:Next  X:Reset  Y:Mode", 6, 128, 13);
 };
 
-PD.mainTick = function () {
+MC.mainTick = function () {
   // Modes: 0=DebugText, 1=Render
-  if (typeof btnp === "function" && btnp(7)) PD._mainMode = PD._mainMode ? 0 : 1;
+  if (typeof btnp === "function" && btnp(7)) MC._mainMode = MC._mainMode ? 0 : 1;
 
-  if (PD._mainMode === 0) {
-    if (PD.debug.state == null) PD.debug.reset(null);
-    PD.debug.tickTextMode();
+  if (MC._mainMode === 0) {
+    if (MC.debug.state == null) MC.debug.reset(null);
+    MC.debug.tickTextMode();
     return;
   }
 
   // Render mode
-  var d = PD.debug;
-  if (d.state == null) PD.debug.reset(null);
+  var d = MC.debug;
+  if (d.state == null) MC.debug.reset(null);
 
   {
     function summarizeUiIntent(intent) {
@@ -7598,39 +7631,39 @@ PD.mainTick = function () {
       return String(intent.kind);
     }
 
-    var raw = PD.controls.pollGlobals();
+    var raw = MC.controls.pollGlobals();
     d.lastRaw = raw;
-    var actions = PD.controls.actions(d.ctrl, raw, PD.config.controls);
+    var actions = MC.controls.actions(d.ctrl, raw, MC.config.controls);
     d.lastUiActions = actions;
 
     // Phase 07: AI acts for actor=1 (activeP or prompt.p). While AI is acting, suppress player input.
-    var actor = PD.ai.actor(d.state);
-    var gameOver = (d.state.winnerP !== PD.state.NO_WINNER);
+    var actor = MC.ai.actor(d.state);
+    var gameOver = (d.state.winnerP !== MC.state.NO_WINNER);
     if (actor !== 0 && !gameOver) actions = {};
 
-    var intent = PD.ui.step(d.state, d.view, actions);
+    var intent = MC.ui.step(d.state, d.view, actions);
     d.lastUiIntentSummary = summarizeUiIntent(intent);
 
     if (actor === 0 && intent && intent.kind === "applyCmd" && intent.cmd) {
       try {
-        var res = PD.engine.applyCommand(d.state, intent.cmd);
+        var res = MC.engine.applyCommand(d.state, intent.cmd);
         d.lastCmd = intent.cmd.kind;
         d.lastEvents = (res && res.events) ? res.events : [];
-        PD.anim.onEvents(d.state, d.view, d.lastEvents);
+        MC.anim.onEvents(d.state, d.view, d.lastEvents);
       } catch (err) {
         d.lastCmd = intent.cmd.kind + "(!)";
         d.lastEvents = [];
         var code = (err && err.message) ? String(err.message) : "error";
-        var msg = PD.fmt.errorMessage(code);
-        PD.anim.feedbackError(d.view, code, msg);
+        var msg = MC.fmt.errorMessage(code);
+        MC.anim.feedbackError(d.view, code, msg);
       }
     } else if ((actor === 0 || gameOver) && intent && intent.kind === "debug") {
       if (intent.action === "step") {
-        PD.debug.step();
-        PD.anim.onEvents(d.state, d.view, d.lastEvents);
+        MC.debug.step();
+        MC.anim.onEvents(d.state, d.view, d.lastEvents);
       }
-      else if (intent.action === "reset") PD.debug.reset({ pauseAutoFocus: true });
-      else if (intent.action === "nextScenario") PD.debug.nextScenario();
+      else if (intent.action === "reset") MC.debug.reset({ pauseAutoFocus: true });
+      else if (intent.action === "nextScenario") MC.debug.nextScenario();
     }
 
     // Phase 07: AI pacing loop (one command per step, with fixed delay).
@@ -7638,45 +7671,45 @@ PD.mainTick = function () {
       if (d.ai.wait > 0) {
         d.ai.wait -= 1;
       } else {
-        var cmdAi = PD.ai.pickRandomLegalMove(d.state);
+        var cmdAi = MC.ai.pickRandomLegalMove(d.state);
         if (cmdAi) {
-          var txt = PD.ai.describeCmd(d.state, cmdAi);
+          var txt = MC.ai.describeCmd(d.state, cmdAi);
           if (txt) {
-            PD.ui.toastPush(d.view, { id: "ai:narrate", kind: "ai", text: txt, frames: PD.config.ui.aiNarrateToastFrames });
+            MC.ui.toastPush(d.view, { id: "ai:narrate", kind: "ai", text: txt, frames: MC.config.ui.aiNarrateToastFrames });
           }
           try {
-            var resAi = PD.engine.applyCommand(d.state, cmdAi);
+            var resAi = MC.engine.applyCommand(d.state, cmdAi);
             d.lastCmd = "ai:" + cmdAi.kind;
             d.lastEvents = (resAi && resAi.events) ? resAi.events : [];
-            PD.anim.onEvents(d.state, d.view, d.lastEvents);
+            MC.anim.onEvents(d.state, d.view, d.lastEvents);
           } catch (errAi) {
             d.lastCmd = "ai:" + cmdAi.kind + "(!)";
             d.lastEvents = [];
             var codeAi = (errAi && errAi.message) ? String(errAi.message) : "error";
-            var msgAi = PD.fmt.errorMessage(codeAi);
-            PD.anim.feedbackError(d.view, codeAi, msgAi);
+            var msgAi = MC.fmt.errorMessage(codeAi);
+            MC.anim.feedbackError(d.view, codeAi, msgAi);
           }
-          d.ai.wait = PD.config.ui.aiStepDelayFrames;
+          d.ai.wait = MC.config.ui.aiStepDelayFrames;
         } else {
-          d.ai.wait = PD.config.ui.aiStepDelayFrames;
+          d.ai.wait = MC.config.ui.aiStepDelayFrames;
         }
       }
     }
 
-    var computed = PD.ui.computeRowModels(d.state, d.view);
-    PD.ui.updateCameras(d.state, d.view, computed);
+    var computed = MC.ui.computeRowModels(d.state, d.view);
+    MC.ui.updateCameras(d.state, d.view, computed);
     // Recompute after camera updates (selection/cam are orthogonal, but keep it stable).
-    computed = PD.ui.computeRowModels(d.state, d.view);
+    computed = MC.ui.computeRowModels(d.state, d.view);
 
-    PD.render.drawFrame({ state: d.state, view: d.view, computed: computed });
+    MC.render.drawFrame({ state: d.state, view: d.view, computed: computed });
   }
 };
 
-PD._mainMode = 0;
+MC._mainMode = 0;
 
 // ---- src/99_main.js ----
 // Cartridge entrypoint: TIC-80 calls `TIC()` once per frame.
 function TIC() {
-  PD.mainTick();
+  MC.mainTick();
 }
 

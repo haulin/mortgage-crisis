@@ -7,8 +7,8 @@ const OUT_FILE = path.join(REPO_ROOT, "game.js");
 
 const HEADER_LINES = [
   "// script: js",
-  "// title: Property Deal",
-  "// saveid: PropertyDeal",
+  "// title: Mortgage Crisis",
+  "// saveid: MortgageCrisis",
   "// generated: do not edit by hand (edit src/* instead)",
   ""
 ];

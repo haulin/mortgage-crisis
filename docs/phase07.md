@@ -4,9 +4,9 @@ This phase adds a very small opponent AI for play-testing flows end-to-end.
 
 ## What shipped
 
-- Opponent (P1) takes actions automatically in Render mode (`PD.mainTick`).
+- Opponent (P1) takes actions automatically in Render mode (`MC.mainTick`).
 - AI picks **one random legal move** per step and waits a fixed number of frames between steps.
-- Each AI command can emit a short narration toast (“Opponent: Rent”, “Opponent: Place -> …”).
+- Each AI command can emit a short narration toast (“AI: Rent”, “AI: Place -> …”).
 
 In practice, Phase 07 also became our “playtest polish” phase: we tightened several UX edges (Rent preview consistency, endgame handling, and—most importantly—centralized focus/autofocus so the cursor stops fighting the player).
 

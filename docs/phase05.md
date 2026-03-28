@@ -30,10 +30,10 @@ Inspect descriptions automatically include:
 
 We add a tiny rule-note mechanism for short constraints/notes that should appear in Inspect:
 
-- `PD.RuleNote.`* enum IDs
+- `MC.RuleNote.`* enum IDs
 - `def.ruleNotes: [...]` on card defs
-- `PD.ruleNoteTextById[id] = "..."`
-- `PD.config.rules.enabledRuleNotes = [...]`
+- `MC.ruleNoteTextById[id] = "..."`
+- `MC.config.rules.enabledRuleNotes = [...]`
 
 Important: `enabledRuleNotes` is **not empty** in MVP1 builds because **Sly Deal’s constraint** (“not from full set”) is an MVP1 rule.
 

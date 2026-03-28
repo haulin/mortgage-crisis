@@ -1,5 +1,5 @@
-// PD.seed: seed policy for deterministic runs (dev-friendly, reproducible).
-PD.seed.computeSeedU32 = function () {
-  return PD.rng.u32NonZero(PD.config.seedBase);
+// MC.seed: seed policy for deterministic runs (dev-friendly, reproducible).
+MC.seed.computeSeedU32 = function () {
+  return MC.rng.u32NonZero(MC.config.seedBase);
 };
 

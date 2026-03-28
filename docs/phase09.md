@@ -57,7 +57,7 @@ Targeting consistency improvements:
 
 - Added a soft-bias policy for `moveWild`, gated by a tuning knob:
   - prefer moves that **complete a set**, then prefer positive rent delta
-- New config knob: `PD.config.ai.biasMoveWildK`
+- New config knob: `MC.config.ai.biasMoveWildK`
 
 ### Scenarios + tests
 

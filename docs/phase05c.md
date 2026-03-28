@@ -35,7 +35,7 @@ This avoids “2–5 cards appear instantly” and makes draw timing readable.
 
 ## Config knobs
 
-Animation timings are tunable in `PD.config.ui` (frames @ 60fps):
+Animation timings are tunable in `MC.config.ui` (frames @ 60fps):
 
 - `dealFramesPerCard`
 - `dealGapFrames`

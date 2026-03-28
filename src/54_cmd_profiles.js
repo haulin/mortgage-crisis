@@ -1,15 +1,15 @@
 // Cmd profiles: data-driven behavior by targeting kind, expressed in terms of cmd lists + UI hooks.
 // This registry centralizes Source-cancel policy + overlay text + cursor/sort behavior.
 
-PD.cmd.getProfile = function (kind) {
+MC.cmd.getProfile = function (kind) {
   kind = String(kind || "");
-  return PD.cmdProfiles[kind] || null;
+  return MC.cmdProfiles[kind] || null;
 };
 
 // Menu-capable cmd kinds (card menu items, ordered).
-PD.cmd.menuKinds = ["place", "build", "rent", "sly", "bank"];
+MC.cmd.menuKinds = ["place", "build", "rent", "sly", "bank"];
 
-PD.cmd.titleForCmdKind = function (cmd) {
+MC.cmd.titleForCmdKind = function (cmd) {
   if (!cmd || !cmd.kind) return "Target";
   var k = String(cmd.kind);
   if (k === "playRent") return "Rent";
@@ -22,32 +22,32 @@ PD.cmd.titleForCmdKind = function (cmd) {
   return "Target";
 };
 
-PD.cmd.destLineForCmd = function (state, targeting, cmd) {
+MC.cmd.destLineForCmd = function (state, targeting, cmd) {
   var t = targeting || null;
   if (!cmd || !cmd.kind) return "(no destination)";
   var k = String(cmd.kind);
 
-  if (k === "playProp" || k === "moveWild") return PD.cmd.destLinePlaceLike(state, t, cmd);
+  if (k === "playProp" || k === "moveWild") return MC.cmd.destLinePlaceLike(state, t, cmd);
 
   if (k === "playHouse") {
-    var dH = PD.moves.destForCmd(cmd);
+    var dH = MC.moves.destForCmd(cmd);
     if (!dH || dH.kind !== "setEnd") return "(no destination)";
     var setH = state.players[dH.p].sets[dH.setI];
-    var colH = setH ? PD.rules.getSetColor(setH.props) : PD.state.NO_COLOR;
-    return "Dest: " + PD.fmt.colorName(colH) + " set";
+    var colH = setH ? MC.rules.getSetColor(setH.props) : MC.state.NO_COLOR;
+    return "Dest: " + MC.fmt.colorName(colH) + " set";
   }
 
   if (k === "playRent") {
     var p = cmd.card.loc.p;
     var setR = state.players[p].sets[cmd.setI];
-    var colR = setR ? PD.rules.getSetColor(setR.props) : PD.state.NO_COLOR;
-    var amt = PD.rules.rentAmountForSet(state, p, cmd.setI);
-    return "From: " + PD.fmt.colorName(colR) + " set\nAmt: $" + amt;
+    var colR = setR ? MC.rules.getSetColor(setR.props) : MC.state.NO_COLOR;
+    var amt = MC.rules.rentAmountForSet(state, p, cmd.setI);
+    return "From: " + MC.fmt.colorName(colR) + " set\nAmt: $" + amt;
   }
 
   if (k === "playSlyDeal") {
     var tl = (cmd.target && cmd.target.loc) ? cmd.target.loc : null;
-    var colT = PD.state.NO_COLOR;
+    var colT = MC.state.NO_COLOR;
     if (tl && tl.zone === "setProps") {
       var setT = state.players[tl.p].sets[tl.setI];
       if (setT && setT.props) {
@@ -55,7 +55,7 @@ PD.cmd.destLineForCmd = function (state, targeting, cmd) {
         if (propT) colT = propT[1];
       }
     }
-    return "Target: " + PD.fmt.colorName(colT);
+    return "Target: " + MC.fmt.colorName(colT);
   }
 
   if (k === "bank") return "Dest: Bank";
@@ -63,43 +63,43 @@ PD.cmd.destLineForCmd = function (state, targeting, cmd) {
   return "(no destination)";
 };
 
-PD.cmd.destLinePlaceLike = function (state, targeting, cmd) {
+MC.cmd.destLinePlaceLike = function (state, targeting, cmd) {
   var t = targeting || null;
   if (!cmd || !cmd.kind) return "(no destination)";
   if (cmd.kind === "source") return "Dest: Source";
 
-  var d = PD.moves.destForCmd(cmd);
+  var d = MC.moves.destForCmd(cmd);
   var out = "";
   if (d) {
     if (d.kind === "newSet") out = "Dest: New set";
     else if (d.kind === "setEnd") {
       var set = state.players[d.p].sets[d.setI];
-      var col = set ? PD.rules.getSetColor(set.props) : PD.state.NO_COLOR;
-      out = "Dest: " + PD.fmt.colorName(col) + " set";
+      var col = set ? MC.rules.getSetColor(set.props) : MC.state.NO_COLOR;
+      out = "Dest: " + MC.fmt.colorName(col) + " set";
     }
   }
 
-  if (t && t.card && t.card.def && PD.rules.isWildDef(t.card.def)) out += "\nAs: " + PD.fmt.colorName(t.wildColor);
+  if (t && t.card && t.card.def && MC.rules.isWildDef(t.card.def)) out += "\nAs: " + MC.fmt.colorName(t.wildColor);
   return out || "(no destination)";
 };
 
-PD.cmdProfiles.place = {
+MC.cmdProfiles.place = {
   id: "place",
   title: "Place",
   helpLR: "L/R: Dest",
   includeSource: function (loc) {
-    return PD.moves.locAllowsSource(loc);
+    return MC.moves.locAllowsSource(loc);
   },
   defaultWildColor: function (state, uid, def) {
-    return PD.moves.defaultWildColorForPlace(state, uid, def);
+    return MC.moves.defaultWildColorForPlace(state, uid, def);
   },
   cmdsForWildColor: function (state, uid, def, wildColor) {
-    return PD.moves.placeCmdsForUid(state, uid, def, wildColor);
+    return MC.moves.placeCmdsForUid(state, uid, def, wildColor);
   },
-  destLine: PD.cmd.destLinePlaceLike
+  destLine: MC.cmd.destLinePlaceLike
 };
 
-PD.cmdProfiles.moveWild = {
+MC.cmdProfiles.moveWild = {
   id: "moveWild",
   title: "Place",
   helpLR: "L/R: Dest",
@@ -108,17 +108,17 @@ PD.cmdProfiles.moveWild = {
     return true;
   },
   defaultWildColor: function (state, uid, def, loc) {
-    return PD.moves.defaultWildColorForMoveWild(state, uid, def, loc);
+    return MC.moves.defaultWildColorForMoveWild(state, uid, def, loc);
   },
   cmdsForWildColor: function (state, uid, def, wildColor) {
-    return PD.moves.moveWildCmdsForUid(state, uid, def, wildColor);
+    return MC.moves.moveWildCmdsForUid(state, uid, def, wildColor);
   },
   sortRank: function (cmd) {
     if (cmd && cmd.kind === "source") return 2;
     if (cmd && cmd.dest && cmd.dest.newSet) return 1;
     return 0;
   },
-  destLine: PD.cmd.destLinePlaceLike,
+  destLine: MC.cmd.destLinePlaceLike,
   ui: {
     mode: "preview",
     screenXForCmd: function (ctx, cmdW) {
@@ -126,57 +126,57 @@ PD.cmdProfiles.moveWild = {
       if (cmdW.dest && cmdW.dest.newSet) return 999999;
       var setI = (cmdW.dest && cmdW.dest.setI != null) ? cmdW.dest.setI : null;
       if (setI == null) return 999999;
-      var rmT = ctx.computed.models[PD.render.ROW_P_TABLE];
+      var rmT = ctx.computed.models[MC.render.ROW_P_TABLE];
       var st = rmT.stacks["set:p0:set" + setI];
       if (!st) return 999999;
       var x = st.x0 + st.nReal * st.stride * st.fanDir;
-      var cam = ctx.view.camX[PD.render.ROW_P_TABLE];
+      var cam = ctx.view.camX[MC.render.ROW_P_TABLE];
       return x - cam;
     },
     sortRank: function (cmd) {
-      return PD.cmdProfiles.moveWild.sortRank(cmd);
+      return MC.cmdProfiles.moveWild.sortRank(cmd);
     }
   }
 };
 
-PD.cmdProfiles.bank = {
+MC.cmdProfiles.bank = {
   id: "bank",
   title: "Bank",
   helpLR: "L/R: Dest",
-  includeSource: function (loc) { return PD.moves.locAllowsSource(loc); },
-  cmdsForUid: function (state, uid) { return PD.moves.bankCmdsForUid(state, uid); },
-  destLine: PD.cmd.destLineForCmd
+  includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
+  cmdsForUid: function (state, uid) { return MC.moves.bankCmdsForUid(state, uid); },
+  destLine: MC.cmd.destLineForCmd
 };
 
-PD.cmdProfiles.build = {
+MC.cmdProfiles.build = {
   id: "build",
   title: "Build",
   helpLR: "L/R: Dest",
-  includeSource: function (loc) { return PD.moves.locAllowsSource(loc); },
-  cmdsForUid: function (state, uid) { return PD.moves.buildCmdsForUid(state, uid); },
-  destLine: PD.cmd.destLineForCmd
+  includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
+  cmdsForUid: function (state, uid) { return MC.moves.buildCmdsForUid(state, uid); },
+  destLine: MC.cmd.destLineForCmd
 };
 
-PD.cmdProfiles.rent = {
+MC.cmdProfiles.rent = {
   id: "rent",
   title: "Rent",
   helpLR: "L/R: Set",
-  includeSource: function (loc) { return PD.moves.locAllowsSource(loc); },
+  includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
   cmdsForUid: function (state, uid, loc) {
-    var cmds = PD.moves.rentMovesForUid(state, uid);
-    PD.moves.sortRentMovesByAmount(state, loc ? loc.p : 0, cmds);
+    var cmds = MC.moves.rentMovesForUid(state, uid);
+    MC.moves.sortRentMovesByAmount(state, loc ? loc.p : 0, cmds);
     return cmds;
   },
-  destLine: PD.cmd.destLineForCmd
+  destLine: MC.cmd.destLineForCmd
 };
 
-PD.cmdProfiles.sly = {
+MC.cmdProfiles.sly = {
   id: "sly",
   title: "Sly Deal",
   helpLR: "L/R: Target",
-  includeSource: function (loc) { return PD.moves.locAllowsSource(loc); },
-  cmdsForUid: function (state, uid) { return PD.moves.slyDealMovesForUid(state, uid); },
-  destLine: PD.cmd.destLineForCmd,
+  includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
+  cmdsForUid: function (state, uid) { return MC.moves.slyDealMovesForUid(state, uid); },
+  destLine: MC.cmd.destLineForCmd,
   ui: {
     mode: "cursor",
     findItemForCmd: function (ctx, cmdSly) {
@@ -184,21 +184,21 @@ PD.cmdProfiles.sly = {
       var t = ctx.view.targeting;
       if (cmdSly.kind === "source") {
         if (!t || !t.card || !t.card.loc) return null;
-        return PD.ui.findBestCursorTarget(ctx.computed.models, [PD.render.ROW_P_HAND], function (it) {
-          return PD.ui.itemMatchesUidLoc(it, t.card.uid, t.card.loc);
+        return MC.ui.findBestCursorTarget(ctx.computed.models, [MC.render.ROW_P_HAND], function (it) {
+          return MC.ui.itemMatchesUidLoc(it, t.card.uid, t.card.loc);
         });
       }
       if (cmdSly.kind === "playSlyDeal" && cmdSly.target && cmdSly.target.loc) {
         var loc = cmdSly.target.loc;
         var uid = cmdSly.target.uid;
-        return PD.ui.findBestCursorTarget(ctx.computed.models, [PD.render.ROW_OP_TABLE], function (it) {
-          return PD.ui.itemMatchesUidLoc(it, uid, loc);
+        return MC.ui.findBestCursorTarget(ctx.computed.models, [MC.render.ROW_OP_TABLE], function (it) {
+          return MC.ui.itemMatchesUidLoc(it, uid, loc);
         });
       }
       return null;
     },
     screenXForCmd: function (ctx, cmdSly) {
-      var pick = PD.cmdProfiles.sly.ui.findItemForCmd(ctx, cmdSly);
+      var pick = MC.cmdProfiles.sly.ui.findItemForCmd(ctx, cmdSly);
       if (!pick || !pick.item) return 999999;
       var row = pick.item.row;
       var cam = ctx.view.camX[row];
@@ -219,21 +219,21 @@ PD.cmdProfiles.sly = {
   }
 };
 
-PD.cmdProfiles.quick = {
+MC.cmdProfiles.quick = {
   id: "quick",
   title: function (targeting, cmdSel) {
     if (!cmdSel || !cmdSel.kind) return "Action";
-    return PD.cmd.titleForCmdKind(cmdSel);
+    return MC.cmd.titleForCmdKind(cmdSel);
   },
   helpLR: "L/R: Option",
-  includeSource: function (loc) { return PD.moves.locAllowsSource(loc); },
+  includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
   cmdsForUid: function (state, uid, loc) {
-    var rentCmds = PD.moves.rentMovesForUid(state, uid);
-    PD.moves.sortRentMovesByAmount(state, loc ? loc.p : 0, rentCmds);
-    var buildCmds = PD.moves.buildCmdsForUid(state, uid);
-    var bankCmds = PD.moves.bankCmdsForUid(state, uid);
+    var rentCmds = MC.moves.rentMovesForUid(state, uid);
+    MC.moves.sortRentMovesByAmount(state, loc ? loc.p : 0, rentCmds);
+    var buildCmds = MC.moves.buildCmdsForUid(state, uid);
+    var bankCmds = MC.moves.bankCmdsForUid(state, uid);
     return rentCmds.concat(buildCmds).concat(bankCmds);
   },
-  destLine: PD.cmd.destLineForCmd
+  destLine: MC.cmd.destLineForCmd
 };
 

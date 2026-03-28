@@ -51,7 +51,7 @@ test("src bundle does not leak unexpected globals", async () => {
 
   assert.deepEqual(
     added,
-    ["PD", "TIC"],
+    ["MC", "TIC"],
     `unexpected global(s) leaked: ${added.join(", ")}`
   );
 });

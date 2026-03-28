@@ -1,17 +1,22 @@
-// PD.config: central gameplay/UI/render tuning knobs (validated in tests; avoid runtime fallbacks).
-PD.config = {
+// MC.config: central gameplay/UI/render tuning knobs (validated in tests; avoid runtime fallbacks).
+MC.config = {
   screenW: 240,
   screenH: 136,
-  seedBase: 1001
+  seedBase: 1004
+};
+
+// Meta/version display (Phase 09b).
+MC.config.meta = {
+  version: "v0.9b"
 };
 
 // Debug/dev knobs (Phase 03b+). Keep these centralized so we can disable later.
-PD.config.debug = {
+MC.config.debug = {
   enabled: true
 };
 
 // Controller UX knobs (Phase 04+). All values are in frames (TIC runs at 60fps).
-PD.config.controls = {
+MC.config.controls = {
   // D-pad repeat: start repeating after delay, then pulse every period.
   dpadRepeatDelayFrames: 12,
   dpadRepeatPeriodFrames: 4,
@@ -25,9 +30,9 @@ PD.config.controls = {
 };
 
 // UI/navigation tuning (Phase 04+).
-PD.config.ui = {
+MC.config.ui = {
   // Directional navigation cone penalty multiplier (per-axis):
-  // used by PD.ui.navPickInDirection scoring:
+  // used by MC.ui.navPickInDirection scoring:
   // score = along^2 + (perp^2)*k
   //
   // Bigger k => narrower cone (harder to jump across rows/columns).
@@ -56,13 +61,17 @@ PD.config.ui = {
 };
 
 // AI policy knobs (Phase 07+).
-PD.config.ai = {
+MC.config.ai = {
   // Per-player policy IDs (0=player, 1=opponent by default).
   policyByP: ["defaultHeuristic", "defaultHeuristic"],
 
   // Weight multiplier for "place property into an existing set" moves.
   // 1 means no bias (equivalent to uniform random).
   biasExistingSetK: 8,
+
+  // Phase 09b: soft bias toward paying debts from bank before transferring properties.
+  // 1 means no bias (equivalent to uniform random).
+  biasPayDebtFromBankK: 8,
 
   // Weight multiplier for "play Rent" moves (bias asking for rent over banking Rent).
   // 1 means no bias (equivalent to uniform random).
@@ -78,7 +87,7 @@ PD.config.ai = {
 };
 
 // Rule-note IDs (Phase 05+). These are small display-only annotations in Inspect.
-PD.RuleNote = {
+MC.RuleNote = {
   // MVP1 rule constraints.
   SlyDeal_NotFromFullSet: 1,
 
@@ -88,17 +97,17 @@ PD.RuleNote = {
 };
 
 // Rules display knobs (Phase 05+).
-PD.config.rules = {
+MC.config.rules = {
   // List of enabled RuleNote IDs to show in Inspect.
   // Note: keep this intentionally small; it's easy to mislead players with future-rule text.
   enabledRuleNotes: [
-    PD.RuleNote.SlyDeal_NotFromFullSet
+    MC.RuleNote.SlyDeal_NotFromFullSet
   ]
 };
 
 // TIC-80 default palette is Sweetie-16.
 // These are palette *indices* (0..15), not RGB values.
-PD.Pal = {
+MC.Pal = {
   Black: 0,       // #1a1c2c
   Purple: 1,      // #5d275d
   Red: 2,         // #b13e53
@@ -117,11 +126,11 @@ PD.Pal = {
   DarkGrey: 15,   // #333c57
 };
 
-PD.config.render = {
+MC.config.render = {
   // Layout knobs: geometry + positions.
   layout: {
-    screenW: PD.config.screenW,
-    screenH: PD.config.screenH,
+    screenW: MC.config.screenW,
+    screenH: MC.config.screenH,
 
     // Row bands (0-based, inclusive bounds are derived).
     rowY: [0, 12, 39, 82, 109],
@@ -210,30 +219,30 @@ PD.config.render = {
     iconY: 9,
 
     // Colors (Sweetie-16 indices).
-    colBg: PD.Pal.Black,
-    colText: PD.Pal.White,
-    colCardBorder: PD.Pal.White,
-    colCardInterior: PD.Pal.White,
-    colShadow: PD.Pal.Black,
-    colHighlight: PD.Pal.Yellow,
-    colCenterPanel: PD.Pal.DarkBlue,
-    colCenterPanelBorder: PD.Pal.White,
-    colValuePatch: PD.Pal.White,
-    colValuePatchBorder: PD.Pal.Black,
-    hudLineCol: PD.Pal.White,
-    colToastBgAi: PD.Pal.DarkBlue,
+    colBg: MC.Pal.Black,
+    colText: MC.Pal.White,
+    colCardBorder: MC.Pal.White,
+    colCardInterior: MC.Pal.White,
+    colShadow: MC.Pal.Black,
+    colHighlight: MC.Pal.Yellow,
+    colCenterPanel: MC.Pal.DarkBlue,
+    colCenterPanelBorder: MC.Pal.White,
+    colValuePatch: MC.Pal.White,
+    colValuePatchBorder: MC.Pal.Black,
+    hudLineCol: MC.Pal.White,
+    colToastBgAi: MC.Pal.DarkBlue,
 
     // Center pile depth outlines (Phase 03b polish)
-    pileShadowOutlineCol: PD.Pal.Black,
+    pileShadowOutlineCol: MC.Pal.Black,
     // Under-layer outline colors (screen-space depth):
     // - under1: the closer (smaller offset) layer
     // - under2: the deeper (larger offset) layer
     // Deeper is intentionally darker.
-    pileOutlineUnder1Col: PD.Pal.LightGrey,
-    pileOutlineUnder2Col: PD.Pal.Grey,
+    pileOutlineUnder1Col: MC.Pal.LightGrey,
+    pileOutlineUnder2Col: MC.Pal.Grey,
 
     // Inspect panel colors (Phase 05).
-    inspectPanelFillCol: PD.Pal.DarkGreen,
+    inspectPanelFillCol: MC.Pal.DarkGreen,
 
     // Deck/Discard pile count digit offset (Phase 05).
     pileCountDx: 1,
@@ -261,11 +270,11 @@ PD.config.render = {
   // Money/value palette mapping from docs/session01.md: 1→4, 2→2, 3→5, 4→10, 5→1
   moneyBgByValue: [
     0,
-    PD.Pal.Yellow,     // 1
-    PD.Pal.Red,        // 2
-    PD.Pal.LightGreen, // 3
-    PD.Pal.LightBlue,  // 4
-    PD.Pal.Purple      // 5
+    MC.Pal.Yellow,     // 1
+    MC.Pal.Red,        // 2
+    MC.Pal.LightGreen, // 3
+    MC.Pal.LightBlue,  // 4
+    MC.Pal.Purple      // 5
   ]
 };
 

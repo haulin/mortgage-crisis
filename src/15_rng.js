@@ -1,14 +1,14 @@
-// PD.rng: deterministic PRNG helpers (bitwise coercion stays localized here).
-PD.rng.u32 = function (n) {
+// MC.rng: deterministic PRNG helpers (bitwise coercion stays localized here).
+MC.rng.u32 = function (n) {
   return (n >>> 0);
 };
 
-PD.rng.u32NonZero = function (n) {
+MC.rng.u32NonZero = function (n) {
   var x = (n >>> 0);
   return x ? x : 1;
 };
 
-PD.rng.xorshift32Step = function (sU32) {
+MC.rng.xorshift32Step = function (sU32) {
   var x = sU32 >>> 0;
   if (!x) x = 1;
   x ^= x << 13;
@@ -19,31 +19,31 @@ PD.rng.xorshift32Step = function (sU32) {
   return x >>> 0;
 };
 
-PD.rng.RNG = function (seedU32) {
-  this.s = PD.rng.u32NonZero(seedU32);
+MC.rng.RNG = function (seedU32) {
+  this.s = MC.rng.u32NonZero(seedU32);
 };
 
 // Standalone RNG instances (handy for tests/utilities; separate from RNG-in-state).
-PD.rng.RNG.prototype.nextU32 = function () {
-  this.s = PD.rng.xorshift32Step(this.s >>> 0);
+MC.rng.RNG.prototype.nextU32 = function () {
+  this.s = MC.rng.xorshift32Step(this.s >>> 0);
   return this.s >>> 0;
 };
 
-PD.rng.RNG.prototype.nextInt = function (n) {
+MC.rng.RNG.prototype.nextInt = function (n) {
   n = n | 0;
   if (n <= 0) return 0;
   return (this.nextU32() % n) | 0;
 };
 
 // RNG-in-state helpers (store evolving state in `state.rngS`).
-PD.rng.nextU32InState = function (state) {
-  state.rngS = PD.rng.xorshift32Step(state.rngS >>> 0);
+MC.rng.nextU32InState = function (state) {
+  state.rngS = MC.rng.xorshift32Step(state.rngS >>> 0);
   return state.rngS >>> 0;
 };
 
-PD.rng.nextIntInState = function (state, n) {
+MC.rng.nextIntInState = function (state, n) {
   n = n | 0;
   if (n <= 0) return 0;
-  return (PD.rng.nextU32InState(state) % n) | 0;
+  return (MC.rng.nextU32InState(state) % n) | 0;
 };
 

@@ -1,9 +1,9 @@
-# Property Deal — TIC-80 Game
+# Mortgage Crisis — TIC-80 Game
 
 ## Project Overview
 
 This is a Monopoly Deal-inspired card game built for TIC-80 fantasy console.
-Working title: Property Deal (cannot use Monopoly branding, mechanics are not copyrightable).
+Working title: Mortgage Crisis (cannot use Monopoly branding, mechanics are not copyrightable).
 Target: 1v1 player vs AI, controller-first design for couch gaming on Google TV.
 
 ## Language

@@ -35,16 +35,16 @@ async function loadSrcFilesIntoVm(fileNames) {
 test("config sanity: render.layout/style/spr/moneyBgByValue shape", async () => {
   // Load only prelude+config so this test can't be masked by later modules.
   const ctx = await loadSrcFilesIntoVm(["00_prelude.js", "05_config.js"]);
-  const { PD } = ctx;
-  assert.equal(typeof PD, "object", "expected PD object");
-  assert.equal(typeof PD.config, "object", "expected PD.config");
-  assert.equal(typeof PD.config.render, "object", "expected PD.config.render");
+  const { MC } = ctx;
+  assert.equal(typeof MC, "object", "expected MC object");
+  assert.equal(typeof MC.config, "object", "expected MC.config");
+  assert.equal(typeof MC.config.render, "object", "expected MC.config.render");
 
-  const r = PD.config.render;
-  assert.equal(typeof r.layout, "object", "expected PD.config.render.layout");
-  assert.equal(typeof r.style, "object", "expected PD.config.render.style");
-  assert.equal(typeof r.spr, "object", "expected PD.config.render.spr");
-  assert.ok(Array.isArray(r.moneyBgByValue), "expected PD.config.render.moneyBgByValue array");
+  const r = MC.config.render;
+  assert.equal(typeof r.layout, "object", "expected MC.config.render.layout");
+  assert.equal(typeof r.style, "object", "expected MC.config.render.style");
+  assert.equal(typeof r.spr, "object", "expected MC.config.render.spr");
+  assert.ok(Array.isArray(r.moneyBgByValue), "expected MC.config.render.moneyBgByValue array");
 
   const L = r.layout;
   const S = r.style;
@@ -139,11 +139,15 @@ test("config sanity: render.layout/style/spr/moneyBgByValue shape", async () => 
 test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async () => {
   // Load only prelude+config so we validate what ships in the cartridge.
   const ctx = await loadSrcFilesIntoVm(["00_prelude.js", "05_config.js"]);
-  const { PD } = ctx;
+  const { MC } = ctx;
 
-  assert.equal(typeof PD.config.controls, "object", "expected PD.config.controls");
-  assert.equal(typeof PD.config.ui, "object", "expected PD.config.ui");
-  assert.equal(typeof PD.config.ai, "object", "expected PD.config.ai");
+  assert.equal(typeof MC.config.meta, "object", "expected MC.config.meta");
+  assert.equal(typeof MC.config.meta.version, "string", "expected MC.config.meta.version string");
+  assert.ok(MC.config.meta.version.length > 0, "expected MC.config.meta.version non-empty");
+
+  assert.equal(typeof MC.config.controls, "object", "expected MC.config.controls");
+  assert.equal(typeof MC.config.ui, "object", "expected MC.config.ui");
+  assert.equal(typeof MC.config.ai, "object", "expected MC.config.ai");
 
   const requirePosNum = (obj, key) => {
     assert.equal(typeof obj[key], "number", `expected ${key} to be a number`);
@@ -152,52 +156,53 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   };
 
   // Controls (frames).
-  requirePosNum(PD.config.controls, "dpadRepeatDelayFrames");
-  requirePosNum(PD.config.controls, "dpadRepeatPeriodFrames");
-  requirePosNum(PD.config.controls, "aHoldFallbackFrames");
-  requirePosNum(PD.config.controls, "xInspectDelayFrames");
+  requirePosNum(MC.config.controls, "dpadRepeatDelayFrames");
+  requirePosNum(MC.config.controls, "dpadRepeatPeriodFrames");
+  requirePosNum(MC.config.controls, "aHoldFallbackFrames");
+  requirePosNum(MC.config.controls, "xInspectDelayFrames");
 
   // Directional navigation cone penalties.
-  requirePosNum(PD.config.ui, "navConeKLeftRight");
-  requirePosNum(PD.config.ui, "navConeKUpDown");
+  requirePosNum(MC.config.ui, "navConeKLeftRight");
+  requirePosNum(MC.config.ui, "navConeKUpDown");
 
   // Animation timings (frames).
-  requirePosNum(PD.config.ui, "dealFramesPerCard");
-  requirePosNum(PD.config.ui, "dealGapFrames");
-  requirePosNum(PD.config.ui, "shuffleAnimFrames");
-  requirePosNum(PD.config.ui, "shuffleToastFrames");
-  requirePosNum(PD.config.ui, "aiStepDelayFrames");
-  requirePosNum(PD.config.ui, "aiNarrateToastFrames");
+  requirePosNum(MC.config.ui, "dealFramesPerCard");
+  requirePosNum(MC.config.ui, "dealGapFrames");
+  requirePosNum(MC.config.ui, "shuffleAnimFrames");
+  requirePosNum(MC.config.ui, "shuffleToastFrames");
+  requirePosNum(MC.config.ui, "aiStepDelayFrames");
+  requirePosNum(MC.config.ui, "aiNarrateToastFrames");
 
   // Phase 08 UI knobs.
-  assert.equal(typeof PD.config.ui.slyShowTargetGhosts, "boolean", "expected slyShowTargetGhosts boolean");
+  assert.equal(typeof MC.config.ui.slyShowTargetGhosts, "boolean", "expected slyShowTargetGhosts boolean");
 
   // AI policy knobs.
-  assert.ok(Array.isArray(PD.config.ai.policyByP), "expected PD.config.ai.policyByP array");
-  assert.equal(PD.config.ai.policyByP.length, 2, "expected PD.config.ai.policyByP length=2");
-  assert.equal(typeof PD.config.ai.policyByP[0], "string");
-  assert.ok(PD.config.ai.policyByP[0].length > 0);
-  assert.equal(typeof PD.config.ai.policyByP[1], "string");
-  assert.ok(PD.config.ai.policyByP[1].length > 0);
-  requirePosNum(PD.config.ai, "biasExistingSetK");
-  requirePosNum(PD.config.ai, "biasPlayRentK");
-  requirePosNum(PD.config.ai, "biasPlayJustSayNoK");
-  requirePosNum(PD.config.ai, "biasMoveWildK");
+  assert.ok(Array.isArray(MC.config.ai.policyByP), "expected MC.config.ai.policyByP array");
+  assert.equal(MC.config.ai.policyByP.length, 2, "expected MC.config.ai.policyByP length=2");
+  assert.equal(typeof MC.config.ai.policyByP[0], "string");
+  assert.ok(MC.config.ai.policyByP[0].length > 0);
+  assert.equal(typeof MC.config.ai.policyByP[1], "string");
+  assert.ok(MC.config.ai.policyByP[1].length > 0);
+  requirePosNum(MC.config.ai, "biasExistingSetK");
+  requirePosNum(MC.config.ai, "biasPayDebtFromBankK");
+  requirePosNum(MC.config.ai, "biasPlayRentK");
+  requirePosNum(MC.config.ai, "biasPlayJustSayNoK");
+  requirePosNum(MC.config.ai, "biasMoveWildK");
 });
 
 test("config sanity: rule notes are configured", async () => {
   const ctx = await loadSrcFilesIntoVm(["00_prelude.js", "05_config.js"]);
-  const { PD } = ctx;
+  const { MC } = ctx;
 
-  assert.equal(typeof PD.RuleNote, "object", "expected PD.RuleNote");
-  assert.equal(typeof PD.config.rules, "object", "expected PD.config.rules");
-  assert.ok(Array.isArray(PD.config.rules.enabledRuleNotes), "expected enabledRuleNotes array");
-  assert.ok(PD.config.rules.enabledRuleNotes.length > 0, "expected enabledRuleNotes to be non-empty");
+  assert.equal(typeof MC.RuleNote, "object", "expected MC.RuleNote");
+  assert.equal(typeof MC.config.rules, "object", "expected MC.config.rules");
+  assert.ok(Array.isArray(MC.config.rules.enabledRuleNotes), "expected enabledRuleNotes array");
+  assert.ok(MC.config.rules.enabledRuleNotes.length > 0, "expected enabledRuleNotes to be non-empty");
 });
 
 test("sanity: scenarios are registered after full load", async () => {
   const ctx = await loadSrcIntoVm();
-  assert.ok(Array.isArray(ctx.PD.scenarios.IDS), "expected PD.scenarios.IDS to be an array");
-  assert.ok(ctx.PD.scenarios.IDS.length > 0, "expected PD.scenarios.IDS to be non-empty");
+  assert.ok(Array.isArray(ctx.MC.scenarios.IDS), "expected MC.scenarios.IDS to be an array");
+  assert.ok(ctx.MC.scenarios.IDS.length > 0, "expected MC.scenarios.IDS to be non-empty");
 });
 

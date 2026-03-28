@@ -88,10 +88,10 @@ function assertPromptShape(ctx, pr) {
 
 test("setPrompt creates canonical prompt shapes and clones arrays", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.state.newGame({ seedU32: 1 });
+  const s = ctx.MC.state.newGame({ seedU32: 1 });
 
   // discardDown
-  ctx.PD.state.setPrompt(s, { kind: "discardDown", p: 0 });
+  ctx.MC.state.setPrompt(s, { kind: "discardDown", p: 0 });
   assertPromptShape(ctx, s.prompt);
   assert.equal(s.prompt.kind, "discardDown");
   assert.equal(s.prompt.p, 0);
@@ -100,7 +100,7 @@ test("setPrompt creates canonical prompt shapes and clones arrays", async () => 
   // payDebt clones buf
   const buf = [1, 2, 3];
   const srcAction = { kind: "rent", fromP: 0, actionUid: 123 };
-  ctx.PD.state.setPrompt(s, { kind: "payDebt", p: 1, toP: 0, rem: 7, buf, srcAction });
+  ctx.MC.state.setPrompt(s, { kind: "payDebt", p: 1, toP: 0, rem: 7, buf, srcAction });
   assertPromptShape(ctx, s.prompt);
   assert.equal(s.prompt.kind, "payDebt");
   assert.notEqual(s.prompt.buf, buf, "expected buf to be cloned");
@@ -113,7 +113,7 @@ test("setPrompt creates canonical prompt shapes and clones arrays", async () => 
   assert.equal(s.prompt.srcAction.actionUid, 123);
 
   // respondAction canonicalizes payload
-  ctx.PD.state.setPrompt(s, {
+  ctx.MC.state.setPrompt(s, {
     kind: "respondAction",
     p: 1,
     srcAction: { kind: "slyDeal", fromP: 0, actionUid: 77 },
@@ -127,7 +127,7 @@ test("setPrompt creates canonical prompt shapes and clones arrays", async () => 
 
   // placeReceived clones uids
   const uids = [10, 11];
-  ctx.PD.state.setPrompt(s, { kind: "placeReceived", p: 0, uids });
+  ctx.MC.state.setPrompt(s, { kind: "placeReceived", p: 0, uids });
   assertPromptShape(ctx, s.prompt);
   assert.equal(s.prompt.kind, "placeReceived");
   assert.notEqual(s.prompt.uids, uids, "expected uids to be cloned");
@@ -135,7 +135,7 @@ test("setPrompt creates canonical prompt shapes and clones arrays", async () => 
 
   // replaceWindow canonicalizes and clones resume
   const resumeUids = [12, 13];
-  ctx.PD.state.setPrompt(s, { kind: "replaceWindow", p: 1, srcSetI: 2, excludeUid: 55, resume: { kind: "placeReceived", uids: resumeUids } });
+  ctx.MC.state.setPrompt(s, { kind: "replaceWindow", p: 1, srcSetI: 2, excludeUid: 55, resume: { kind: "placeReceived", uids: resumeUids } });
   assertPromptShape(ctx, s.prompt);
   assert.equal(s.prompt.kind, "replaceWindow");
   assert.equal(s.prompt.p, 1);
@@ -148,8 +148,8 @@ test("setPrompt creates canonical prompt shapes and clones arrays", async () => 
 
 test("setPrompt throws on unknown prompt kind", async () => {
   const ctx = await loadSrcIntoVm();
-  const s = ctx.PD.state.newGame({ seedU32: 1 });
-  assert.throws(() => ctx.PD.state.setPrompt(s, { kind: "nope", p: 0 }));
+  const s = ctx.MC.state.newGame({ seedU32: 1 });
+  assert.throws(() => ctx.MC.state.setPrompt(s, { kind: "nope", p: 0 }));
 });
 
 test("engine-created prompts always satisfy prompt shape contract", async () => {
@@ -157,10 +157,10 @@ test("engine-created prompts always satisfy prompt shape contract", async () => 
 
   // discardDown via endTurn attempt when hand > 7
   {
-    const s = ctx.PD.state.newGame({ seedU32: 1 });
+    const s = ctx.MC.state.newGame({ seedU32: 1 });
     const p = s.activeP;
     s.players[p].hand.push(s.deck.pop());
-    ctx.PD.engine.applyCommand(s, { kind: "endTurn" });
+    ctx.MC.engine.applyCommand(s, { kind: "endTurn" });
     assert.ok(s.prompt);
     assertPromptShape(ctx, s.prompt);
     assert.equal(s.prompt.kind, "discardDown");
@@ -168,7 +168,7 @@ test("engine-created prompts always satisfy prompt shape contract", async () => 
 
   // payDebt + placeReceived via scenarios (Phase 06)
   {
-    const s = ctx.PD.state.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
+    const s = ctx.MC.state.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
     assert.ok(s.prompt);
     assertPromptShape(ctx, s.prompt);
     assert.equal(s.prompt.kind, "payDebt");
@@ -176,7 +176,7 @@ test("engine-created prompts always satisfy prompt shape contract", async () => 
   }
 
   {
-    const s = ctx.PD.state.newGame({ scenarioId: "placeReceived", seedU32: 1 });
+    const s = ctx.MC.state.newGame({ scenarioId: "placeReceived", seedU32: 1 });
     assert.ok(s.prompt);
     assertPromptShape(ctx, s.prompt);
     assert.equal(s.prompt.kind, "placeReceived");
@@ -185,10 +185,10 @@ test("engine-created prompts always satisfy prompt shape contract", async () => 
 
   // replaceWindow via Phase 09 scenario (after a property play)
   {
-    const s = ctx.PD.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
-    const mv = ctx.PD.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);
+    const s = ctx.MC.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
+    const mv = ctx.MC.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);
     assert.ok(mv, "expected a playProp move into set 0");
-    ctx.PD.engine.applyCommand(s, mv);
+    ctx.MC.engine.applyCommand(s, mv);
     assert.ok(s.prompt);
     assertPromptShape(ctx, s.prompt);
     assert.equal(s.prompt.kind, "replaceWindow");

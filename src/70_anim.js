@@ -1,8 +1,8 @@
-// PD.anim: UI-owned animation plumbing (turn events into timed, input-locking “watch moments”).
+// MC.anim: UI-owned animation plumbing (turn events into timed, input-locking “watch moments”).
 // This module owns view.anim queue/steps, but still manipulates UI view state
 // (mode/menu/targeting) because animations are a UI-owned “watch” moment.
 
-PD.anim.onEvents = function (state, view, events) {
+MC.anim.onEvents = function (state, view, events) {
   if (!state || !view || !events || events.length === 0) return;
   var anim = view.anim;
 
@@ -12,7 +12,7 @@ PD.anim.onEvents = function (state, view, events) {
   if (view.targeting) view.targeting.active = false;
 
   // Config knobs are validated in tests (avoid runtime fallbacks in the cartridge).
-  var uiCfg = PD.config.ui;
+  var uiCfg = MC.config.ui;
   var dealFrames = Math.floor(uiCfg.dealFramesPerCard);
   var dealGap = Math.floor(uiCfg.dealGapFrames);
   var shuffleFrames = Math.floor(uiCfg.shuffleAnimFrames);
@@ -26,7 +26,7 @@ PD.anim.onEvents = function (state, view, events) {
 
     if (ev.kind === "reshuffle") {
       // Toast + simple deck animation; input locked until finished.
-      PD.ui.toastPush(view, { id: "deck_shuffle", kind: "info", text: "Deck ran out. Shuffling", frames: shuffleToastFrames });
+      MC.ui.toastPush(view, { id: "deck_shuffle", kind: "info", text: "Deck ran out. Shuffling", frames: shuffleToastFrames });
       anim.q.push({
         kind: "shuffle",
         t: 0,
@@ -77,7 +77,7 @@ PD.anim.onEvents = function (state, view, events) {
   anim.lock = !!(anim.active || (anim.q && anim.q.length));
 };
 
-PD.anim.tick = function (state, view) {
+MC.anim.tick = function (state, view) {
   if (!view) return;
   var anim = view.anim;
 
@@ -138,7 +138,7 @@ PD.anim.tick = function (state, view) {
 };
 
 // Phase 05c+: treat cursor-flash feedback as an animation/fx owned here.
-PD.anim.feedbackError = function (view, code, msg) {
+MC.anim.feedbackError = function (view, code, msg) {
   if (!view || !view.feedback) return;
   code = String(code || "error");
   msg = String(msg || "");
@@ -158,12 +158,12 @@ PD.anim.feedbackError = function (view, code, msg) {
   fb.blinkPhase = 0;
 
   if (attempts >= 2 && msg) {
-    // Toast UI lives in PD.ui; this just triggers it as part of the feedback FX.
-    PD.ui.toastPush(view, { id: "err:" + code, kind: "error", text: msg, frames: 90 });
+    // Toast UI lives in MC.ui; this just triggers it as part of the feedback FX.
+    MC.ui.toastPush(view, { id: "err:" + code, kind: "error", text: msg, frames: 90 });
   }
 };
 
-PD.anim.feedbackTick = function (view) {
+MC.anim.feedbackTick = function (view) {
   if (!view || !view.feedback) return;
   var fb = view.feedback;
 
@@ -183,7 +183,7 @@ PD.anim.feedbackTick = function (view) {
 
 // Phase 05c: presentation (render-facing view of state/models).
 // Renderer should not depend on `view.anim`; instead, UI calls this after building models.
-PD.anim.present = function (state, view, computed) {
+MC.anim.present = function (state, view, computed) {
   if (!state || !view || !computed || !computed.models) return computed;
   var anim = view.anim;
   var a = anim ? anim.active : null;
@@ -193,17 +193,17 @@ PD.anim.present = function (state, view, computed) {
 
   // Provide highlight color for render (cursor flash on disallowed actions).
   // Default highlight color lives in render config.
-  var colDefault = PD.config.render.style.colHighlight;
+  var colDefault = MC.config.render.style.colHighlight;
   var hl = colDefault;
   if (view.feedback && view.feedback.blinkFrames > 0) {
-    if ((view.feedback.blinkPhase % 2) === 0) hl = PD.Pal.Red;
+    if ((view.feedback.blinkPhase % 2) === 0) hl = MC.Pal.Red;
   }
   computed.highlightCol = hl;
 
   // Phase 05c: hide in-flight dealt cards until revealed (presentation-only).
   if (anim && anim.hiddenByP) {
-    var rowPH = PD.render.ROW_P_HAND;
-    var rowOH = PD.render.ROW_OP_HAND;
+    var rowPH = MC.render.ROW_P_HAND;
+    var rowOH = MC.render.ROW_OP_HAND;
     var rows = [rowOH, rowPH];
     var ri;
     for (ri = 0; ri < rows.length; ri++) {
@@ -229,7 +229,7 @@ PD.anim.present = function (state, view, computed) {
       if (view.cursor && view.cursor.row === row) {
         if (rm.items.length === 0) computed.selected = null;
         else {
-          var ci = PD.ui.clampI(view.cursor.i, rm.items.length);
+          var ci = MC.ui.clampI(view.cursor.i, rm.items.length);
           computed.selected = rm.items[ci];
         }
       }
@@ -238,7 +238,7 @@ PD.anim.present = function (state, view, computed) {
 
   if (!a || !a.kind) return computed;
 
-  var rowCenter = PD.render.ROW_CENTER;
+  var rowCenter = MC.render.ROW_CENTER;
   var rmC = computed.models[rowCenter];
 
   if (a.kind === "shuffle") {
@@ -292,12 +292,12 @@ PD.anim.present = function (state, view, computed) {
     }
     if (deckX == null || deckY == null) return computed;
 
-    var rowHand = (p === 0) ? PD.render.ROW_P_HAND : PD.render.ROW_OP_HAND;
+    var rowHand = (p === 0) ? MC.render.ROW_P_HAND : MC.render.ROW_OP_HAND;
 
     var camCenter = view.camX[rowCenter];
     var camH = view.camX[rowHand];
 
-    var L = PD.config.render.layout;
+    var L = MC.config.render.layout;
     var padX = L.rowPadX;
     var xHandStart = (p === 0) ? padX : (L.screenW - padX - L.faceW);
     var handStep = (p === 0) ? L.handStrideX : (-L.handStrideX);

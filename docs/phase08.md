@@ -57,8 +57,8 @@ This phase adds the first “response windows” to MVP1:
 
 ## Config knobs
 
-- `PD.config.ui.slyShowTargetGhosts` (default false): show ghost outlines for *non-selected* Sly targets during Sly targeting.
-- `PD.config.ai.biasPlayJustSayNoK` (default 8): soft-bias the AI toward playing JSN when legal.
+- `MC.config.ui.slyShowTargetGhosts` (default false): show ghost outlines for *non-selected* Sly targets during Sly targeting.
+- `MC.config.ai.biasPlayJustSayNoK` (default 8): soft-bias the AI toward playing JSN when legal.
 
 ## Scenarios
 

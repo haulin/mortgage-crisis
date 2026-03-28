@@ -13,9 +13,9 @@ Phase 00 already proved we can generate `game.js` from `src/` and run `node --te
 ## Decisions locked (from interview)
 
 - PRNG: **xorshift32**
-- Dev seeding (MVP): **constant seed in code** (`PD.config.seedBase`)
+- Dev seeding (MVP): **constant seed in code** (`MC.config.seedBase`)
 - Release/random seeding: **deferred** (planned later alongside dev-boot seed UX)
-- Cartridge metadata: add **`// saveid: PropertyDeal`** in generated `game.js` header (future-proofing for `pmem()`)
+- Cartridge metadata: add **`// saveid: MortgageCrisis`** in generated `game.js` header (future-proofing for `pmem()`)
 
 ## Definition of Done
 
@@ -24,7 +24,7 @@ Phase 01 is done when:
 - A deterministic PRNG (**xorshift32**) exists and passes tests
 - We can compute a **32-bit seed** for the current game from the configured base seed
 - A deterministic in-place **deck shuffle** exists and is stable given a seed
-- `scripts/build.mjs` injects `// saveid: PropertyDeal` into `game.js` header
+- `scripts/build.mjs` injects `// saveid: MortgageCrisis` into `game.js` header
 - Seed visibility/overlay is **deferred** until we are actually playtesting and need reproducible bug reports
 - `npm test` includes RNG + shuffle tests and passes
 
@@ -63,7 +63,7 @@ Rules:
 
 #### Dev (Phase 01 / MVP)
 
-- Seed = `PD.config.seedBase` (wrap as u32)
+- Seed = `MC.config.seedBase` (wrap as u32)
 
 This gives deterministic, memorable sequences and reproducibility by sharing `seedBase`.
 
@@ -98,7 +98,7 @@ Phase 01 does not require any UI changes. Optionally, we can print the current s
 
 Extend `HEADER_LINES` to include:
 
-- `// saveid: PropertyDeal`
+- `// saveid: MortgageCrisis`
 
 Reason:
 
@@ -126,9 +126,9 @@ Implementation detail:
 
 ## Notes for Phase 02 (rules engine + state)
 
-- Keep `src/*` **TIC-safe** (no `import`/`export`). Use the VM-based test loader to unit test `PD.*` code from Node.
+- Keep `src/*` **TIC-safe** (no `import`/`export`). Use the VM-based test loader to unit test `MC.*` code from Node.
 - When Phase 02 introduces new TIC-80 globals in `src/*`, stub them in tests (either via `extraGlobals` passed to `loadSrcIntoVm` or default stubs) so tests stay frictionless.
-- `// saveid: PropertyDeal` is now injected into generated `game.js`. If Phase 02+ starts using `pmem()`, reserve and document a small slot range early (e.g. 0–31) so saves/debug state don’t collide.
+- `// saveid: MortgageCrisis` is now injected into generated `game.js`. If Phase 02+ starts using `pmem()`, reserve and document a small slot range early (e.g. 0–31) so saves/debug state don’t collide.
 - Treat `game.js` as the canonical paste artifact: after any `src/*` change, run `npm run build` before validating behavior in TIC-80.
 - Sprite workflow gotcha: keep a dedicated TIC cart with sprite assets; pasting updated `game.js` updates code while preserving sprites.
 - Guard against Phase 02 scope creep: Phase 02 should focus on **state + commands + legality + tests**. Keep UI/rendering minimal until the command layer is stable.

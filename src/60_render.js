@@ -1,6 +1,6 @@
-// PD.render: display-only renderer + TIC-80 draw-call boundary wrappers (no state mutation).
+// MC.render: display-only renderer + TIC-80 draw-call boundary wrappers (no state mutation).
 (function initRenderModule() {
-  var R = PD.render;
+  var R = MC.render;
 
   R.ROW_OP_HAND = 0;
   R.ROW_OP_TABLE = 1;
@@ -8,7 +8,7 @@
   R.ROW_P_TABLE = 3;
   R.ROW_P_HAND = 4;
 
-  var renderCfg = PD.config.render;
+  var renderCfg = MC.config.render;
   // Keep internal `cfg` for readability, but source-of-truth config is split
   // into `render.layout` and `render.style`.
   var layout = renderCfg.layout;
@@ -45,11 +45,11 @@
 
   // Property bar palette (placeholder; tweak later).
   R.propBarColByColor = [];
-  var Pal = PD.Pal;
-  R.propBarColByColor[PD.Color.Cyan] = Pal.Cyan;
-  R.propBarColByColor[PD.Color.Magenta] = Pal.Purple;
-  R.propBarColByColor[PD.Color.Orange] = Pal.Orange;
-  R.propBarColByColor[PD.Color.Black] = Pal.DarkGrey;
+  var Pal = MC.Pal;
+  R.propBarColByColor[MC.Color.Cyan] = Pal.Cyan;
+  R.propBarColByColor[MC.Color.Magenta] = Pal.Purple;
+  R.propBarColByColor[MC.Color.Orange] = Pal.Orange;
+  R.propBarColByColor[MC.Color.Black] = Pal.DarkGrey;
 
   function rectSafe(x, y, w, h, c) {
     rect(x | 0, y | 0, w | 0, h | 0, c | 0);
@@ -75,8 +75,8 @@
   function rowH(row) { return R.cfg.rowH[row]; }
   function rowY1(row) { return rowY0(row) + rowH(row) - 1; }
 
-  // Row policy lives in PD.layout; renderer uses it for flip decisions.
-  function isOpponentRow(row) { return PD.layout.isOpponentRow(row); }
+  // Row policy lives in MC.layout; renderer uses it for flip decisions.
+  function isOpponentRow(row) { return MC.layout.isOpponentRow(row); }
 
   function cardLocalRectToScreen(xFace, yFace, lx, ly, w, h, flip180) {
     if (!flip180) {
@@ -118,8 +118,8 @@
     items.sort(function (a, b) { return a.depth - b.depth; });
 
     function drawGhostAt(xFace, yFace) {
-      var shadowCol = PD.Pal.Black;
-      var col = PD.Pal.Green;
+      var shadowCol = MC.Pal.Black;
+      var col = MC.Pal.Green;
       rectbSafe(xFace - 1, yFace - 1, R.cfg.faceW, R.cfg.faceH, shadowCol);
       rectbSafe(xFace, yFace, R.cfg.faceW, R.cfg.faceH, col);
     }
@@ -241,34 +241,34 @@
     rectSafe(pr.x, pr.y, pr.w, pr.h, barCol);
 
     // Rent row (rent table)
-    var rent = (PD.SET_RULES && PD.SET_RULES[color]) ? PD.SET_RULES[color].rent : null;
+    var rent = (MC.SET_RULES && MC.SET_RULES[color]) ? MC.SET_RULES[color].rent : null;
     drawRentRow(xFace, yFace, rent, flip180);
   }
 
   function iconForDef(def) {
     if (!def) return 0;
-    if (def.kind === PD.CardKind.Money) {
+    if (def.kind === MC.CardKind.Money) {
       return R.spr.iconMoney || 0;
     }
-    if (def.kind === PD.CardKind.House) return R.spr.iconHouse;
-    if (def.kind === PD.CardKind.Action) {
-      if (def.actionKind === PD.ActionKind.Rent) return R.spr.iconRent;
-      if (def.actionKind === PD.ActionKind.SlyDeal) return R.spr.iconSlyDeal;
-      if (def.actionKind === PD.ActionKind.JustSayNo) return R.spr.iconJSN;
+    if (def.kind === MC.CardKind.House) return R.spr.iconHouse;
+    if (def.kind === MC.CardKind.Action) {
+      if (def.actionKind === MC.ActionKind.Rent) return R.spr.iconRent;
+      if (def.actionKind === MC.ActionKind.SlyDeal) return R.spr.iconSlyDeal;
+      if (def.actionKind === MC.ActionKind.JustSayNo) return R.spr.iconJSN;
     }
     return 0;
   }
 
   function rentColorsForDef(def) {
-    if (!def || def.actionKind !== PD.ActionKind.Rent) return null;
+    if (!def || def.actionKind !== MC.ActionKind.Rent) return null;
     var a = def.rentAllowedColors;
     if (a && a.length) return a;
     // rent_any: treat as 4 colors in a stable order.
-    return [PD.Color.Cyan, PD.Color.Black, PD.Color.Magenta, PD.Color.Orange];
+    return [MC.Color.Cyan, MC.Color.Black, MC.Color.Magenta, MC.Color.Orange];
   }
 
   function rentBarColForColor(color) {
-    if (color === PD.Color.Black) return PD.Pal.Black;
+    if (color === MC.Color.Black) return MC.Pal.Black;
     var c = R.propBarColByColor[color];
     return c != null ? c : R.cfg.colText;
   }
@@ -307,20 +307,20 @@
   }
 
   function drawMiniCard(state, uid, xFace, yFace, flip180, assignedColor) {
-    var def = state ? PD.state.defByUid(state, uid) : null;
+    var def = state ? MC.state.defByUid(state, uid) : null;
     if (!def) {
       drawCardFaceBase(xFace, yFace, R.cfg.colCardInterior);
       return;
     }
 
-    if (def.kind === PD.CardKind.Property) {
+    if (def.kind === MC.CardKind.Property) {
       drawCardFaceBase(xFace, yFace, R.cfg.colCardInterior);
       var payV = def.propertyPayValue != null ? def.propertyPayValue : 0;
-      if (PD.rules.isWildDef(def)) {
+      if (MC.rules.isWildDef(def)) {
         // Two halves: top (halfFlip=false), bottom (halfFlip=true). Effective flip is XOR.
         var c0 = def.wildColors[0];
         var c1 = def.wildColors[1];
-        var a = (assignedColor == null) ? PD.state.NO_COLOR : assignedColor;
+        var a = (assignedColor == null) ? MC.state.NO_COLOR : assignedColor;
         var colHalfFalse = c0;
         var colHalfTrue = c1;
         if (a === c0 || a === c1) {
@@ -339,7 +339,7 @@
       return;
     }
 
-    if (def.kind === PD.CardKind.Action && def.actionKind === PD.ActionKind.Rent) {
+    if (def.kind === MC.CardKind.Action && def.actionKind === MC.ActionKind.Rent) {
       drawCardFaceBase(xFace, yFace, R.cfg.colCardInterior);
       drawRentBars(xFace, yFace, rentColorsForDef(def), !!flip180);
       var rv = def.bankValue;
@@ -383,7 +383,7 @@
   }
 
   // Phase 04: renderer no longer computes row models/navigation/cameras.
-  // UI owns selection + cameras via PD.ui, and passes computed models in.
+  // UI owns selection + cameras via MC.ui, and passes computed models in.
 
   function drawCenter(opts) {
     if (!opts || !opts.state || !opts.view || !opts.computed) return;
@@ -399,7 +399,7 @@
     rectSafe(0, y0, 239, y1 - y0 + 1, cfg.colCenterPanel);
     rectbSafe(0, y0, 239, y1 - y0 + 1, cfg.colCenterPanelBorder);
 
-    var dbgEnabled = !!PD.config.debug.enabled;
+    var dbgEnabled = !!MC.config.debug.enabled;
     var hlCol = (opts.highlightCol != null) ? opts.highlightCol : cfg.colHighlight;
 
     // Header: removed (Phase 04). Plays indicator is drawn in screen-space.
@@ -481,11 +481,11 @@
         else if (it.kind === "discard") drawDiscardAt(it.x, it.y, it.nVis, it.topUidVis);
         else if (it.kind === "btn") {
           // Flat UI button: dark fill + white text; selected uses highlight fill + black text.
-          // Note: debug gating and overlay hiding is handled in PD.ui.computeRowModels.
+          // Note: debug gating and overlay hiding is handled in MC.ui.computeRowModels.
 
           var enabled = true;
           if (it.id === "endTurn") {
-            enabled = (s.activeP === 0) && (s.players[0].hand.length <= PD.state.HAND_MAX);
+            enabled = (s.activeP === 0) && (s.players[0].hand.length <= MC.state.HAND_MAX);
           }
 
           var isSel = !!(selectedItem && selectedItem === it);
@@ -493,9 +493,9 @@
           if (it.id === "endTurn" && enabled && (s.activeP === 0) && (s.playsLeft != null) && (s.playsLeft <= 0)) recommend = true;
 
           var bg = isSel ? hlCol : cfg.colCenterPanel;
-          var border = isSel ? PD.Pal.Black : (recommend ? PD.Pal.Green : cfg.colCenterPanelBorder);
-          var colText = enabled ? (isSel ? PD.Pal.Black : cfg.colText) : PD.Pal.Grey;
-          if (!isSel && recommend && enabled) colText = PD.Pal.Green;
+          var border = isSel ? MC.Pal.Black : (recommend ? MC.Pal.Green : cfg.colCenterPanelBorder);
+          var colText = enabled ? (isSel ? MC.Pal.Black : cfg.colText) : MC.Pal.Grey;
+          if (!isSel && recommend && enabled) colText = MC.Pal.Green;
 
           rectSafe(it.x, it.y, it.w, it.h, bg);
           rectbSafe(it.x, it.y, it.w, it.h, border);
@@ -518,7 +518,7 @@
     // Phase 05: Inspect uses a screen-space panel with panel-driven anchors.
     var panel = null;
     if (view.inspectActive) {
-      var Lp = PD.config.render.layout;
+      var Lp = MC.config.render.layout;
       panel = {
         x0: Lp.inspectPanelX0,
         y0: Lp.inspectPanelY0,
@@ -552,7 +552,7 @@
           if (dbgEnabled && s.deck.length > 0) {
             var topUid = s.deck[s.deck.length - 1];
             drawMiniCard(s, topUid, xPrev, yPrev, false);
-            var defT = PD.state.defByUid(s, topUid);
+            var defT = MC.state.defByUid(s, topUid);
             if (defT && defT.name) deckDesc += "\nTop: " + String(defT.name);
           }
           printExSafe(deckDesc, xDesc, yDesc, cfg.colText, false, 1, true);
@@ -564,7 +564,7 @@
           if (s.discard.length > 0) {
             var topUid2 = s.discard[s.discard.length - 1];
             drawMiniCard(s, topUid2, xPrev, yPrev, false);
-            var defD = PD.state.defByUid(s, topUid2);
+            var defD = MC.state.defByUid(s, topUid2);
             if (defD && defD.name) discardDesc += "\nTop: " + String(defD.name);
           }
           printExSafe(discardDesc, xDesc, yDesc, cfg.colText, false, 1, true);
@@ -586,7 +586,7 @@
       // Card selection.
       if (!sel.uid) return;
       var uid = sel.uid;
-      var def = PD.state.defByUid(s, uid);
+      var def = MC.state.defByUid(s, uid);
       if (!def) return;
 
       // Opponent hand is hidden unless debug enabled.
@@ -597,8 +597,8 @@
       }
 
       drawMiniCard(s, uid, xPrev, yPrev, false, sel.color);
-      printSafe(PD.fmt.inspectTitleForDef(def), xTitle, yTitle, cfg.colText);
-      var desc = PD.fmt.inspectDescForDef(def, sel.color);
+      printSafe(MC.fmt.inspectTitleForDef(def), xTitle, yTitle, cfg.colText);
+      var desc = MC.fmt.inspectDescForDef(def, sel.color);
       printExSafe(desc, xDesc, yDesc, cfg.colText, false, 1, true);
     }
 
@@ -623,7 +623,7 @@
       var maxH = (hintY - 2) - boxY;
       if (maxH > 0 && boxH > maxH) boxH = maxH;
       if (boxH < 16) boxH = 16;
-      rectSafe(boxX, boxY, boxW, boxH, PD.Pal.Black);
+      rectSafe(boxX, boxY, boxW, boxH, MC.Pal.Black);
       rectbSafe(boxX, boxY, boxW, boxH, cfg.colCenterPanelBorder);
 
       for (j = 0; j < items.length; j++) {
@@ -631,7 +631,7 @@
         var label = String(items[j].label || items[j].id || "");
         if (j === selI) {
           rectSafe(boxX + 1, yy - 1, boxW - 2, 7, hlCol);
-          printSafe(label, xDesc, yy, PD.Pal.Black);
+          printSafe(label, xDesc, yy, MC.Pal.Black);
         } else {
           printSafe(label, xDesc, yy, cfg.colText);
         }
@@ -642,24 +642,24 @@
     function drawTargetingOverlay() {
       var t = view.targeting;
       if (!t || !t.active) return;
-      if (t.card && t.card.uid) drawMiniCard(s, t.card.uid, xPrev, yPrev, false, (t.wildColor !== PD.state.NO_COLOR) ? t.wildColor : null);
+      if (t.card && t.card.uid) drawMiniCard(s, t.card.uid, xPrev, yPrev, false, (t.wildColor !== MC.state.NO_COLOR) ? t.wildColor : null);
 
       var cmd = (t.cmds && t.cmds.length) ? t.cmds[t.cmdI % t.cmds.length] : null;
 
-      var title = PD.fmt.targetingTitle(t, cmd);
+      var title = MC.fmt.targetingTitle(t, cmd);
       printSafe(title, xTitle, yTitle, cfg.colText);
-      var destLine = PD.fmt.targetingDestLine(s, t, cmd);
+      var destLine = MC.fmt.targetingDestLine(s, t, cmd);
       // Backing box so targeting is unmistakable.
       var boxX = xDesc - 2;
       var boxY = yDesc - 2;
       var boxW = cfg.screenW - boxX - cfg.rowPadX;
       var boxH = 30;
-      rectSafe(boxX, boxY, boxW, boxH, PD.Pal.Black);
+      rectSafe(boxX, boxY, boxW, boxH, MC.Pal.Black);
       rectbSafe(boxX, boxY, boxW, boxH, cfg.colCenterPanelBorder);
 
       printExSafe(destLine, xDesc, yDesc, cfg.colText, false, 1, false);
 
-      var help = PD.fmt.targetingHelp(t);
+      var help = MC.fmt.targetingHelp(t);
       printExSafe(help, xDesc, y1 - 18, cfg.colText, false, 1, true);
     }
 
@@ -689,7 +689,7 @@
     var dx = 6; // 6px font cell width
     var i;
     for (i = 0; i < maxPlays; i++) {
-      var col = (i < used) ? PD.Pal.Red : PD.Pal.Green;
+      var col = (i < used) ? MC.Pal.Red : MC.Pal.Green;
       printSafe("o", x0 + i * dx, y0, col);
     }
   }
@@ -697,7 +697,7 @@
   function drawModeHintNearButtons(view, computed) {
     var cfg = R.cfg;
     if (cfg.hudLineEnabled === false) return;
-    var dbgEnabled = !!PD.config.debug.enabled;
+    var dbgEnabled = !!MC.config.debug.enabled;
     if (!dbgEnabled) return;
     // Prompts don't overlap this hint, so keep it visible in prompt mode too.
     if (!view || (view.mode !== "browse" && view.mode !== "prompt") || view.inspectActive) return;
@@ -726,7 +726,7 @@
     var y = maxBtnY - 7; // 6px font + 1
     var yPhase = y - 7;
     if (yPhase < 0) yPhase = 0;
-    printSafe("Phase 09", x, yPhase, cfg.hudLineCol);
+    printSafe(MC.config.meta.version, x, yPhase, cfg.hudLineCol);
     printSafe("Y:Mode", x, y, cfg.hudLineCol);
   }
 
@@ -764,14 +764,14 @@
       var x0 = Math.floor((cfg.screenW - boxW) / 2);
       var y0 = yCursor;
 
-      var bgCol = PD.Pal.Black;
+      var bgCol = MC.Pal.Black;
       if (kind === "ai") bgCol = cfg.colToastBgAi;
       rectSafe(x0, y0, boxW, boxH, bgCol);
       rectbSafe(x0, y0, boxW, boxH, cfg.colCenterPanelBorder);
 
       var textX = x0 + padX + iconW;
       if (isError) {
-        printSafe("X", x0 + 4, y0 + padY, PD.Pal.Red);
+        printSafe("X", x0 + 4, y0 + padY, MC.Pal.Red);
       }
       for (i = 0; i < parts.length; i++) {
         // Fixed-width makes centering math exact (avoids proportional font whitespace).
@@ -808,25 +808,25 @@
         lines.push("Cards:" + s.discard.length);
       } else if (k === "bank0") {
         lines.push("Sel:B0");
-        lines.push("Total:" + PD.util.bankValueTotal(s, 0));
+        lines.push("Total:" + MC.util.bankValueTotal(s, 0));
       } else if (k === "bank1") {
         lines.push("Sel:B1");
-        lines.push("Total:" + PD.util.bankValueTotal(s, 1));
+        lines.push("Total:" + MC.util.bankValueTotal(s, 1));
       } else {
         lines.push("Sel:" + String(k || "?"));
         lines.push("");
       }
     } else if (selectedItem && selectedItem.uid) {
       var uid = selectedItem.uid;
-      var def = PD.state.defByUid(s, uid);
+      var def = MC.state.defByUid(s, uid);
       var defId = def ? def.id : "?";
       lines.push("Sel:" + defId + " uid:" + uid);
 
       var detail = "";
-      if (def && def.kind === PD.CardKind.Property) {
-        if (PD.rules.isWildDef(def)) {
+      if (def && def.kind === MC.CardKind.Property) {
+        if (MC.rules.isWildDef(def)) {
           detail = "Wild:" + def.wildColors[0] + "/" + def.wildColors[1];
-          if (selectedItem && selectedItem.color != null && selectedItem.color !== PD.state.NO_COLOR) {
+          if (selectedItem && selectedItem.color != null && selectedItem.color !== MC.state.NO_COLOR) {
             detail += " As:c" + selectedItem.color;
           }
         }
@@ -1029,7 +1029,7 @@
     if (!debug || !debug.state) return ["Sel:(none)", ""];
     var it = null;
     if (debug.view) {
-      var computed = PD.ui.computeRowModels(debug.state, debug.view);
+      var computed = MC.ui.computeRowModels(debug.state, debug.view);
       it = computed ? computed.selected : null;
     }
     if (!it) return ["Sel:(none)", ""];
@@ -1042,20 +1042,20 @@
 
     if (it.uid) {
       var uid = it.uid;
-      var def = PD.state.defByUid(debug.state, uid);
+      var def = MC.state.defByUid(debug.state, uid);
       var defId = def ? def.id : "?";
       var line2 = (def && def.name) ? def.name : "";
 
-      if (def && def.kind === PD.CardKind.Property) {
-        if (PD.rules.isWildDef(def)) {
+      if (def && def.kind === MC.CardKind.Property) {
+        if (MC.rules.isWildDef(def)) {
           var c0 = def.wildColors[0];
           var c1 = def.wildColors[1];
-          line2 = "Wild:" + PD.fmt.colorName(c0) + "/" + PD.fmt.colorName(c1);
-          if (it.color != null && it.color !== PD.state.NO_COLOR) {
-            line2 += " As:" + PD.fmt.colorName(it.color);
+          line2 = "Wild:" + MC.fmt.colorName(c0) + "/" + MC.fmt.colorName(c1);
+          if (it.color != null && it.color !== MC.state.NO_COLOR) {
+            line2 += " As:" + MC.fmt.colorName(it.color);
           }
         } else {
-          line2 = "Prop:" + PD.fmt.colorName(def.propertyColor);
+          line2 = "Prop:" + MC.fmt.colorName(def.propertyColor);
         }
       }
 
@@ -1089,7 +1089,7 @@
     if (!state || !view) return;
 
     var computed = args.computed;
-    if (!computed) computed = PD.ui.computeRowModels(state, view);
+    if (!computed) computed = MC.ui.computeRowModels(state, view);
     if (!computed || !computed.models) return;
 
     var models = computed.models;

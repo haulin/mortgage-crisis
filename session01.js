@@ -1,5 +1,5 @@
 // script: js
-// title: Property Deal (layout draft)
+// title: Mortgage Crisis (layout draft)
 
 var SCREEN_W = 240;
 var SCREEN_H = 136;

@@ -1,19 +1,19 @@
 # Phase 03 — Rendering Baseline + 5-row Layout
 
-Phase 03 introduces a **visual renderer** for Property Deal that can draw the locked 5-row layout and allow controller navigation + selection highlights.
+Phase 03 introduces a **visual renderer** for Mortgage Crisis that can draw the locked 5-row layout and allow controller navigation + selection highlights.
 
 This phase is still **debug-first** and remains **rules-driven**:
 
 - Rendering is **read-only** (no direct state mutation from UI).
 - The only state changes are via existing rules engine commands when stepping/debugging.
-- We keep the Phase 02 text debug harness as a fallback, and add a Phase 03 visual harness that renders the same `PD.debug.state`.
+- We keep the Phase 02 text debug harness as a fallback, and add a Phase 03 visual harness that renders the same `MC.debug.state`.
 
 ## Decisions locked (from interview)
 
 ### Harness / mode switching
 
 - `Y` cycles **Boot → DebugText → Render → Boot**.
-- Render screen uses the same backing state as debug: `PD.debug.state`.
+- Render screen uses the same backing state as debug: `MC.debug.state`.
 
 ### Controls (Render screen)
 
@@ -49,18 +49,18 @@ This phase is still **debug-first** and remains **rules-driven**:
 
 ### Namespacing (new Phase 03 code only)
 
-To avoid adding more top-level `PD.*` symbols, Phase 03 code lives under:
+To avoid adding more top-level `MC.*` symbols, Phase 03 code lives under:
 
-- `PD.render` (namespace created once in the prelude)
+- `MC.render` (namespace created once in the prelude)
 
-The harness calls a small render entry point, but most helpers/constants stay under `PD.render.*`.
+The harness calls a small render entry point, but most helpers/constants stay under `MC.render.*`.
 
 ### Config centralization (what actually shipped)
 
 To make pixel tweaks fast, Phase 03 moved tweakable render knobs into configuration:
 
-- `PD.Pal.*`: named Sweetie-16 palette indices (e.g. `PD.Pal.White=12`, `PD.Pal.Yellow=4`)
-- `PD.config.render`: render-related knobs (layout/geometry, styling/colors, sprite IDs/mappings)
+- `MC.Pal.*`: named Sweetie-16 palette indices (e.g. `MC.Pal.White=12`, `MC.Pal.Yellow=4`)
+- `MC.config.render`: render-related knobs (layout/geometry, styling/colors, sprite IDs/mappings)
 
 The renderer reads these values and **fails loudly** if they’re missing (load order is deterministic by design).
 
@@ -68,7 +68,7 @@ The renderer reads these values and **fails loudly** if they’re missing (load 
 
 ### Screen
 
-- Usable area: **240×136** (`PD.config.screenW`, `PD.config.screenH`)
+- Usable area: **240×136** (`MC.config.screenW`, `MC.config.screenH`)
 
 ### 5-row vertical bands (exact)
 
@@ -95,7 +95,7 @@ Notes:
 
 Implementation note:
 
-- In Phase 03, the border and interior colors are controlled via `PD.config.render.cfg.colCardBorder` and `PD.config.render.cfg.colCardInterior`. If they are equal (e.g. both `PD.Pal.White`), the border becomes intentionally subtle.
+- In Phase 03, the border and interior colors are controlled via `MC.config.render.cfg.colCardBorder` and `MC.config.render.cfg.colCardInterior`. If they are equal (e.g. both `MC.Pal.White`), the border becomes intentionally subtle.
 
 ### Stacks (fan / peek)
 
@@ -195,7 +195,7 @@ Phase 03 is done when:
 
 ### What shipped
 
-- **Harness**: `Y` cycles **Boot → DebugText → Render**; Render draws the same `PD.debug.state`.
+- **Harness**: `Y` cycles **Boot → DebugText → Render**; Render draws the same `MC.debug.state`.
 - **Renderer**: locked **5-row layout** (opponent hand backs, opponent table, center widgets, player table, player hand).
 - **Navigation**:
   - All 5 rows selectable; Left/Right is a flat item walk; wrap all; Up/Down uses nearest-x.

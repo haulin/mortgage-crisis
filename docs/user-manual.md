@@ -1,6 +1,6 @@
-# Property Deal — User Manual (WIP)
+# Mortgage Crisis — User Manual (WIP)
 
-This document describes **how to play and test the current build** of Property Deal, from the user’s point of view.
+This document describes **how to play and test the current build** of Mortgage Crisis, from the user’s point of view.
 
 It will evolve as new phases land. If something in the game feels “undocumented”, that’s a bug in the docs.
 
@@ -33,7 +33,7 @@ Button IDs are TIC-80 defaults for player 1: UP=0 DOWN=1 LEFT=2 RIGHT=3 A=4 B=5 
 
 ## Gameplay loop (current)
 
-Property Deal is still under active development; the full card set is not implemented yet. The current gameplay focuses on:
+Mortgage Crisis is still under active development; the full card set is not implemented yet. The current gameplay focuses on:
 
 - **Turn loop**:
   - start-of-turn draw (draw 2, or draw 5 if your hand is empty)

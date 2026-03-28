@@ -1,5 +1,5 @@
-// PD.controls: input state machine (injected/pollable controls with repeat + hold/tap detection).
-PD.controls.newState = function () {
+// MC.controls: input state machine (injected/pollable controls with repeat + hold/tap detection).
+MC.controls.newState = function () {
   return {
     frame: 0,
 
@@ -21,7 +21,7 @@ PD.controls.newState = function () {
   };
 };
 
-PD.controls.pollGlobals = function () {
+MC.controls.pollGlobals = function () {
   var down = [false, false, false, false, false, false, false, false];
   var pressed = [false, false, false, false, false, false, false, false];
 
@@ -36,9 +36,9 @@ PD.controls.pollGlobals = function () {
   return { down: down, pressed: pressed };
 };
 
-PD.controls.actions = function (st, raw, cfg) {
-  if (!st) st = PD.controls.newState();
-  // Contract: caller provides {down[8], pressed[8]} and cfg from PD.config.controls.
+MC.controls.actions = function (st, raw, cfg) {
+  if (!st) st = MC.controls.newState();
+  // Contract: caller provides {down[8], pressed[8]} and cfg from MC.config.controls.
   var down = raw.down;
   var pressed = raw.pressed;
 

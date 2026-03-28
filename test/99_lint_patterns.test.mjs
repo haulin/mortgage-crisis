@@ -67,8 +67,8 @@ test("lint: forbid defensive fallbacks in src/ (enforced via tests)", async () =
       const line = lines[i];
       if (!line) continue;
 
-      // Special-case: `var PD = PD || {};` is the one allowed fallback.
-      if (fileName === "00_prelude.js" && /\bvar\s+PD\s*=\s*PD\s*\|\|\s*\{\s*\}\s*;?\s*$/.test(line.trim())) {
+      // Special-case: `var MC = MC || {};` is the one allowed fallback.
+      if (fileName === "00_prelude.js" && /\bvar\s+MC\s*=\s*MC\s*\|\|\s*\{\s*\}\s*;?\s*$/.test(line.trim())) {
         continue;
       }
 
