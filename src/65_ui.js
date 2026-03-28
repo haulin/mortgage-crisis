@@ -144,6 +144,8 @@ PD.ui.syncPromptToast = function (state, view) {
     }
   } else if (pr.kind === "placeReceived") {
     txt = "Place received properties: " + pr.uids.length;
+  } else if (pr.kind === "replaceWindow") {
+    txt = "Move a Wild? A: move  B: skip";
   } else if (pr.kind === "respondAction") {
     // Phase 08: Sly Deal response prompt.
     var col = PD.state.NO_COLOR;
@@ -261,6 +263,25 @@ PD.ui.findBestCursorTarget = function (models, rowOrder, predicate) {
     }
   }
   return null;
+};
+
+PD.ui.pickReplaceWindowWild = function (state, computed) {
+  var pr = state ? state.prompt : null;
+  if (!pr || String(pr.kind || "") !== "replaceWindow" || pr.p !== 0) return null;
+  var models = computed ? computed.models : null;
+  if (!models) return null;
+
+  var srcSetI = pr.srcSetI;
+  var excludeUid = pr.excludeUid;
+  return PD.ui.findBestCursorTarget(models, [PD.render.ROW_P_TABLE], function (it) {
+    if (!it || it.kind !== "setProp" || !it.loc) return false;
+    if (it.loc.p !== 0) return false;
+    if (it.loc.zone !== "setProps") return false;
+    if (it.loc.setI !== srcSetI) return false;
+    if (it.uid === excludeUid) return false;
+    var def = PD.state.defByUid(state, it.uid);
+    return !!(def && PD.rules.isWildDef(def));
+  });
 };
 
 PD.ui.cursorMoveTo = function (view, pick) {
@@ -947,6 +968,15 @@ PD.ui.computeRowModels = function (state, view) {
       return;
     }
 
+    if (k === "moveWild") {
+      var slotW = slotForCmd(cmd, srcSlot);
+      if (!slotW) return;
+      var colW = null;
+      if (def && PD.rules.isWildDef(def)) colW = (cmd.color != null) ? cmd.color : wildColor;
+      setFocus(slotW, uid, colW, "moveWild");
+      return;
+    }
+
     if (k === "playHouse") {
       var slotH = slotForCmd(cmd, srcSlot);
       if (!slotH) return;
@@ -996,29 +1026,41 @@ PD.ui.computeRowModels = function (state, view) {
 
     // Find source slot in models (for hold-targeting Source destination).
     var srcX = null, srcY = null, srcRow = null;
-    if (t.card && t.card.loc && (t.card.loc.zone === "hand" || t.card.loc.zone === "recvProps")) {
+    if (t.card && t.card.uid && t.card.loc) {
       var srcLoc = t.card.loc;
-      var rowHand = PD.render.ROW_P_HAND;
-      var rmHand = models[rowHand];
-      if (rmHand && rmHand.items) {
-        var hi;
-        for (hi = 0; hi < rmHand.items.length; hi++) {
-          var itH = rmHand.items[hi];
-          if (!itH || itH.kind !== "hand" || !itH.loc) continue;
-          if (itH.loc.p !== srcLoc.p) continue;
-          if (String(itH.loc.zone) !== String(srcLoc.zone)) continue;
-          if (itH.loc.i !== srcLoc.i) continue;
-          if (itH.uid !== t.card.uid) continue;
-          srcX = itH.x;
-          srcY = itH.y;
-          srcRow = rowHand;
-          break;
+      var z = String(srcLoc.zone || "");
+      if (z === "hand" || z === "recvProps") {
+        var rowHand = PD.render.ROW_P_HAND;
+        var rmHand = models[rowHand];
+        if (rmHand && rmHand.items) {
+          var hi;
+          for (hi = 0; hi < rmHand.items.length; hi++) {
+            var itH = rmHand.items[hi];
+            if (!itH || itH.kind !== "hand" || !itH.loc) continue;
+            if (itH.loc.p !== srcLoc.p) continue;
+            if (String(itH.loc.zone) !== String(srcLoc.zone)) continue;
+            if (itH.loc.i !== srcLoc.i) continue;
+            if (itH.uid !== t.card.uid) continue;
+            srcX = itH.x;
+            srcY = itH.y;
+            srcRow = rowHand;
+            break;
+          }
+        }
+      } else {
+        // Generic fallback: locate source in current models (supports setProps moveWild targeting).
+        var itSrc = findItemByUidLoc(t.card.uid, srcLoc);
+        if (itSrc) {
+          srcX = itSrc.x;
+          srcY = itSrc.y;
+          srcRow = itSrc.row;
         }
       }
     }
 
     // While targeting, hide the source card so the source slot can be represented by a ghost/preview.
-    if (!isSly || !isSourceSel) if (t.card && t.card.uid && t.card.loc && (t.card.loc.zone === "hand" || t.card.loc.zone === "recvProps")) {
+    // Exception: when the selected destination is Source, show the real source card + normal highlight.
+    if (!isSourceSel) if (t.card && t.card.uid && t.card.loc && (t.card.loc.zone === "hand" || t.card.loc.zone === "recvProps" || t.card.loc.zone === "setProps")) {
       meta.hideSrc = { uid: t.card.uid, loc: t.card.loc };
     }
 
@@ -1060,9 +1102,12 @@ PD.ui.computeRowModels = function (state, view) {
         pushGhost(slotForCmd(c, srcSlot));
       }
 
-      // Preview-in-stack for selected destination.
+      // Preview-in-stack for selected destination. If Source is selected, rely on the real card + highlight
+      // (otherwise we would double-render the same card at the same position).
       var cmdSel = cmds[cmdI];
-      setFocusForCmd(cmdSel, srcSlot, { uid: (t.card && t.card.uid) ? t.card.uid : 0, def: (t.card && t.card.def) ? t.card.def : null, wildColor: t.wildColor });
+      if (cmdSel && cmdSel.kind !== "source") {
+        setFocusForCmd(cmdSel, srcSlot, { uid: (t.card && t.card.uid) ? t.card.uid : 0, def: (t.card && t.card.def) ? t.card.def : null, wildColor: t.wildColor });
+      }
 
       // If the selected destination previews the same uid elsewhere, ensure the source slot is still readable.
       // (This keeps menu-targeting and recvProps placement consistent with hold-targeting: source becomes a ghost.)
@@ -1256,6 +1301,7 @@ PD.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
   t.kind = String(kind || "");
   t._slySorted = false;
   t._slySyncCmdI = -1;
+  t._moveWildSorted = false;
   t.hold = !!hold;
   t.cmds = [];
   t.cmdI = 0;
@@ -1287,7 +1333,7 @@ PD.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
 PD.ui.targetingRetargetWild = function (state, view, dir) {
   if (!view || !view.targeting || !view.targeting.active) return;
   var t = view.targeting;
-  if (t.kind !== "place") return;
+  if (!(t.kind === "place" || t.kind === "moveWild")) return;
   if (!t.card || !t.card.def || !PD.rules.isWildDef(t.card.def)) return;
 
   var def = t.card.def;
@@ -1303,11 +1349,18 @@ PD.ui.targetingRetargetWild = function (state, view, dir) {
   var keepSource = !!(prevCmd && prevCmd.kind === "source");
 
   var uid = t.card.uid;
-  var cmds = PD.moves.placeCmdsForUid(state, uid, def, nextColor);
-  if (PD.moves.locAllowsSource(t.card ? t.card.loc : null)) cmds.push({ kind: "source" });
+  var cmds = [];
+  if (t.kind === "place") {
+    cmds = PD.moves.placeCmdsForUid(state, uid, def, nextColor);
+    if (PD.moves.locAllowsSource(t.card ? t.card.loc : null)) cmds.push({ kind: "source" });
+  } else {
+    cmds = PD.moves.moveWildCmdsForUid(state, uid, def, nextColor);
+    cmds.push({ kind: "source" });
+  }
 
   t.wildColor = nextColor;
   t.cmds = cmds;
+  t._moveWildSorted = false;
 
   // Preserve selection if possible.
   var selI = 0;
@@ -1350,7 +1403,7 @@ PD.ui.step = function (state, view, actions) {
   if (!gameOver && promptForP0) {
     var k = pr && pr.kind ? String(pr.kind) : "";
     // Phase 06: allow overlays during recipient placement prompt.
-    var allowOverlays = (k === "placeReceived");
+    var allowOverlays = (k === "placeReceived" || k === "replaceWindow");
     if (!allowOverlays) {
       // Prompts override overlays.
       if (view.mode === "menu") { view.menu.items = []; }
@@ -1602,31 +1655,46 @@ PD.ui.step = function (state, view, actions) {
       return (pick.item.x - cam);
     }
 
+    function sortCmdsByScreenX(cmds, rankFn, screenXFn, tieCmp) {
+      if (!cmds || cmds.length <= 1) return cmds;
+      var out = cmds.slice();
+      out.sort(function (a, b) {
+        var ar = rankFn ? rankFn(a) : 0;
+        var br = rankFn ? rankFn(b) : 0;
+        var dr = ar - br;
+        if (dr) return dr;
+        var ax = screenXFn ? screenXFn(a) : 0;
+        var bx = screenXFn ? screenXFn(b) : 0;
+        var dx = ax - bx;
+        if (dx) return dx;
+        return tieCmp ? tieCmp(a, b) : 0;
+      });
+      return out;
+    }
+
     function slyEnsureSorted() {
       if (t.kind !== "sly") return;
       if (t._slySorted) return;
       if (!t.cmds || t.cmds.length === 0) return;
 
       // Sort targets by screen-space X (left->right). Keep source last.
-      var cmds = t.cmds.slice();
-      cmds.sort(function (a, b) {
-        if (a && a.kind === "source") return 1;
-        if (b && b.kind === "source") return -1;
-        var ax = slyCmdScreenX(a);
-        var bx = slyCmdScreenX(b);
-        var d = ax - bx;
-        if (d) return d;
-        // Stable tie-breaker by setI/i.
-        var al = (a && a.target && a.target.loc) ? a.target.loc : null;
-        var bl = (b && b.target && b.target.loc) ? b.target.loc : null;
-        var asi = al && al.setI != null ? al.setI : 9999;
-        var bsi = bl && bl.setI != null ? bl.setI : 9999;
-        var di = asi - bsi;
-        if (di) return di;
-        var api = al && al.i != null ? al.i : 9999;
-        var bpi = bl && bl.i != null ? bl.i : 9999;
-        return api - bpi;
-      });
+      var cmds = sortCmdsByScreenX(
+        t.cmds,
+        function (c) { return (c && c.kind === "source") ? 1 : 0; },
+        slyCmdScreenX,
+        function (a, b) {
+          // Stable tie-breaker by setI/i.
+          var al = (a && a.target && a.target.loc) ? a.target.loc : null;
+          var bl = (b && b.target && b.target.loc) ? b.target.loc : null;
+          var asi = al && al.setI != null ? al.setI : 9999;
+          var bsi = bl && bl.setI != null ? bl.setI : 9999;
+          var di = asi - bsi;
+          if (di) return di;
+          var api = al && al.i != null ? al.i : 9999;
+          var bpi = bl && bl.i != null ? bl.i : 9999;
+          return api - bpi;
+        }
+      );
       t.cmds = cmds;
       // Default to first real target if possible.
       if (t.cmds.length > 0 && t.cmds[0] && t.cmds[0].kind === "source" && t.cmds.length > 1) t.cmdI = 1;
@@ -1648,6 +1716,65 @@ PD.ui.step = function (state, view, actions) {
     }
 
     slyEnsureSorted();
+
+    function moveWildCmdScreenX(cmdW) {
+      if (!cmdW || !cmdW.kind || cmdW.kind !== "moveWild") return 999999;
+      if (cmdW.dest && cmdW.dest.newSet) return 999999;
+      var setI = (cmdW.dest && cmdW.dest.setI != null) ? cmdW.dest.setI : null;
+      if (setI == null) return 999999;
+      var rmT = computed.models[PD.render.ROW_P_TABLE];
+      var st = (rmT && rmT.stacks) ? rmT.stacks["set:p0:set" + setI] : null;
+      if (!st) return 999999;
+      var x = st.x0 + st.nReal * st.stride * st.fanDir;
+      var cam = view.camX[PD.render.ROW_P_TABLE];
+      return x - cam;
+    }
+
+    function moveWildEnsureSorted() {
+      if (t.kind !== "moveWild") return;
+      if (t._moveWildSorted) return;
+      if (!t.cmds || t.cmds.length === 0) return;
+
+      var prev = t.cmds[PD.ui.clampI(t.cmdI, t.cmds.length)];
+      var keepNewSet = !!(prev && prev.dest && prev.dest.newSet);
+      var keepSetI = (prev && prev.dest && prev.dest.setI != null) ? prev.dest.setI : null;
+      var keepSource = !!(prev && prev.kind === "source");
+
+      var cmds = sortCmdsByScreenX(
+        t.cmds,
+        function (c) {
+          if (c && c.kind === "source") return 2;
+          if (c && c.dest && c.dest.newSet) return 1;
+          return 0;
+        },
+        moveWildCmdScreenX,
+        function (a, b) {
+          var asi = (a && a.dest && a.dest.setI != null) ? a.dest.setI : 9999;
+          var bsi = (b && b.dest && b.dest.setI != null) ? b.dest.setI : 9999;
+          var ds = asi - bsi;
+          if (ds) return ds;
+          var ac = (a && a.color != null) ? a.color : 9999;
+          var bc = (b && b.color != null) ? b.color : 9999;
+          return ac - bc;
+        }
+      );
+      t.cmds = cmds;
+
+      // Preserve selection if possible.
+      var selI = 0;
+      var i;
+      if (keepSource) {
+        for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].kind === "source") { selI = i; break; }
+      } else if (keepNewSet) {
+        for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].dest && cmds[i].dest.newSet) { selI = i; break; }
+      } else if (keepSetI != null) {
+        for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].dest && cmds[i].dest.setI === keepSetI) { selI = i; break; }
+      }
+      t.cmdI = selI;
+      t._moveWildSorted = true;
+    }
+
+    moveWildEnsureSorted();
 
     // Cycle destinations
     var nCmds = t.cmds ? t.cmds.length : 0;
@@ -1725,6 +1852,11 @@ PD.ui.step = function (state, view, actions) {
       if (pick) PD.ui.cursorMoveTo(view, pick);
     }
 
+    function snapCursorToFirstReplaceWild() {
+      var pick = PD.ui.pickReplaceWindowWild(state, computed);
+      if (pick) PD.ui.cursorMoveTo(view, pick);
+    }
+
     if (prompt.kind === "discardDown") {
       // Lock cursor to player hand cards only (not bank).
       var handIs = promptPickHandItemIndices();
@@ -1773,6 +1905,28 @@ PD.ui.step = function (state, view, actions) {
         return null;
       }
       PD.ui.targetingEnter(state, view, "place", true, selGrabP.uid, selGrabP.loc);
+      return null;
+    }
+    if (prompt.kind === "replaceWindow" && actions.a && actions.a.grabStart) {
+      var selGrabW = currentSelection();
+      if (!selGrabW || !selGrabW.loc) { PD.anim.feedbackError(view, "no_actions", "No actions"); snapCursorToFirstReplaceWild(); return null; }
+      if (selGrabW.loc.zone !== "setProps" || selGrabW.loc.p !== 0 || selGrabW.loc.setI == null || selGrabW.loc.setI !== prompt.srcSetI) {
+        PD.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
+        snapCursorToFirstReplaceWild();
+        return null;
+      }
+      if (selGrabW.uid === prompt.excludeUid) {
+        PD.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
+        snapCursorToFirstReplaceWild();
+        return null;
+      }
+      var defW = PD.state.defByUid(state, selGrabW.uid);
+      if (!defW || !PD.rules.isWildDef(defW)) {
+        PD.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
+        snapCursorToFirstReplaceWild();
+        return null;
+      }
+      PD.ui.targetingEnter(state, view, "moveWild", true, selGrabW.uid, selGrabW.loc);
       return null;
     }
 
@@ -1916,6 +2070,46 @@ PD.ui.step = function (state, view, actions) {
         }
         // Tap-A workflow: go directly to placement targeting (only action in this prompt).
         PD.ui.targetingEnter(state, view, "place", false, selR.uid, selR.loc);
+        return null;
+      }
+
+      return null;
+    }
+
+    if (prompt.kind === "replaceWindow") {
+      if (actions.b && actions.b.pressed) {
+        focusSnapshot();
+        return { kind: "applyCmd", cmd: { kind: "skipReplaceWindow" } };
+      }
+
+      if (actions.a && actions.a.tap) {
+        var selW = currentSelection();
+        // Allow debug buttons (Step/Reset/Next) during this prompt; End remains disallowed.
+        if (selW && selW.kind === "btn") {
+          if (selW.id === "step") { setAutoFocusPauseForCenterBtn("step"); focusSnapshot(); return { kind: "debug", action: "step" }; }
+          if (selW.id === "reset") { setAutoFocusPauseForCenterBtn("reset"); focusSnapshot(); return { kind: "debug", action: "reset" }; }
+          if (selW.id === "nextScenario") { setAutoFocusPauseForCenterBtn("nextScenario"); focusSnapshot(); return { kind: "debug", action: "nextScenario" }; }
+          if (selW.id === "endTurn") { PD.anim.feedbackError(view, "prompt_forced", "Move a Wild or skip"); snapCursorToFirstReplaceWild(); return null; }
+        }
+        if (!selW || !selW.loc) { PD.anim.feedbackError(view, "no_actions", "No actions"); snapCursorToFirstReplaceWild(); return null; }
+        if (selW.loc.zone !== "setProps" || selW.loc.p !== 0 || selW.loc.setI == null || selW.loc.setI !== prompt.srcSetI) {
+          PD.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
+          snapCursorToFirstReplaceWild();
+          return null;
+        }
+        if (selW.uid === prompt.excludeUid) {
+          PD.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
+          snapCursorToFirstReplaceWild();
+          return null;
+        }
+        var defW2 = PD.state.defByUid(state, selW.uid);
+        if (!defW2 || !PD.rules.isWildDef(defW2)) {
+          PD.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
+          snapCursorToFirstReplaceWild();
+          return null;
+        }
+        // Tap-A workflow: enter moveWild targeting.
+        PD.ui.targetingEnter(state, view, "moveWild", false, selW.uid, selW.loc);
         return null;
       }
 

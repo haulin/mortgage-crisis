@@ -47,6 +47,33 @@ PD.moves.placeCmdsForUid = function (state, uid, def, wildColor) {
   return existing.concat(newSet);
 };
 
+PD.moves.defaultWildColorForMoveWild = function (state, uid, def, loc) {
+  if (!def || !PD.rules.isWildDef(def)) return PD.state.NO_COLOR;
+  if (loc && String(loc.zone || "") === "setProps" && loc.p != null && loc.setI != null && loc.i != null) {
+    var sets = state.players[loc.p] ? state.players[loc.p].sets : null;
+    var set = sets ? sets[loc.setI] : null;
+    var props = set ? set.props : null;
+    if (props && props[loc.i] && props[loc.i][0] === uid) return props[loc.i][1];
+  }
+  // Fallback: same default heuristic as Place (favor a color with existing-set destinations).
+  return PD.moves.defaultWildColorForPlace(state, uid, def);
+};
+
+PD.moves.moveWildCmdsForUid = function (state, uid, def, wildColor) {
+  var moves = PD.engine.legalMoves(state);
+  var cmds = [];
+  var i;
+  var isWild = !!(def && PD.rules.isWildDef(def));
+  for (i = 0; i < moves.length; i++) {
+    var mv = moves[i];
+    if (!mv || mv.kind !== "moveWild") continue;
+    if (!mv.card || mv.card.uid !== uid) continue;
+    if (isWild && mv.color !== wildColor) continue;
+    cmds.push(mv);
+  }
+  return cmds;
+};
+
 PD.moves.buildCmdsForUid = function (state, uid) {
   var moves = PD.engine.legalMoves(state);
   var buildMoves = [];
@@ -155,6 +182,20 @@ PD.moves.cmdsForTargeting = function (state, kind, uid, loc) {
     return out;
   }
 
+  if (kind === "moveWild") {
+    var defW = PD.state.defByUid(state, uid);
+    if (defW && PD.rules.isWildDef(defW)) {
+      out.wildColor = PD.moves.defaultWildColorForMoveWild(state, uid, defW, loc);
+      out.cmds = PD.moves.moveWildCmdsForUid(state, uid, defW, out.wildColor);
+    } else {
+      out.wildColor = PD.state.NO_COLOR;
+      out.cmds = PD.moves.moveWildCmdsForUid(state, uid, defW, PD.state.NO_COLOR);
+    }
+    // Replace-window moveWild targeting originates from setProps; still allow cancel via Source for consistency.
+    out.cmds.push({ kind: "source" });
+    return out;
+  }
+
   return null;
 };
 
@@ -169,6 +210,11 @@ PD.moves.cmdsForTargeting = function (state, kind, uid, loc) {
 PD.moves.destForCmd = function (cmd) {
   if (!cmd || !cmd.kind) return null;
   if (cmd.kind === "playProp") {
+    if (cmd.dest && cmd.dest.newSet) return { kind: "newSet", p: cmd.dest.p };
+    if (cmd.dest && cmd.dest.setI != null) return { kind: "setEnd", p: cmd.dest.p, setI: cmd.dest.setI };
+    return null;
+  }
+  if (cmd.kind === "moveWild") {
     if (cmd.dest && cmd.dest.newSet) return { kind: "newSet", p: cmd.dest.p };
     if (cmd.dest && cmd.dest.setI != null) return { kind: "setEnd", p: cmd.dest.p, setI: cmd.dest.setI };
     return null;

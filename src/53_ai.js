@@ -37,6 +37,52 @@ PD.ai.policies = {
       if (move && move.kind === "playJustSayNo") return k;
       return 1;
     }
+  },
+
+  biasMoveWild: {
+    id: "biasMoveWild",
+    weight: function (state, move) {
+      // Phase 09: simple heuristic for replace-window Wild repositioning.
+      // Prefer moves that complete a set, then maximize rent delta on existing sets.
+      // Tuning knob lives in config.
+      var k = PD.config.ai.biasMoveWildK;
+      if (!move || move.kind !== "moveWild") return 1;
+      if (!(k > 1)) k = 1;
+
+      var dest = move.dest;
+      if (!dest) return 1;
+      // New set: treat as neutral by default (can be strategically risky vs Sly Deal).
+      if (dest.newSet) return 1;
+      if (dest.setI == null) return 1;
+
+      var card = move.card;
+      var loc = card && card.loc ? card.loc : null;
+      var p = (loc && loc.p != null) ? loc.p : state.activeP;
+      var setI = dest.setI;
+      var sets = state.players[p] ? state.players[p].sets : null;
+      if (!sets || setI < 0 || setI >= sets.length) return 1;
+      var set = sets[setI];
+      if (!set || !set.props || set.props.length <= 0) return 1;
+
+      var color = PD.rules.getSetColor(set.props);
+      if (color === PD.state.NO_COLOR) return 1;
+      var rules = PD.SET_RULES[color];
+      if (!rules || !(rules.requiredSize > 0)) return 1;
+      var req = rules.requiredSize;
+
+      var nBefore = set.props.length;
+      var nAfterUncapped = nBefore + 1;
+      var completes = (nAfterUncapped >= req);
+
+      // Compute rent before/after (rent caps at required size).
+      var rentBefore = PD.rules.rentAmountForSet(state, p, setI);
+      var rentAfter = PD.rules.rentAmountForColorCount(color, nAfterUncapped, !!set.houseUid);
+
+      var delta = rentAfter - rentBefore;
+      if (completes) return k * 20;
+      if (delta > 0) return k * (1 + delta);
+      return 1;
+    }
   }
 };
 
@@ -65,7 +111,8 @@ PD.ai.composePolicies = function (id, policyIds) {
 PD.ai.policies.defaultHeuristic = PD.ai.composePolicies("defaultHeuristic", [
   "biasExistingSet",
   "biasPlayRent",
-  "biasPlayJustSayNo"
+  "biasPlayJustSayNo",
+  "biasMoveWild"
 ]);
 
 PD.ai.pickMove = function (state, moves, policy) {
@@ -129,6 +176,8 @@ PD.ai.describeCmd = function (state, cmd) {
   if (k === "playSlyDeal") return "Opponent: Sly Deal";
   if (k === "respondPass") return "Opponent: Allow";
   if (k === "playJustSayNo") return "Opponent: Just Say No";
+  if (k === "skipReplaceWindow") return "Opponent: Skip";
+  if (k === "moveWild") return "Opponent: Move Wild";
   if (k === "playHouse") return "Opponent: Build";
   if (k === "playProp") {
     var dl = PD.fmt.destLabelForCmd(state, cmd);

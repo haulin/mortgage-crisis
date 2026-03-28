@@ -62,6 +62,8 @@ PD.scenarios.applyScenario = function (state, scenarioId) {
 
 // Scenario registry (single source of truth).
 PD.scenarios.IDS = [
+  // Phase 09
+  "replaceWindow",
   "placeBasic",
   "wildBasic",
   "houseBasic",
@@ -78,6 +80,7 @@ PD.scenarios.IDS = [
 
 // Optional metadata for debug UI / docs.
 PD.scenarios.INFO = {
+  replaceWindow: { title: "Replace-window", desc: "Phase 09: play into an overfill-complete set so the replace-window prompt is offered (move a Wild out of the just-played-into set)." },
   placeBasic: { title: "Place (basic)", desc: "Fixed property placement + Rent play-test (opponent has a small bank payable)." },
   wildBasic: { title: "Wild (basic)", desc: "Wild property placement + discard depth demo." },
   houseBasic: { title: "House (basic)", desc: "Build House on complete set only." },
@@ -90,6 +93,27 @@ PD.scenarios.INFO = {
 };
 
 PD.scenarios._applyById = {
+  replaceWindow: function (state) {
+    // Source set (Orange, complete=3) includes a Wild not being played this turn.
+    // Playing one more Orange into this set makes it overfilled (4), enabling replace-window:
+    // moving exactly 1 Wild out still leaves the source set complete (3).
+    var setSrc = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setSrc, "prop_orange", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setSrc, "prop_orange", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setSrc, "wild_mo", PD.Color.Orange);
+    state.players[0].sets.push(setSrc);
+
+    // Destination set (Magenta, 2/3) so moving the Wild as Magenta can complete it.
+    var setM = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setM, "prop_magenta", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setM, "prop_magenta", PD.state.NO_COLOR);
+    state.players[0].sets.push(setM);
+
+    // Hand: play Orange into the source set to trigger replace-window.
+    state.players[0].hand.push(PD.state.takeUid(state, "prop_orange"));
+    state.players[0].hand.push(PD.state.takeUid(state, "money_1"));
+  },
+
   placeBasic: function (state) {
     // P0 has 2 orange properties + $1. P0 also has an existing Orange set with 1 property.
     var setO = PD.state.newEmptySet();

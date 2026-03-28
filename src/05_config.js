@@ -70,7 +70,11 @@ PD.config.ai = {
 
   // Phase 08: weight multiplier for "play Just Say No" response moves.
   // 1 means no bias (equivalent to uniform random).
-  biasPlayJustSayNoK: 8
+  biasPlayJustSayNoK: 8,
+
+  // Phase 09: weight multiplier for "moveWild" replace-window moves (AI willingness).
+  // 1 means no bias (equivalent to uniform random).
+  biasMoveWildK: 8
 };
 
 // Rule-note IDs (Phase 05+). These are small display-only annotations in Inspect.

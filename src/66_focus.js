@@ -269,6 +269,18 @@ PD.ui.focus.rules = [
     }
   },
   {
+    id: "OnEnterReplaceWindowPrompt_FocusWild",
+    enabled: function () { return true; },
+    when: function (ctx) {
+      var pr = ctx.state.prompt;
+      var cur = !!(pr && pr.kind === "replaceWindow" && pr.p === 0);
+      return cur && (!ctx.view.ux.lastPromptForP0 || ctx.view.ux.lastPromptKind !== "replaceWindow");
+    },
+    pick: function (ctx) {
+      return PD.ui.pickReplaceWindowWild(ctx.state, ctx.computed);
+    }
+  },
+  {
     id: "OnExitPlaceReceivedPrompt_End",
     enabled: function () { return true; },
     when: function (ctx) {

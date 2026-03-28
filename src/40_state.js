@@ -64,6 +64,24 @@ PD.state.setPrompt = function (state, prompt) {
     return;
   }
 
+  if (k === "replaceWindow") {
+    // Phase 09: Wild replace-window (optional reposition after property placement).
+    // Keep payload minimal; validate shape via tests (avoid runtime asserts/fallbacks).
+    var resume = prompt.resume;
+    var resumeObj = null;
+    if (resume && String(resume.kind || "") === "placeReceived") {
+      resumeObj = { kind: "placeReceived", uids: resume.uids.slice() };
+    }
+    state.prompt = {
+      kind: k,
+      p: p,
+      srcSetI: Math.floor(prompt.srcSetI),
+      excludeUid: Math.floor(prompt.excludeUid),
+      resume: resumeObj
+    };
+    return;
+  }
+
   throw new Error("unknown_prompt_kind:" + k);
 };
 

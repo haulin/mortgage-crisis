@@ -24,6 +24,7 @@ Documentation convention (for future phases):
 - **Phase 07 ✅**: AI (random legal) + narrated pacing, plus Phase 07 UX/focus polish. See `docs/phase07.md`.
 - **Phase 08 ✅**: Actions + responses: Sly Deal targeting + Just Say No response windows (Sly prompt + Rent-in-payDebt), plus related UI/focus/policy knobs. See `docs/phase08.md`.
 - **Phase 08b ✅**: Low-risk UX tidy-ups: DebugText layout/wrapping, debug Next keeps cursor on Next, moveStress Sly target richness, and hold‑A Sly no-target fallback to Quick/Bank. See `docs/phase08b.md`.
+- **Phase 09 ✅**: Wild replace-window prompt + moveWild targeting (incl. Source-cancel consistency) + eligibility/AI/tests polish. See `docs/phase09.md`.
 
 ### Deferred-items capture (scope creep safety net)
 
@@ -241,6 +242,8 @@ AI is required in MVP1, but intentionally simple.
 
 ## Implementation Plan (Piece-by-piece)
 
+Content expansion readiness: In every phase create a system that will allow future phases to integrate easily.
+
 ### Phase 00 ✅ — Repo workflow
 
 - Author modular code under `src/`
@@ -404,10 +407,6 @@ Quality-of-life (still UX-level; no new rules commands):
 
 See `docs/phase06.md` for exact shipped behavior.
 
-Content expansion readiness:
-
-- Keep the debt/payment UX generic so Phase 11 can add “pay/select/transfer” actions (e.g. Forced Purchase) without inventing new interaction patterns
-
 ### Phase 07 ✅ — AI (random legal) + narrated pacing + focus/UX polish
 
 - Implement AI as:
@@ -415,10 +414,6 @@ Content expansion readiness:
 - Show narrated messages with fixed delay between steps
 
 Additionally in this phase we did a sizable pass of **controller UX and focus policy** to make playtesting and edge cases feel sane. Detailed notes live in `docs/phase07.md`.
-
-Content expansion readiness:
-
-- Create a system that will allow future phases to integrate easily
 
 Done:
 - AI (random legal) + narrated pacing.
@@ -434,26 +429,12 @@ Done:
   - One-shot nudges to `End` for key transitions (plays exhausted, hand becomes empty mid-turn, exit PRP with playsLeft<=0, etc.).
 
 
-### Phase 08 — Actions + responses
+### Phase 08 ✅ — Actions + responses
 
 - Implement Rent + JSN response window
 - Implement Sly Deal + JSN response window + legality (not from complete set)
 
-Content expansion readiness:
-
-- Keep the response window + targeting UX generic so Phase 11 can add additional action card types without bespoke UI
-
-Issues:
-- When player is out of moves and they attempt to place a card, the only valid destination is source. They no longer get negative feedback about no action possible. If only source is a valid destination then action should be disallowed.
-- scrolling in the banks shuffle stress scenario is not good
-- the project was renamed to Mortgage Crisis, so we should update all references
-- action menu should maybe get rendered as a bigger overlay, similar to inspect and not cover buttons
-- I don't think I like "Opponent: " prefix for the AI prompts. It is not that important and it is too long.
-- When we do transfers (paying rent/debt, stealing props, discarding), cards often just “appear” in the destination. Hard to notice. Perhaps animate transfers similarly to dealing/drawing?
-- when starting a game/default scenario, the 5/7 cards on each side are already dealt. We should probably start with the 2x5 draw animation and display a toast with who is starting.
-- Debt: house first does not auto-focus house when another property is selected
-
-### Phase 08b — low-risk UX tidy-ups ✅
+### Phase 08b ✅ — low-risk UX tidy-ups 
 
 - DebugText: reclaim left margin pixels (start at x=0) + shorten `Scenario` label (`Scn`)
 - DebugText: wrap scenario descriptions so they never overflow the screen
@@ -461,14 +442,11 @@ Issues:
 - `moveStress`: give opponent multiple stealable targets so Sly targeting cycles more meaningfully
 - Hold‑A on Sly with no targets: fall back to Quick targeting so Bank remains available
 
-### Phase 09 — Wild replace-window
+### Phase 09 ✅ — Wild replace-window
 
 - Detect replace-window eligibility after property plays
 - Offer optional prompt to move exactly 1 Wild if legal (source remains complete)
-
-Content expansion readiness:
-
-- Keep replace-window prompts generic so Phase 11 can add more Wild/board-state manipulation cards that reuse this workflow
+- See `docs/phase09.md` for details.
 
 ### Phase 10 — Scenarios + dev boot
 
@@ -488,17 +466,38 @@ Content expansion readiness:
 - Add additional card types **only once the workflow exists** (so no dead draws). Practical rule of thumb:
   - After Phase 06 (debt/payment): add 1–2 “pay/select/transfer” actions that reuse that pipeline (e.g. Forced Purchase)
   - After Phase 07 (actions + responses): add 1–2 action cards that reuse the response window (JSN)
-  - After Phase 08 (replace-window): add 1–2 Wild/board-state manipulation cards that reuse replace eligibility
+  - After Phase 09 (replace-window): add 1–2 Wild/board-state manipulation cards that reuse replace eligibility
+
+Issues:
+- When player is out of moves and they attempt to place a card, the only valid destination is source. They no longer get negative feedback about no action possible. If only source is a valid destination then action should be disallowed.
+- scrolling in the banks shuffle stress scenario is not good
+- the project was renamed to Mortgage Crisis, so we should update all references
+- action menu should maybe get rendered as a bigger overlay, similar to inspect and not cover buttons
+- I don't think I like "Opponent: " prefix for the AI prompts. It is not that important and it is too long.
+- When we do transfers (paying rent/debt, stealing props, discarding), cards often just “appear” in the destination. Hard to notice. Perhaps animate transfers similarly to dealing/drawing?
+- when starting a game/default scenario, the 5/7 cards on each side are already dealt. We should probably start with the 2x5 draw animation and display a toast with who is starting.
+- Debt: house first does not auto-focus house when another property is selected
+- Unify wording in various prompts and menus, humanize it.
 
 ### Phase 12 — UX/readability polish
 
 - Optional vertical area labels explaining the different zones (hand/bank/properties/opponent areas)
 - Continue Inspect overlay polish as needed (still not “big cards”)
-- Reduce scenario list noise: merge `placeBasic` / `wildBasic` / `houseBasic` into a single “Basics” scenario (or otherwise consolidate)
+- Reduce scenario list noise: merge `placeBasic` / `wildBasic` / `houseBasic` into a single “Basics” scenario (or otherwise consolidate) - also placeReceived and replace wild.
 - Deferred: Denote complete property sets in the UI (e.g. badge/outline/marker and/or Inspect text “Complete set”) so Sly Deal restrictions are obvious
 - Deferred: Improve default AI debt payment heuristic to prefer paying from bank before paying properties (when legal), to reduce surprise property transfers
 - Deferred: Optional rule/UX: when a House is received via debt payment, allow recipient to place it onto a completed set (instead of always banking it as money)
 - Deferred: When entering `placeReceived` with exactly 1 received property (notably from Sly Deal), auto-enter Place targeting for that card to skip the extra “select received card then A” step
+- Deferred: Consider a general prompt stack once nested prompts expand (e.g. `replaceWindow` nested inside `placeReceived`)
+- Deferred: Add a “Wild Any” property card if it meaningfully improves scenario/test coverage (post‑MVP)
+- Deferred: Re-architecture idea — “capabilities + hooks” registry:
+  - Goal: reduce giant `if/switch` ladders by letting each feature own its rule/UI/AI glue without scattering conditionals across layers.
+  - Approach: define a small feature interface where modules can optionally provide hooks like:
+    - “post-apply” hook (observe events/state transitions and optionally begin a prompt)
+    - “prompt mode” hooks (legal moves while prompting + apply validation for prompt-owned commands)
+    - UI hooks (prompt toast text, prompt input handling, targeting sort policy, auto-focus pick)
+    - AI hook (policy weight/narration extensions; AI already resembles this pattern)
+  - Migration: convert one feature at a time (start with a small prompt-driven feature), keep a generic fallback path for anything not registered.
 - Broader spatially-aware targeting cycle redesign (directionally consistent cycling, improved Up/Down semantics, etc.)
 - Targeting-cycle refactor: directionally consistent L/R ordering across all targeting kinds (Rent/Place/Build/Bank/Sly)
 - Add a red chevron/arrow threat marker option (instead of ghost-only) for respond/target emphasis

@@ -26,6 +26,23 @@ PD.engine.locEqZone = function (loc, zone) {
   return !!loc && loc.zone === zone;
 };
 
+PD.rules.rentAmountForColorCount = function (color, nPropsUncapped, hasHouse) {
+  if (color === PD.state.NO_COLOR) return 0;
+  var rules = PD.SET_RULES[color];
+  if (!rules || !rules.rent || rules.rent.length <= 0) return 0;
+
+  var req = rules.requiredSize;
+  var n = nPropsUncapped;
+  if (!(n > 0)) return 0;
+  if (req > 0 && n > req) n = req;
+  if (!(n > 0)) return 0;
+
+  var base = rules.rent[n - 1];
+  var bonus = 0;
+  if (hasHouse && req > 0 && nPropsUncapped >= req) bonus = PD.HOUSE_RENT_BONUS;
+  return base + bonus;
+};
+
 PD.rules.rentAmountForSet = function (state, p, setI) {
   var sets = state.players[p].sets;
   if (setI < 0 || setI >= sets.length) return 0;
@@ -33,19 +50,117 @@ PD.rules.rentAmountForSet = function (state, p, setI) {
   if (!set || !set.props || set.props.length <= 0) return 0;
 
   var color = PD.rules.getSetColor(set.props);
-  if (color === PD.state.NO_COLOR) return 0;
-  var rules = PD.SET_RULES[color];
-  if (!rules || !rules.rent || rules.rent.length <= 0) return 0;
+  return PD.rules.rentAmountForColorCount(color, set.props.length, !!set.houseUid);
+};
 
-  var req = rules.requiredSize;
-  var n = set.props.length;
-  if (req > 0 && n > req) n = req;
-  if (n <= 0) return 0;
+PD.rules.replaceWindowEligibleWildLocs = function (state, p, srcSetI, excludeUid) {
+  // Phase 09: replace-window is offered only when we can remove exactly 1 Wild from
+  // the just-played-into set while keeping that source set complete.
+  if (!(p === 0 || p === 1)) return [];
+  var sets = state.players[p] ? state.players[p].sets : null;
+  if (!sets || srcSetI < 0 || srcSetI >= sets.length) return [];
+  var set = sets[srcSetI];
+  if (!set || !set.props || set.props.length <= 0) return [];
 
-  var base = rules.rent[n - 1];
-  var bonus = 0;
-  if (set.houseUid && req > 0 && set.props.length >= req) bonus = PD.HOUSE_RENT_BONUS;
-  return base + bonus;
+  var srcColor = PD.rules.getSetColor(set.props);
+  if (srcColor === PD.state.NO_COLOR) return [];
+  var req = PD.SET_RULES[srcColor].requiredSize;
+  if (!(req > 0)) return [];
+
+  // Need to still be complete after removing exactly 1 property.
+  if ((set.props.length - 1) < req) return [];
+
+  var out = [];
+  var props = set.props;
+  var i;
+  for (i = 0; i < props.length; i++) {
+    var tup = props[i];
+    if (!tup) continue;
+    var uid = tup[0];
+    if (uid === excludeUid) continue;
+    var def = PD.state.defByUid(state, uid);
+    if (!PD.rules.isWildDef(def)) continue;
+    out.push({ uid: uid, loc: { p: p, zone: "setProps", setI: srcSetI, i: i } });
+  }
+  return out;
+};
+
+PD.rules.replaceWindowDestinations = function (state, p, srcSetI, placedColor) {
+  // Destinations: other matching-color sets (in setI order) plus newSet (last).
+  if (!(p === 0 || p === 1)) return [{ p: p, newSet: true }];
+  var sets = state.players[p] ? state.players[p].sets : null;
+  if (!sets) return [{ p: p, newSet: true }];
+  var out = [];
+  var si;
+  for (si = 0; si < sets.length; si++) {
+    if (si === srcSetI) continue;
+    var set = sets[si];
+    var col = PD.rules.getSetColor(set ? set.props : null);
+    if (col === PD.state.NO_COLOR) continue;
+    if (col !== placedColor) continue;
+    out.push({ p: p, setI: si });
+  }
+  out.push({ p: p, newSet: true });
+  return out;
+};
+
+PD.rules.replaceWindowValidateMove = function (state, prompt, cmdMove, actorP) {
+  if (!cmdMove || cmdMove.kind !== "moveWild") return { ok: false, err: "bad_cmd" };
+  var card = cmdMove.card;
+  var dest = cmdMove.dest;
+  if (!card || !card.loc || !dest) return { ok: false, err: "bad_cmd" };
+  if (card.loc.p !== actorP) return { ok: false, err: "not_your_card" };
+  if (String(card.loc.zone || "") !== "setProps") return { ok: false, err: "bad_loc" };
+
+  var srcSetI = prompt.srcSetI;
+  if (card.loc.setI !== srcSetI) return { ok: false, err: "bad_src_set" };
+  var uid = card.uid;
+  if (uid === prompt.excludeUid) return { ok: false, err: "replace_exclude" };
+
+  var sets = state.players[actorP] ? state.players[actorP].sets : null;
+  if (!sets || srcSetI < 0 || srcSetI >= sets.length) return { ok: false, err: "bad_set" };
+  var srcSet = sets[srcSetI];
+  if (!srcSet || !srcSet.props) return { ok: false, err: "bad_set" };
+
+  var pi = card.loc.i;
+  if (!srcSet.props[pi] || srcSet.props[pi][0] !== uid) return { ok: false, err: "bad_loc" };
+
+  var def = PD.state.defByUid(state, uid);
+  if (!PD.rules.isWildDef(def)) return { ok: false, err: "not_wild" };
+
+  var placedColor = cmdMove.color;
+  if (!PD.rules.wildAllowsColor(def, placedColor)) return { ok: false, err: "wild_color_illegal" };
+
+  // Source must remain complete after removing exactly 1 property.
+  var srcColor = PD.rules.getSetColor(srcSet.props);
+  if (srcColor === PD.state.NO_COLOR) return { ok: false, err: "empty_set" };
+  var req = PD.SET_RULES[srcColor].requiredSize;
+  if (!((srcSet.props.length - 1) >= req)) return { ok: false, err: "replace_src_incomplete" };
+
+  // Destination: other set (matching color) or new set.
+  var destSetI = -1;
+  var isNewSet = !!dest.newSet;
+  if (isNewSet) {
+    destSetI = sets.length;
+  } else {
+    destSetI = dest.setI;
+    if (destSetI === srcSetI) return { ok: false, err: "replace_same_set" };
+    if (destSetI < 0 || destSetI >= sets.length) return { ok: false, err: "bad_set" };
+    var setExisting = sets[destSetI];
+    var setColor = PD.rules.getSetColor(setExisting ? setExisting.props : null);
+    if (setColor === PD.state.NO_COLOR) return { ok: false, err: "empty_set" };
+    if (setColor !== placedColor) return { ok: false, err: "set_color_mismatch" };
+  }
+
+  return {
+    ok: true,
+    uid: uid,
+    srcSetI: srcSetI,
+    srcI: pi,
+    destSetI: destSetI,
+    isNewSet: isNewSet,
+    placedColor: placedColor
+  };
 };
 
 PD.engine.removeHandAtLoc = function (state, card) {
@@ -115,6 +230,23 @@ PD.engine.applyCommand = function (state, cmd) {
       var hasHouse = !!set.houseUid;
       if (nProps === 0 && !hasHouse) sets.splice(i, 1);
     }
+  }
+
+  function tryBeginReplaceWindow(actorP, srcSetI, excludeUid, resume) {
+    // Phase 09: after placing a property into a set, optionally allow moving one Wild
+    // out of that same set (excluding the just-played card), but only if the source
+    // set remains complete after removal.
+    if (state.winnerP !== PD.state.NO_WINNER) return false;
+    var elig = PD.rules.replaceWindowEligibleWildLocs(state, actorP, srcSetI, excludeUid);
+    if (!elig || elig.length === 0) return false;
+    PD.state.setPrompt(state, {
+      kind: "replaceWindow",
+      p: actorP,
+      srcSetI: srcSetI,
+      excludeUid: excludeUid,
+      resume: resume || null
+    });
+    return true;
   }
 
   function applySlySteal(fromP, target) {
@@ -330,13 +462,21 @@ PD.engine.applyCommand = function (state, cmd) {
         to: { p: p, zone: "setProps", setI: setI, i: setT.props.length - 1 }
       });
 
-      if (prompt.uids.length === 0) PD.state.clearPrompt(state);
-
       var winner = PD.rules.evaluateWin(state);
       if (winner !== PD.state.NO_WINNER) {
         state.winnerP = winner;
         events.push({ kind: "win", winnerP: winner });
+        // Winner: skip replace-window and let UI suppress prompts.
+        if (prompt.uids.length === 0) PD.state.clearPrompt(state);
+        return;
       }
+
+      // Phase 09: offer replace-window after each received placement (then resume).
+      var resume = (prompt.uids.length > 0) ? { kind: "placeReceived", uids: prompt.uids.slice() } : null;
+      var started = tryBeginReplaceWindow(p, setI, uid, resume);
+      if (started) return;
+
+      if (prompt.uids.length === 0) PD.state.clearPrompt(state);
     }
 
     if (prompt.kind === "payDebt") {
@@ -356,6 +496,68 @@ PD.engine.applyCommand = function (state, cmd) {
     }
     if (prompt.kind === "placeReceived") {
       if (cmd.kind === "playProp") { applyPlaceReceived(cmd); return { events: events }; }
+      throw new Error("prompt_active");
+    }
+    if (prompt.kind === "replaceWindow") {
+      function resumeOrClearReplaceWindow() {
+        if (prompt.resume && String(prompt.resume.kind || "") === "placeReceived") {
+          PD.state.setPrompt(state, { kind: "placeReceived", p: p, uids: prompt.resume.uids.slice() });
+        } else {
+          PD.state.clearPrompt(state);
+        }
+      }
+
+      function applySkipReplaceWindow() {
+        resumeOrClearReplaceWindow();
+        events.push({ kind: "replaceSkip", p: p });
+      }
+
+      function applyMoveWild(cmdMove) {
+        var v = PD.rules.replaceWindowValidateMove(state, prompt, cmdMove, p);
+        if (!v.ok) throw new Error(v.err);
+
+        var uid = v.uid;
+        var srcSetI = v.srcSetI;
+        var pi = v.srcI;
+        var destSetI = v.destSetI;
+        var isNewSet = v.isNewSet;
+        var placedColor = v.placedColor;
+
+        var sets = state.players[p].sets;
+        var srcSet = sets[srcSetI];
+
+        // Apply the move (mutating state) now that validation has passed.
+        srcSet.props.splice(pi, 1);
+        if (isNewSet) {
+          var newSet = PD.state.newEmptySet();
+          sets.push(newSet);
+          events.push({ kind: "createSet", p: p, setI: destSetI, color: placedColor });
+        }
+
+        var destSet = sets[destSetI];
+        destSet.props.push([uid, placedColor]);
+        events.push({
+          kind: "moveWild",
+          p: p,
+          uid: uid,
+          from: { p: p, zone: "setProps", setI: srcSetI, i: pi },
+          to: { p: p, zone: "setProps", setI: destSetI, i: destSet.props.length - 1 },
+          color: placedColor
+        });
+
+        var winner = PD.rules.evaluateWin(state);
+        if (winner !== PD.state.NO_WINNER) {
+          state.winnerP = winner;
+          events.push({ kind: "win", winnerP: winner });
+          PD.state.clearPrompt(state);
+          return;
+        }
+
+        resumeOrClearReplaceWindow();
+      }
+
+      if (cmd.kind === "skipReplaceWindow") { applySkipReplaceWindow(); return { events: events }; }
+      if (cmd.kind === "moveWild") { applyMoveWild(cmd); return { events: events }; }
       throw new Error("prompt_active");
     }
     throw new Error("prompt_active");
@@ -434,7 +636,11 @@ PD.engine.applyCommand = function (state, cmd) {
     if (winner !== PD.state.NO_WINNER) {
       state.winnerP = winner;
       events.push({ kind: "win", winnerP: winner });
+      return;
     }
+
+    // Phase 09: offer replace-window after each property play into a set.
+    tryBeginReplaceWindow(p, setI, uid, null);
   }
 
   function applyPlayHouse(cmdHouse) {
@@ -710,6 +916,37 @@ PD.engine.legalMoves = function (state) {
         PD.engine._pushPlayPropMoves(outR, state, pR, uidR, { p: pR, zone: "recvProps", i: iR }, setsR);
       }
       return outR;
+    }
+    if (pr.kind === "replaceWindow") {
+      var pW = pr.p;
+      var outW = [{ kind: "skipReplaceWindow" }];
+      var srcSetI = pr.srcSetI;
+      var excludeUid = pr.excludeUid;
+      var elig = PD.rules.replaceWindowEligibleWildLocs(state, pW, srcSetI, excludeUid);
+      var iW;
+      for (iW = 0; iW < elig.length; iW++) {
+        var e = elig[iW];
+        if (!e || !e.loc) continue;
+        var uidW = e.uid;
+        var defW = PD.state.defByUid(state, uidW);
+        if (!PD.rules.isWildDef(defW)) continue;
+
+        var c0 = defW.wildColors[0];
+        var c1 = defW.wildColors[1];
+        var cardRef = { uid: uidW, loc: e.loc };
+
+        function pushMovesForColor(col) {
+          var dests = PD.rules.replaceWindowDestinations(state, pW, srcSetI, col);
+          var di;
+          for (di = 0; di < dests.length; di++) {
+            outW.push({ kind: "moveWild", card: cardRef, dest: dests[di], color: col });
+          }
+        }
+
+        pushMovesForColor(c0);
+        pushMovesForColor(c1);
+      }
+      return outW;
     }
     return [];
   }

@@ -132,6 +132,7 @@ PD.fmt.targetingTitle = function (targeting, cmd) {
 
   if (tKind === "build") return "Build";
   if (tKind === "place") return "Place";
+  if (tKind === "moveWild") return "Place";
   if (tKind === "rent") return "Rent";
   if (tKind === "sly") return "Sly Deal";
   if (tKind === "quick") return titleForCmd(cmd);
@@ -152,6 +153,18 @@ PD.fmt.targetingDestLine = function (state, targeting, cmd) {
     }
     if (t && t.card && t.card.def && PD.rules.isWildDef(t.card.def)) out += "\nAs: " + PD.fmt.colorName(t.wildColor);
     return out || "(no destination)";
+  }
+
+  if (k === "moveWild") {
+    var outW = "";
+    if (cmd.dest && cmd.dest.newSet) outW = "Dest: New set";
+    else if (cmd.dest && cmd.dest.setI != null) {
+      var setW = state.players[cmd.dest.p].sets[cmd.dest.setI];
+      var colW = setW ? PD.rules.getSetColor(setW.props) : PD.state.NO_COLOR;
+      outW = "Dest: " + PD.fmt.colorName(colW) + " set";
+    }
+    if (t && t.card && t.card.def && PD.rules.isWildDef(t.card.def)) outW += "\nAs: " + PD.fmt.colorName(t.wildColor);
+    return outW || "(no destination)";
   }
 
   if (k === "playHouse") {

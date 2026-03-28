@@ -530,7 +530,59 @@ test("ui: menu targeting includes a Source destination (tap-A cancels)", async (
 
   // Select source and tap A to cancel.
   view.targeting.cmdI = view.targeting.cmds.length - 1;
+  {
+    const c = ctx.PD.ui.computeRowModels(s, view);
+    assert.equal(!!(c.meta && c.meta.hideSrc), false, "expected source card visible when Source is selected");
+  }
   const intent = ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(intent, null);
+  assert.equal(view.mode, "browse");
+});
+
+test("ui: moveWild targeting includes a Source destination (tap-A cancels)", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
+  const view = ctx.PD.ui.newView();
+
+  // Trigger replaceWindow then enter moveWild targeting (tap-A flow).
+  const mv = ctx.PD.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);
+  ctx.PD.engine.applyCommand(s, mv);
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(view.mode, "targeting");
+  assert.equal(view.targeting.kind, "moveWild");
+  assert.equal(view.targeting.hold, false);
+  assert.equal(view.targeting.cmds.at(-1).kind, "source", "expected Source destination last");
+
+  // Select source and ensure we show the real source card.
+  view.targeting.cmdI = view.targeting.cmds.length - 1;
+  {
+    const c = ctx.PD.ui.computeRowModels(s, view);
+    assert.equal(!!(c.meta && c.meta.hideSrc), false, "expected source card visible when Source is selected");
+  }
+  const intent = ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(intent, null);
+  assert.equal(view.mode, "browse");
+});
+
+test("ui: moveWild targeting includes a Source destination (release-A cancels when hold=true)", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
+  const view = ctx.PD.ui.newView();
+
+  // Trigger replaceWindow then enter moveWild targeting (hold-A flow).
+  const mv = ctx.PD.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);
+  ctx.PD.engine.applyCommand(s, mv);
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  ctx.PD.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
+  assert.equal(view.mode, "targeting");
+  assert.equal(view.targeting.kind, "moveWild");
+  assert.equal(view.targeting.hold, true);
+  assert.equal(view.targeting.cmds.at(-1).kind, "source", "expected Source destination last");
+
+  // Select source and release A to cancel.
+  view.targeting.cmdI = view.targeting.cmds.length - 1;
+  const intent = ctx.PD.ui.step(s, view, { nav: {}, a: { released: true }, b: {}, x: {} });
   assert.equal(intent, null);
   assert.equal(view.mode, "browse");
 });
@@ -760,6 +812,83 @@ test("ui: placeReceived prompt - auto-focus snaps to a received property", async
   const rm = c.models[ctx.PD.render.ROW_P_HAND];
   const sel = rm.items[ctx.PD.ui.clampI(view.cursor.i, rm.items.length)];
   assert.ok(sel && sel.loc && sel.loc.zone === "recvProps", "expected cursor snapped onto recvProps");
+});
+
+test("ui: replaceWindow prompt - auto-focus snaps to an eligible Wild in the source set", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
+  const view = ctx.PD.ui.newView();
+
+  // Trigger the real prompt by playing into set 0.
+  const mv = ctx.PD.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);
+  assert.ok(mv, "expected playProp into set 0");
+  ctx.PD.engine.applyCommand(s, mv);
+  assert.ok(s.prompt && s.prompt.kind === "replaceWindow");
+
+  // Start somewhere else then enter prompt.
+  view.cursor.row = 2;
+  view.cursor.i = 0;
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  assert.equal(view.mode, "prompt");
+
+  const c = ctx.PD.ui.computeRowModels(s, view);
+  const rmT = c.models[ctx.PD.render.ROW_P_TABLE];
+  const sel = rmT.items[ctx.PD.ui.clampI(view.cursor.i, rmT.items.length)];
+  assert.ok(sel && sel.loc && sel.loc.zone === "setProps" && sel.loc.setI === 0, "expected focus on source set");
+  const def = ctx.PD.state.defByUid(s, sel.uid);
+  assert.ok(def && ctx.PD.rules.isWildDef(def), "expected focused card to be a Wild");
+});
+
+test("ui: replaceWindow prompt - A tap enters moveWild targeting", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
+  const view = ctx.PD.ui.newView();
+
+  const mv = ctx.PD.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);
+  ctx.PD.engine.applyCommand(s, mv);
+  assert.ok(s.prompt && s.prompt.kind === "replaceWindow");
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  assert.equal(view.mode, "prompt");
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(view.mode, "targeting");
+  assert.ok(view.targeting && view.targeting.active);
+  assert.equal(view.targeting.kind, "moveWild");
+  assert.equal(view.targeting.hold, false);
+});
+
+test("ui: replaceWindow prompt - hold-A grabStart enters moveWild targeting (hold=true)", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
+  const view = ctx.PD.ui.newView();
+
+  const mv = ctx.PD.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);
+  ctx.PD.engine.applyCommand(s, mv);
+  assert.ok(s.prompt && s.prompt.kind === "replaceWindow");
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  ctx.PD.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
+  assert.equal(view.mode, "targeting");
+  assert.ok(view.targeting && view.targeting.active);
+  assert.equal(view.targeting.kind, "moveWild");
+  assert.equal(view.targeting.hold, true);
+});
+
+test("ui: replaceWindow prompt - B skips prompt (skipReplaceWindow intent)", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
+  const view = ctx.PD.ui.newView();
+
+  const mv = ctx.PD.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);
+  ctx.PD.engine.applyCommand(s, mv);
+  assert.ok(s.prompt && s.prompt.kind === "replaceWindow");
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  const intent = ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: { pressed: true }, x: {} });
+  assert.ok(intent && intent.kind === "applyCmd");
+  assert.equal(intent.cmd.kind, "skipReplaceWindow");
 });
 
 test("ui: placeReceived prompt - hold-A grabStart on received prop enters place targeting (hold=true)", async () => {

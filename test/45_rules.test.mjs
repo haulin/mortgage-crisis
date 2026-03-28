@@ -384,6 +384,154 @@ test("Phase 06: placeReceived allows placing from recvProps without consuming pl
   assert.equal(state.playsLeft, playsBefore, "expected playsLeft unchanged during placement prompt");
 });
 
+test("Phase 09: playProp into an overfill-complete set opens replaceWindow prompt", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
+
+  const playsBefore = s.playsLeft;
+  const mv = ctx.PD.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);
+  assert.ok(mv, "expected playProp into set 0");
+
+  ctx.PD.engine.applyCommand(s, mv);
+  assert.equal(s.playsLeft, playsBefore - 1, "expected playProp to consume a play");
+  assert.ok(s.prompt && s.prompt.kind === "replaceWindow", "expected replaceWindow prompt");
+  assert.equal(s.prompt.p, 0);
+  assert.equal(s.prompt.srcSetI, 0);
+  assert.equal(s.prompt.excludeUid, mv.card.uid);
+  assert.equal(s.prompt.resume, null);
+});
+
+test("Phase 09: replaceWindow skipReplaceWindow clears prompt", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
+  const mv = ctx.PD.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);
+  ctx.PD.engine.applyCommand(s, mv);
+  assert.ok(s.prompt && s.prompt.kind === "replaceWindow");
+
+  ctx.PD.engine.applyCommand(s, { kind: "skipReplaceWindow" });
+  assert.equal(s.prompt, null);
+});
+
+test("Phase 09: replaceWindow moveWild does not consume plays and disallows moving into the same set", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
+  const mv = ctx.PD.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);
+  ctx.PD.engine.applyCommand(s, mv);
+  assert.ok(s.prompt && s.prompt.kind === "replaceWindow");
+
+  const playsBefore = s.playsLeft;
+  const mw = ctx.PD.engine.legalMoves(s).find((m) => m.kind === "moveWild");
+  assert.ok(mw, "expected a moveWild move");
+
+  // Same-set destination is disallowed.
+  assert.throws(() => {
+    ctx.PD.engine.applyCommand(s, { ...mw, dest: { p: 0, setI: s.prompt.srcSetI } });
+  }, /replace_same_set/);
+
+  ctx.PD.engine.applyCommand(s, mw);
+  assert.equal(s.playsLeft, playsBefore, "expected moveWild not to consume plays");
+});
+
+test("Phase 09: replaceWindow disallows moving excludeUid", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
+  const mv = ctx.PD.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);
+  ctx.PD.engine.applyCommand(s, mv);
+  assert.ok(s.prompt && s.prompt.kind === "replaceWindow");
+
+  const srcSetI = s.prompt.srcSetI;
+  const excludeUid = s.prompt.excludeUid;
+  const srcSet = s.players[0].sets[srcSetI];
+  const excludeI = srcSet.props.findIndex((t) => t && t[0] === excludeUid);
+  assert.ok(excludeI >= 0, "expected excludeUid to be in the source set");
+
+  assert.throws(() => {
+    ctx.PD.engine.applyCommand(s, {
+      kind: "moveWild",
+      card: { uid: excludeUid, loc: { p: 0, zone: "setProps", setI: srcSetI, i: excludeI } },
+      dest: { p: 0, newSet: true },
+      color: ctx.PD.Color.Orange
+    });
+  }, /replace_exclude/);
+});
+
+test("Phase 09: replaceWindow is not offered when removing a Wild would break source completeness", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
+
+  // Make the source set reach EXACT completion (3) after the play, not overfill (4).
+  s.players[0].sets[0].props.splice(0, 1);
+
+  const mv = ctx.PD.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);
+  assert.ok(mv, "expected playProp into set 0");
+  ctx.PD.engine.applyCommand(s, mv);
+
+  assert.equal(s.prompt, null, "expected no replaceWindow prompt when source would become incomplete");
+});
+
+test("Phase 09: winning after a playProp skips replaceWindow prompt", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
+
+  // Pre-arrange 3 complete sets so that the win is detected after the play.
+  // Complete Magenta set (requiredSize=3).
+  const magI = s.deck.findIndex((u) => ctx.PD.state.defByUid(s, u).id === "prop_magenta");
+  assert.ok(magI >= 0, "expected prop_magenta in deck");
+  const uidMag = s.deck.splice(magI, 1)[0];
+  s.players[0].sets[1].props.push([uidMag, ctx.PD.Color.Magenta]);
+  // Add complete Cyan set (requiredSize=2).
+  const setC = ctx.PD.state.newEmptySet();
+  const cyanI0 = s.deck.findIndex((u) => ctx.PD.state.defByUid(s, u).id === "prop_cyan");
+  assert.ok(cyanI0 >= 0, "expected first prop_cyan in deck");
+  const uidC0 = s.deck.splice(cyanI0, 1)[0];
+  const cyanI1 = s.deck.findIndex((u) => ctx.PD.state.defByUid(s, u).id === "prop_cyan");
+  assert.ok(cyanI1 >= 0, "expected second prop_cyan in deck");
+  const uidC1 = s.deck.splice(cyanI1, 1)[0];
+  setC.props.push([uidC0, ctx.PD.Color.Cyan]);
+  setC.props.push([uidC1, ctx.PD.Color.Cyan]);
+  s.players[0].sets.push(setC);
+
+  const mv = ctx.PD.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);
+  assert.ok(mv, "expected playProp into set 0");
+
+  ctx.PD.engine.applyCommand(s, mv);
+  assert.equal(s.winnerP, 0, "expected win detected");
+  assert.equal(s.prompt, null, "expected replaceWindow skipped on win");
+});
+
+test("Phase 09: replaceWindow can nest during placeReceived and resume remaining received props", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
+
+  // Build a placeReceived prompt using an Orange property (to trigger replaceWindow into set 0)
+  // plus a second arbitrary property to verify resume.
+  const uidOrangeI = s.players[0].hand.findIndex((u) => ctx.PD.state.defByUid(s, u).id === "prop_orange");
+  assert.ok(uidOrangeI >= 0, "expected prop_orange in hand");
+  const uidOrange = s.players[0].hand.splice(uidOrangeI, 1)[0];
+
+  const uidOtherI = s.deck.findIndex((u) => ctx.PD.state.defByUid(s, u).kind === ctx.PD.CardKind.Property);
+  assert.ok(uidOtherI >= 0, "expected a property in deck");
+  const uidOther = s.deck.splice(uidOtherI, 1)[0];
+
+  ctx.PD.state.setPrompt(s, { kind: "placeReceived", p: 0, uids: [uidOrange, uidOther] });
+  assert.ok(s.prompt && s.prompt.kind === "placeReceived");
+
+  const mvRecv = ctx.PD.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.card && m.card.uid === uidOrange && m.dest && m.dest.setI === 0);
+  assert.ok(mvRecv, "expected recvProps play into set 0");
+
+  ctx.PD.engine.applyCommand(s, mvRecv);
+  assert.ok(s.prompt && s.prompt.kind === "replaceWindow", "expected replaceWindow to interrupt placeReceived");
+  assert.ok(s.prompt.resume && s.prompt.resume.kind === "placeReceived");
+  assert.equal(s.prompt.resume.uids.length, 1);
+  assert.equal(s.prompt.resume.uids[0], uidOther);
+
+  // Skip should resume placeReceived with the remaining uid.
+  ctx.PD.engine.applyCommand(s, { kind: "skipReplaceWindow" });
+  assert.ok(s.prompt && s.prompt.kind === "placeReceived", "expected placeReceived resumed");
+  assert.equal(s.prompt.uids.length, 1);
+  assert.equal(s.prompt.uids[0], uidOther);
+});
+
 test("Rent: playRent discards rent card, decrements plays, and creates payDebt prompt for opponent (when payable)", async () => {
   const ctx = await loadSrcIntoVm();
   const state = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });

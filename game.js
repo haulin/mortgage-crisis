@@ -99,7 +99,11 @@ PD.config.ai = {
 
   // Phase 08: weight multiplier for "play Just Say No" response moves.
   // 1 means no bias (equivalent to uniform random).
-  biasPlayJustSayNoK: 8
+  biasPlayJustSayNoK: 8,
+
+  // Phase 09: weight multiplier for "moveWild" replace-window moves (AI willingness).
+  // 1 means no bias (equivalent to uniform random).
+  biasMoveWildK: 8
 };
 
 // Rule-note IDs (Phase 05+). These are small display-only annotations in Inspect.
@@ -838,6 +842,24 @@ PD.state.setPrompt = function (state, prompt) {
     return;
   }
 
+  if (k === "replaceWindow") {
+    // Phase 09: Wild replace-window (optional reposition after property placement).
+    // Keep payload minimal; validate shape via tests (avoid runtime asserts/fallbacks).
+    var resume = prompt.resume;
+    var resumeObj = null;
+    if (resume && String(resume.kind || "") === "placeReceived") {
+      resumeObj = { kind: "placeReceived", uids: resume.uids.slice() };
+    }
+    state.prompt = {
+      kind: k,
+      p: p,
+      srcSetI: Math.floor(prompt.srcSetI),
+      excludeUid: Math.floor(prompt.excludeUid),
+      resume: resumeObj
+    };
+    return;
+  }
+
   throw new Error("unknown_prompt_kind:" + k);
 };
 
@@ -1070,6 +1092,23 @@ PD.engine.locEqZone = function (loc, zone) {
   return !!loc && loc.zone === zone;
 };
 
+PD.rules.rentAmountForColorCount = function (color, nPropsUncapped, hasHouse) {
+  if (color === PD.state.NO_COLOR) return 0;
+  var rules = PD.SET_RULES[color];
+  if (!rules || !rules.rent || rules.rent.length <= 0) return 0;
+
+  var req = rules.requiredSize;
+  var n = nPropsUncapped;
+  if (!(n > 0)) return 0;
+  if (req > 0 && n > req) n = req;
+  if (!(n > 0)) return 0;
+
+  var base = rules.rent[n - 1];
+  var bonus = 0;
+  if (hasHouse && req > 0 && nPropsUncapped >= req) bonus = PD.HOUSE_RENT_BONUS;
+  return base + bonus;
+};
+
 PD.rules.rentAmountForSet = function (state, p, setI) {
   var sets = state.players[p].sets;
   if (setI < 0 || setI >= sets.length) return 0;
@@ -1077,19 +1116,117 @@ PD.rules.rentAmountForSet = function (state, p, setI) {
   if (!set || !set.props || set.props.length <= 0) return 0;
 
   var color = PD.rules.getSetColor(set.props);
-  if (color === PD.state.NO_COLOR) return 0;
-  var rules = PD.SET_RULES[color];
-  if (!rules || !rules.rent || rules.rent.length <= 0) return 0;
+  return PD.rules.rentAmountForColorCount(color, set.props.length, !!set.houseUid);
+};
 
-  var req = rules.requiredSize;
-  var n = set.props.length;
-  if (req > 0 && n > req) n = req;
-  if (n <= 0) return 0;
+PD.rules.replaceWindowEligibleWildLocs = function (state, p, srcSetI, excludeUid) {
+  // Phase 09: replace-window is offered only when we can remove exactly 1 Wild from
+  // the just-played-into set while keeping that source set complete.
+  if (!(p === 0 || p === 1)) return [];
+  var sets = state.players[p] ? state.players[p].sets : null;
+  if (!sets || srcSetI < 0 || srcSetI >= sets.length) return [];
+  var set = sets[srcSetI];
+  if (!set || !set.props || set.props.length <= 0) return [];
 
-  var base = rules.rent[n - 1];
-  var bonus = 0;
-  if (set.houseUid && req > 0 && set.props.length >= req) bonus = PD.HOUSE_RENT_BONUS;
-  return base + bonus;
+  var srcColor = PD.rules.getSetColor(set.props);
+  if (srcColor === PD.state.NO_COLOR) return [];
+  var req = PD.SET_RULES[srcColor].requiredSize;
+  if (!(req > 0)) return [];
+
+  // Need to still be complete after removing exactly 1 property.
+  if ((set.props.length - 1) < req) return [];
+
+  var out = [];
+  var props = set.props;
+  var i;
+  for (i = 0; i < props.length; i++) {
+    var tup = props[i];
+    if (!tup) continue;
+    var uid = tup[0];
+    if (uid === excludeUid) continue;
+    var def = PD.state.defByUid(state, uid);
+    if (!PD.rules.isWildDef(def)) continue;
+    out.push({ uid: uid, loc: { p: p, zone: "setProps", setI: srcSetI, i: i } });
+  }
+  return out;
+};
+
+PD.rules.replaceWindowDestinations = function (state, p, srcSetI, placedColor) {
+  // Destinations: other matching-color sets (in setI order) plus newSet (last).
+  if (!(p === 0 || p === 1)) return [{ p: p, newSet: true }];
+  var sets = state.players[p] ? state.players[p].sets : null;
+  if (!sets) return [{ p: p, newSet: true }];
+  var out = [];
+  var si;
+  for (si = 0; si < sets.length; si++) {
+    if (si === srcSetI) continue;
+    var set = sets[si];
+    var col = PD.rules.getSetColor(set ? set.props : null);
+    if (col === PD.state.NO_COLOR) continue;
+    if (col !== placedColor) continue;
+    out.push({ p: p, setI: si });
+  }
+  out.push({ p: p, newSet: true });
+  return out;
+};
+
+PD.rules.replaceWindowValidateMove = function (state, prompt, cmdMove, actorP) {
+  if (!cmdMove || cmdMove.kind !== "moveWild") return { ok: false, err: "bad_cmd" };
+  var card = cmdMove.card;
+  var dest = cmdMove.dest;
+  if (!card || !card.loc || !dest) return { ok: false, err: "bad_cmd" };
+  if (card.loc.p !== actorP) return { ok: false, err: "not_your_card" };
+  if (String(card.loc.zone || "") !== "setProps") return { ok: false, err: "bad_loc" };
+
+  var srcSetI = prompt.srcSetI;
+  if (card.loc.setI !== srcSetI) return { ok: false, err: "bad_src_set" };
+  var uid = card.uid;
+  if (uid === prompt.excludeUid) return { ok: false, err: "replace_exclude" };
+
+  var sets = state.players[actorP] ? state.players[actorP].sets : null;
+  if (!sets || srcSetI < 0 || srcSetI >= sets.length) return { ok: false, err: "bad_set" };
+  var srcSet = sets[srcSetI];
+  if (!srcSet || !srcSet.props) return { ok: false, err: "bad_set" };
+
+  var pi = card.loc.i;
+  if (!srcSet.props[pi] || srcSet.props[pi][0] !== uid) return { ok: false, err: "bad_loc" };
+
+  var def = PD.state.defByUid(state, uid);
+  if (!PD.rules.isWildDef(def)) return { ok: false, err: "not_wild" };
+
+  var placedColor = cmdMove.color;
+  if (!PD.rules.wildAllowsColor(def, placedColor)) return { ok: false, err: "wild_color_illegal" };
+
+  // Source must remain complete after removing exactly 1 property.
+  var srcColor = PD.rules.getSetColor(srcSet.props);
+  if (srcColor === PD.state.NO_COLOR) return { ok: false, err: "empty_set" };
+  var req = PD.SET_RULES[srcColor].requiredSize;
+  if (!((srcSet.props.length - 1) >= req)) return { ok: false, err: "replace_src_incomplete" };
+
+  // Destination: other set (matching color) or new set.
+  var destSetI = -1;
+  var isNewSet = !!dest.newSet;
+  if (isNewSet) {
+    destSetI = sets.length;
+  } else {
+    destSetI = dest.setI;
+    if (destSetI === srcSetI) return { ok: false, err: "replace_same_set" };
+    if (destSetI < 0 || destSetI >= sets.length) return { ok: false, err: "bad_set" };
+    var setExisting = sets[destSetI];
+    var setColor = PD.rules.getSetColor(setExisting ? setExisting.props : null);
+    if (setColor === PD.state.NO_COLOR) return { ok: false, err: "empty_set" };
+    if (setColor !== placedColor) return { ok: false, err: "set_color_mismatch" };
+  }
+
+  return {
+    ok: true,
+    uid: uid,
+    srcSetI: srcSetI,
+    srcI: pi,
+    destSetI: destSetI,
+    isNewSet: isNewSet,
+    placedColor: placedColor
+  };
 };
 
 PD.engine.removeHandAtLoc = function (state, card) {
@@ -1159,6 +1296,23 @@ PD.engine.applyCommand = function (state, cmd) {
       var hasHouse = !!set.houseUid;
       if (nProps === 0 && !hasHouse) sets.splice(i, 1);
     }
+  }
+
+  function tryBeginReplaceWindow(actorP, srcSetI, excludeUid, resume) {
+    // Phase 09: after placing a property into a set, optionally allow moving one Wild
+    // out of that same set (excluding the just-played card), but only if the source
+    // set remains complete after removal.
+    if (state.winnerP !== PD.state.NO_WINNER) return false;
+    var elig = PD.rules.replaceWindowEligibleWildLocs(state, actorP, srcSetI, excludeUid);
+    if (!elig || elig.length === 0) return false;
+    PD.state.setPrompt(state, {
+      kind: "replaceWindow",
+      p: actorP,
+      srcSetI: srcSetI,
+      excludeUid: excludeUid,
+      resume: resume || null
+    });
+    return true;
   }
 
   function applySlySteal(fromP, target) {
@@ -1374,13 +1528,21 @@ PD.engine.applyCommand = function (state, cmd) {
         to: { p: p, zone: "setProps", setI: setI, i: setT.props.length - 1 }
       });
 
-      if (prompt.uids.length === 0) PD.state.clearPrompt(state);
-
       var winner = PD.rules.evaluateWin(state);
       if (winner !== PD.state.NO_WINNER) {
         state.winnerP = winner;
         events.push({ kind: "win", winnerP: winner });
+        // Winner: skip replace-window and let UI suppress prompts.
+        if (prompt.uids.length === 0) PD.state.clearPrompt(state);
+        return;
       }
+
+      // Phase 09: offer replace-window after each received placement (then resume).
+      var resume = (prompt.uids.length > 0) ? { kind: "placeReceived", uids: prompt.uids.slice() } : null;
+      var started = tryBeginReplaceWindow(p, setI, uid, resume);
+      if (started) return;
+
+      if (prompt.uids.length === 0) PD.state.clearPrompt(state);
     }
 
     if (prompt.kind === "payDebt") {
@@ -1400,6 +1562,68 @@ PD.engine.applyCommand = function (state, cmd) {
     }
     if (prompt.kind === "placeReceived") {
       if (cmd.kind === "playProp") { applyPlaceReceived(cmd); return { events: events }; }
+      throw new Error("prompt_active");
+    }
+    if (prompt.kind === "replaceWindow") {
+      function resumeOrClearReplaceWindow() {
+        if (prompt.resume && String(prompt.resume.kind || "") === "placeReceived") {
+          PD.state.setPrompt(state, { kind: "placeReceived", p: p, uids: prompt.resume.uids.slice() });
+        } else {
+          PD.state.clearPrompt(state);
+        }
+      }
+
+      function applySkipReplaceWindow() {
+        resumeOrClearReplaceWindow();
+        events.push({ kind: "replaceSkip", p: p });
+      }
+
+      function applyMoveWild(cmdMove) {
+        var v = PD.rules.replaceWindowValidateMove(state, prompt, cmdMove, p);
+        if (!v.ok) throw new Error(v.err);
+
+        var uid = v.uid;
+        var srcSetI = v.srcSetI;
+        var pi = v.srcI;
+        var destSetI = v.destSetI;
+        var isNewSet = v.isNewSet;
+        var placedColor = v.placedColor;
+
+        var sets = state.players[p].sets;
+        var srcSet = sets[srcSetI];
+
+        // Apply the move (mutating state) now that validation has passed.
+        srcSet.props.splice(pi, 1);
+        if (isNewSet) {
+          var newSet = PD.state.newEmptySet();
+          sets.push(newSet);
+          events.push({ kind: "createSet", p: p, setI: destSetI, color: placedColor });
+        }
+
+        var destSet = sets[destSetI];
+        destSet.props.push([uid, placedColor]);
+        events.push({
+          kind: "moveWild",
+          p: p,
+          uid: uid,
+          from: { p: p, zone: "setProps", setI: srcSetI, i: pi },
+          to: { p: p, zone: "setProps", setI: destSetI, i: destSet.props.length - 1 },
+          color: placedColor
+        });
+
+        var winner = PD.rules.evaluateWin(state);
+        if (winner !== PD.state.NO_WINNER) {
+          state.winnerP = winner;
+          events.push({ kind: "win", winnerP: winner });
+          PD.state.clearPrompt(state);
+          return;
+        }
+
+        resumeOrClearReplaceWindow();
+      }
+
+      if (cmd.kind === "skipReplaceWindow") { applySkipReplaceWindow(); return { events: events }; }
+      if (cmd.kind === "moveWild") { applyMoveWild(cmd); return { events: events }; }
       throw new Error("prompt_active");
     }
     throw new Error("prompt_active");
@@ -1478,7 +1702,11 @@ PD.engine.applyCommand = function (state, cmd) {
     if (winner !== PD.state.NO_WINNER) {
       state.winnerP = winner;
       events.push({ kind: "win", winnerP: winner });
+      return;
     }
+
+    // Phase 09: offer replace-window after each property play into a set.
+    tryBeginReplaceWindow(p, setI, uid, null);
   }
 
   function applyPlayHouse(cmdHouse) {
@@ -1755,6 +1983,37 @@ PD.engine.legalMoves = function (state) {
       }
       return outR;
     }
+    if (pr.kind === "replaceWindow") {
+      var pW = pr.p;
+      var outW = [{ kind: "skipReplaceWindow" }];
+      var srcSetI = pr.srcSetI;
+      var excludeUid = pr.excludeUid;
+      var elig = PD.rules.replaceWindowEligibleWildLocs(state, pW, srcSetI, excludeUid);
+      var iW;
+      for (iW = 0; iW < elig.length; iW++) {
+        var e = elig[iW];
+        if (!e || !e.loc) continue;
+        var uidW = e.uid;
+        var defW = PD.state.defByUid(state, uidW);
+        if (!PD.rules.isWildDef(defW)) continue;
+
+        var c0 = defW.wildColors[0];
+        var c1 = defW.wildColors[1];
+        var cardRef = { uid: uidW, loc: e.loc };
+
+        function pushMovesForColor(col) {
+          var dests = PD.rules.replaceWindowDestinations(state, pW, srcSetI, col);
+          var di;
+          for (di = 0; di < dests.length; di++) {
+            outW.push({ kind: "moveWild", card: cardRef, dest: dests[di], color: col });
+          }
+        }
+
+        pushMovesForColor(c0);
+        pushMovesForColor(c1);
+      }
+      return outW;
+    }
     return [];
   }
 
@@ -1904,6 +2163,8 @@ PD.scenarios.applyScenario = function (state, scenarioId) {
 
 // Scenario registry (single source of truth).
 PD.scenarios.IDS = [
+  // Phase 09
+  "replaceWindow",
   "placeBasic",
   "wildBasic",
   "houseBasic",
@@ -1920,6 +2181,7 @@ PD.scenarios.IDS = [
 
 // Optional metadata for debug UI / docs.
 PD.scenarios.INFO = {
+  replaceWindow: { title: "Replace-window", desc: "Phase 09: play into an overfill-complete set so the replace-window prompt is offered (move a Wild out of the just-played-into set)." },
   placeBasic: { title: "Place (basic)", desc: "Fixed property placement + Rent play-test (opponent has a small bank payable)." },
   wildBasic: { title: "Wild (basic)", desc: "Wild property placement + discard depth demo." },
   houseBasic: { title: "House (basic)", desc: "Build House on complete set only." },
@@ -1932,6 +2194,27 @@ PD.scenarios.INFO = {
 };
 
 PD.scenarios._applyById = {
+  replaceWindow: function (state) {
+    // Source set (Orange, complete=3) includes a Wild not being played this turn.
+    // Playing one more Orange into this set makes it overfilled (4), enabling replace-window:
+    // moving exactly 1 Wild out still leaves the source set complete (3).
+    var setSrc = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setSrc, "prop_orange", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setSrc, "prop_orange", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setSrc, "wild_mo", PD.Color.Orange);
+    state.players[0].sets.push(setSrc);
+
+    // Destination set (Magenta, 2/3) so moving the Wild as Magenta can complete it.
+    var setM = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setM, "prop_magenta", PD.state.NO_COLOR);
+    PD.scenarios.setAddPropByDefId(state, setM, "prop_magenta", PD.state.NO_COLOR);
+    state.players[0].sets.push(setM);
+
+    // Hand: play Orange into the source set to trigger replace-window.
+    state.players[0].hand.push(PD.state.takeUid(state, "prop_orange"));
+    state.players[0].hand.push(PD.state.takeUid(state, "money_1"));
+  },
+
   placeBasic: function (state) {
     // P0 has 2 orange properties + $1. P0 also has an existing Orange set with 1 property.
     var setO = PD.state.newEmptySet();
@@ -2228,6 +2511,33 @@ PD.moves.placeCmdsForUid = function (state, uid, def, wildColor) {
   return existing.concat(newSet);
 };
 
+PD.moves.defaultWildColorForMoveWild = function (state, uid, def, loc) {
+  if (!def || !PD.rules.isWildDef(def)) return PD.state.NO_COLOR;
+  if (loc && String(loc.zone || "") === "setProps" && loc.p != null && loc.setI != null && loc.i != null) {
+    var sets = state.players[loc.p] ? state.players[loc.p].sets : null;
+    var set = sets ? sets[loc.setI] : null;
+    var props = set ? set.props : null;
+    if (props && props[loc.i] && props[loc.i][0] === uid) return props[loc.i][1];
+  }
+  // Fallback: same default heuristic as Place (favor a color with existing-set destinations).
+  return PD.moves.defaultWildColorForPlace(state, uid, def);
+};
+
+PD.moves.moveWildCmdsForUid = function (state, uid, def, wildColor) {
+  var moves = PD.engine.legalMoves(state);
+  var cmds = [];
+  var i;
+  var isWild = !!(def && PD.rules.isWildDef(def));
+  for (i = 0; i < moves.length; i++) {
+    var mv = moves[i];
+    if (!mv || mv.kind !== "moveWild") continue;
+    if (!mv.card || mv.card.uid !== uid) continue;
+    if (isWild && mv.color !== wildColor) continue;
+    cmds.push(mv);
+  }
+  return cmds;
+};
+
 PD.moves.buildCmdsForUid = function (state, uid) {
   var moves = PD.engine.legalMoves(state);
   var buildMoves = [];
@@ -2336,6 +2646,20 @@ PD.moves.cmdsForTargeting = function (state, kind, uid, loc) {
     return out;
   }
 
+  if (kind === "moveWild") {
+    var defW = PD.state.defByUid(state, uid);
+    if (defW && PD.rules.isWildDef(defW)) {
+      out.wildColor = PD.moves.defaultWildColorForMoveWild(state, uid, defW, loc);
+      out.cmds = PD.moves.moveWildCmdsForUid(state, uid, defW, out.wildColor);
+    } else {
+      out.wildColor = PD.state.NO_COLOR;
+      out.cmds = PD.moves.moveWildCmdsForUid(state, uid, defW, PD.state.NO_COLOR);
+    }
+    // Replace-window moveWild targeting originates from setProps; still allow cancel via Source for consistency.
+    out.cmds.push({ kind: "source" });
+    return out;
+  }
+
   return null;
 };
 
@@ -2350,6 +2674,11 @@ PD.moves.cmdsForTargeting = function (state, kind, uid, loc) {
 PD.moves.destForCmd = function (cmd) {
   if (!cmd || !cmd.kind) return null;
   if (cmd.kind === "playProp") {
+    if (cmd.dest && cmd.dest.newSet) return { kind: "newSet", p: cmd.dest.p };
+    if (cmd.dest && cmd.dest.setI != null) return { kind: "setEnd", p: cmd.dest.p, setI: cmd.dest.setI };
+    return null;
+  }
+  if (cmd.kind === "moveWild") {
     if (cmd.dest && cmd.dest.newSet) return { kind: "newSet", p: cmd.dest.p };
     if (cmd.dest && cmd.dest.setI != null) return { kind: "setEnd", p: cmd.dest.p, setI: cmd.dest.setI };
     return null;
@@ -2417,6 +2746,52 @@ PD.ai.policies = {
       if (move && move.kind === "playJustSayNo") return k;
       return 1;
     }
+  },
+
+  biasMoveWild: {
+    id: "biasMoveWild",
+    weight: function (state, move) {
+      // Phase 09: simple heuristic for replace-window Wild repositioning.
+      // Prefer moves that complete a set, then maximize rent delta on existing sets.
+      // Tuning knob lives in config.
+      var k = PD.config.ai.biasMoveWildK;
+      if (!move || move.kind !== "moveWild") return 1;
+      if (!(k > 1)) k = 1;
+
+      var dest = move.dest;
+      if (!dest) return 1;
+      // New set: treat as neutral by default (can be strategically risky vs Sly Deal).
+      if (dest.newSet) return 1;
+      if (dest.setI == null) return 1;
+
+      var card = move.card;
+      var loc = card && card.loc ? card.loc : null;
+      var p = (loc && loc.p != null) ? loc.p : state.activeP;
+      var setI = dest.setI;
+      var sets = state.players[p] ? state.players[p].sets : null;
+      if (!sets || setI < 0 || setI >= sets.length) return 1;
+      var set = sets[setI];
+      if (!set || !set.props || set.props.length <= 0) return 1;
+
+      var color = PD.rules.getSetColor(set.props);
+      if (color === PD.state.NO_COLOR) return 1;
+      var rules = PD.SET_RULES[color];
+      if (!rules || !(rules.requiredSize > 0)) return 1;
+      var req = rules.requiredSize;
+
+      var nBefore = set.props.length;
+      var nAfterUncapped = nBefore + 1;
+      var completes = (nAfterUncapped >= req);
+
+      // Compute rent before/after (rent caps at required size).
+      var rentBefore = PD.rules.rentAmountForSet(state, p, setI);
+      var rentAfter = PD.rules.rentAmountForColorCount(color, nAfterUncapped, !!set.houseUid);
+
+      var delta = rentAfter - rentBefore;
+      if (completes) return k * 20;
+      if (delta > 0) return k * (1 + delta);
+      return 1;
+    }
   }
 };
 
@@ -2445,7 +2820,8 @@ PD.ai.composePolicies = function (id, policyIds) {
 PD.ai.policies.defaultHeuristic = PD.ai.composePolicies("defaultHeuristic", [
   "biasExistingSet",
   "biasPlayRent",
-  "biasPlayJustSayNo"
+  "biasPlayJustSayNo",
+  "biasMoveWild"
 ]);
 
 PD.ai.pickMove = function (state, moves, policy) {
@@ -2509,6 +2885,8 @@ PD.ai.describeCmd = function (state, cmd) {
   if (k === "playSlyDeal") return "Opponent: Sly Deal";
   if (k === "respondPass") return "Opponent: Allow";
   if (k === "playJustSayNo") return "Opponent: Just Say No";
+  if (k === "skipReplaceWindow") return "Opponent: Skip";
+  if (k === "moveWild") return "Opponent: Move Wild";
   if (k === "playHouse") return "Opponent: Build";
   if (k === "playProp") {
     var dl = PD.fmt.destLabelForCmd(state, cmd);
@@ -2655,6 +3033,7 @@ PD.fmt.targetingTitle = function (targeting, cmd) {
 
   if (tKind === "build") return "Build";
   if (tKind === "place") return "Place";
+  if (tKind === "moveWild") return "Place";
   if (tKind === "rent") return "Rent";
   if (tKind === "sly") return "Sly Deal";
   if (tKind === "quick") return titleForCmd(cmd);
@@ -2675,6 +3054,18 @@ PD.fmt.targetingDestLine = function (state, targeting, cmd) {
     }
     if (t && t.card && t.card.def && PD.rules.isWildDef(t.card.def)) out += "\nAs: " + PD.fmt.colorName(t.wildColor);
     return out || "(no destination)";
+  }
+
+  if (k === "moveWild") {
+    var outW = "";
+    if (cmd.dest && cmd.dest.newSet) outW = "Dest: New set";
+    else if (cmd.dest && cmd.dest.setI != null) {
+      var setW = state.players[cmd.dest.p].sets[cmd.dest.setI];
+      var colW = setW ? PD.rules.getSetColor(setW.props) : PD.state.NO_COLOR;
+      outW = "Dest: " + PD.fmt.colorName(colW) + " set";
+    }
+    if (t && t.card && t.card.def && PD.rules.isWildDef(t.card.def)) outW += "\nAs: " + PD.fmt.colorName(t.wildColor);
+    return outW || "(no destination)";
   }
 
   if (k === "playHouse") {
@@ -3480,7 +3871,7 @@ PD.layout.playerForRow = function (row) {
     var y = maxBtnY - 7; // 6px font + 1
     var yPhase = y - 7;
     if (yPhase < 0) yPhase = 0;
-    printSafe("Phase 08", x, yPhase, cfg.hudLineCol);
+    printSafe("Phase 09", x, yPhase, cfg.hudLineCol);
     printSafe("Y:Mode", x, y, cfg.hudLineCol);
   }
 
@@ -3651,7 +4042,32 @@ PD.layout.playerForRow = function (row) {
     var itemsForStacks = rowModel.items;
     if (overlayItems && overlayItems.length) itemsForStacks = itemsForStacks.concat(overlayItems);
 
+    // Hide the source card when UI wants to represent its slot as a ghost/preview.
+    var hideSrc = (computed && computed.meta && computed.meta.hideSrc) ? computed.meta.hideSrc : null;
+
     if (row === R.ROW_OP_TABLE || row === R.ROW_P_TABLE) {
+      // When targeting moveWild, hide the source card in the table stack to avoid duplicating it
+      // at both the source and preview destination.
+      var selT = selected;
+      if (hideSrc && hideSrc.loc && String(hideSrc.loc.zone) === "setProps") {
+        // Remove the hidden card from the draw list.
+        var outItems = [];
+        for (i = 0; i < itemsForStacks.length; i++) {
+          var itHid = itemsForStacks[i];
+          if (!itHid || !itHid.loc) { outItems.push(itHid); continue; }
+          if (itHid.uid === hideSrc.uid && itHid.loc.p === hideSrc.loc.p && String(itHid.loc.zone) === "setProps" && itHid.loc.setI === hideSrc.loc.setI && itHid.loc.i === hideSrc.loc.i) {
+            continue;
+          }
+          outItems.push(itHid);
+        }
+        itemsForStacks = outItems;
+
+        // Also suppress highlight if the selected item is the hidden one.
+        if (selT && selT.loc && selT.uid === hideSrc.uid && selT.loc.p === hideSrc.loc.p && String(selT.loc.zone) === "setProps" && selT.loc.setI === hideSrc.loc.setI && selT.loc.i === hideSrc.loc.i) {
+          selT = null;
+        }
+      }
+
       // Table rows must be drawn by stack depth (bottom->top), not x-order,
       // otherwise fan-left stacks layer incorrectly.
       var grouped = groupStacksByKey(itemsForStacks, cam);
@@ -3664,15 +4080,15 @@ PD.layout.playerForRow = function (row) {
         var key = keys[si];
         var cards = byKey[key];
         var fanDir = (cards.length > 0 && cards[0].fanDir != null) ? cards[0].fanDir : (flipCards ? -1 : 1);
-        drawFannedStack(cards, { state: state, fanDir: fanDir, flip180: !!flipCards, camX: cam, selectedItem: selected, drawSelected: false, highlightCol: highlightCol });
+        drawFannedStack(cards, { state: state, fanDir: fanDir, flip180: !!flipCards, camX: cam, selectedItem: selT, drawSelected: false, highlightCol: highlightCol });
       }
 
       // Selected last + highlight.
-      if (selected) {
-        var sFan = (selected.fanDir != null) ? selected.fanDir : (flipCards ? -1 : 1);
-        var sk = String(selected.stackKey);
-        var stack = byKey[sk] || [selected];
-        drawFannedStack(stack, { state: state, fanDir: sFan, flip180: !!flipCards, camX: cam, selectedItem: selected, onlySelected: true, highlightCol: highlightCol });
+      if (selT) {
+        var sFan = (selT.fanDir != null) ? selT.fanDir : (flipCards ? -1 : 1);
+        var sk = String(selT.stackKey);
+        var stack = byKey[sk] || [selT];
+        drawFannedStack(stack, { state: state, fanDir: sFan, flip180: !!flipCards, camX: cam, selectedItem: selT, onlySelected: true, highlightCol: highlightCol });
       }
       return;
     }
@@ -3681,9 +4097,6 @@ PD.layout.playerForRow = function (row) {
     var groupedH = groupStacksByKey(itemsForStacks, cam);
     var byKeyH = groupedH.byKey;
     var keysH = groupedH.keys;
-
-    // Hide the source card when UI wants to represent its slot as a ghost/preview.
-    var hideSrc = (computed && computed.meta && computed.meta.hideSrc) ? computed.meta.hideSrc : null;
 
     // Draw non-bank hand items in x-order first.
     for (i = 0; i < rowModel.items.length; i++) {
@@ -4011,6 +4424,8 @@ PD.ui.syncPromptToast = function (state, view) {
     }
   } else if (pr.kind === "placeReceived") {
     txt = "Place received properties: " + pr.uids.length;
+  } else if (pr.kind === "replaceWindow") {
+    txt = "Move a Wild? A: move  B: skip";
   } else if (pr.kind === "respondAction") {
     // Phase 08: Sly Deal response prompt.
     var col = PD.state.NO_COLOR;
@@ -4128,6 +4543,25 @@ PD.ui.findBestCursorTarget = function (models, rowOrder, predicate) {
     }
   }
   return null;
+};
+
+PD.ui.pickReplaceWindowWild = function (state, computed) {
+  var pr = state ? state.prompt : null;
+  if (!pr || String(pr.kind || "") !== "replaceWindow" || pr.p !== 0) return null;
+  var models = computed ? computed.models : null;
+  if (!models) return null;
+
+  var srcSetI = pr.srcSetI;
+  var excludeUid = pr.excludeUid;
+  return PD.ui.findBestCursorTarget(models, [PD.render.ROW_P_TABLE], function (it) {
+    if (!it || it.kind !== "setProp" || !it.loc) return false;
+    if (it.loc.p !== 0) return false;
+    if (it.loc.zone !== "setProps") return false;
+    if (it.loc.setI !== srcSetI) return false;
+    if (it.uid === excludeUid) return false;
+    var def = PD.state.defByUid(state, it.uid);
+    return !!(def && PD.rules.isWildDef(def));
+  });
 };
 
 PD.ui.cursorMoveTo = function (view, pick) {
@@ -4814,6 +5248,15 @@ PD.ui.computeRowModels = function (state, view) {
       return;
     }
 
+    if (k === "moveWild") {
+      var slotW = slotForCmd(cmd, srcSlot);
+      if (!slotW) return;
+      var colW = null;
+      if (def && PD.rules.isWildDef(def)) colW = (cmd.color != null) ? cmd.color : wildColor;
+      setFocus(slotW, uid, colW, "moveWild");
+      return;
+    }
+
     if (k === "playHouse") {
       var slotH = slotForCmd(cmd, srcSlot);
       if (!slotH) return;
@@ -4863,29 +5306,41 @@ PD.ui.computeRowModels = function (state, view) {
 
     // Find source slot in models (for hold-targeting Source destination).
     var srcX = null, srcY = null, srcRow = null;
-    if (t.card && t.card.loc && (t.card.loc.zone === "hand" || t.card.loc.zone === "recvProps")) {
+    if (t.card && t.card.uid && t.card.loc) {
       var srcLoc = t.card.loc;
-      var rowHand = PD.render.ROW_P_HAND;
-      var rmHand = models[rowHand];
-      if (rmHand && rmHand.items) {
-        var hi;
-        for (hi = 0; hi < rmHand.items.length; hi++) {
-          var itH = rmHand.items[hi];
-          if (!itH || itH.kind !== "hand" || !itH.loc) continue;
-          if (itH.loc.p !== srcLoc.p) continue;
-          if (String(itH.loc.zone) !== String(srcLoc.zone)) continue;
-          if (itH.loc.i !== srcLoc.i) continue;
-          if (itH.uid !== t.card.uid) continue;
-          srcX = itH.x;
-          srcY = itH.y;
-          srcRow = rowHand;
-          break;
+      var z = String(srcLoc.zone || "");
+      if (z === "hand" || z === "recvProps") {
+        var rowHand = PD.render.ROW_P_HAND;
+        var rmHand = models[rowHand];
+        if (rmHand && rmHand.items) {
+          var hi;
+          for (hi = 0; hi < rmHand.items.length; hi++) {
+            var itH = rmHand.items[hi];
+            if (!itH || itH.kind !== "hand" || !itH.loc) continue;
+            if (itH.loc.p !== srcLoc.p) continue;
+            if (String(itH.loc.zone) !== String(srcLoc.zone)) continue;
+            if (itH.loc.i !== srcLoc.i) continue;
+            if (itH.uid !== t.card.uid) continue;
+            srcX = itH.x;
+            srcY = itH.y;
+            srcRow = rowHand;
+            break;
+          }
+        }
+      } else {
+        // Generic fallback: locate source in current models (supports setProps moveWild targeting).
+        var itSrc = findItemByUidLoc(t.card.uid, srcLoc);
+        if (itSrc) {
+          srcX = itSrc.x;
+          srcY = itSrc.y;
+          srcRow = itSrc.row;
         }
       }
     }
 
     // While targeting, hide the source card so the source slot can be represented by a ghost/preview.
-    if (!isSly || !isSourceSel) if (t.card && t.card.uid && t.card.loc && (t.card.loc.zone === "hand" || t.card.loc.zone === "recvProps")) {
+    // Exception: when the selected destination is Source, show the real source card + normal highlight.
+    if (!isSourceSel) if (t.card && t.card.uid && t.card.loc && (t.card.loc.zone === "hand" || t.card.loc.zone === "recvProps" || t.card.loc.zone === "setProps")) {
       meta.hideSrc = { uid: t.card.uid, loc: t.card.loc };
     }
 
@@ -4927,9 +5382,12 @@ PD.ui.computeRowModels = function (state, view) {
         pushGhost(slotForCmd(c, srcSlot));
       }
 
-      // Preview-in-stack for selected destination.
+      // Preview-in-stack for selected destination. If Source is selected, rely on the real card + highlight
+      // (otherwise we would double-render the same card at the same position).
       var cmdSel = cmds[cmdI];
-      setFocusForCmd(cmdSel, srcSlot, { uid: (t.card && t.card.uid) ? t.card.uid : 0, def: (t.card && t.card.def) ? t.card.def : null, wildColor: t.wildColor });
+      if (cmdSel && cmdSel.kind !== "source") {
+        setFocusForCmd(cmdSel, srcSlot, { uid: (t.card && t.card.uid) ? t.card.uid : 0, def: (t.card && t.card.def) ? t.card.def : null, wildColor: t.wildColor });
+      }
 
       // If the selected destination previews the same uid elsewhere, ensure the source slot is still readable.
       // (This keeps menu-targeting and recvProps placement consistent with hold-targeting: source becomes a ghost.)
@@ -5123,6 +5581,7 @@ PD.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
   t.kind = String(kind || "");
   t._slySorted = false;
   t._slySyncCmdI = -1;
+  t._moveWildSorted = false;
   t.hold = !!hold;
   t.cmds = [];
   t.cmdI = 0;
@@ -5154,7 +5613,7 @@ PD.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
 PD.ui.targetingRetargetWild = function (state, view, dir) {
   if (!view || !view.targeting || !view.targeting.active) return;
   var t = view.targeting;
-  if (t.kind !== "place") return;
+  if (!(t.kind === "place" || t.kind === "moveWild")) return;
   if (!t.card || !t.card.def || !PD.rules.isWildDef(t.card.def)) return;
 
   var def = t.card.def;
@@ -5170,11 +5629,18 @@ PD.ui.targetingRetargetWild = function (state, view, dir) {
   var keepSource = !!(prevCmd && prevCmd.kind === "source");
 
   var uid = t.card.uid;
-  var cmds = PD.moves.placeCmdsForUid(state, uid, def, nextColor);
-  if (PD.moves.locAllowsSource(t.card ? t.card.loc : null)) cmds.push({ kind: "source" });
+  var cmds = [];
+  if (t.kind === "place") {
+    cmds = PD.moves.placeCmdsForUid(state, uid, def, nextColor);
+    if (PD.moves.locAllowsSource(t.card ? t.card.loc : null)) cmds.push({ kind: "source" });
+  } else {
+    cmds = PD.moves.moveWildCmdsForUid(state, uid, def, nextColor);
+    cmds.push({ kind: "source" });
+  }
 
   t.wildColor = nextColor;
   t.cmds = cmds;
+  t._moveWildSorted = false;
 
   // Preserve selection if possible.
   var selI = 0;
@@ -5217,7 +5683,7 @@ PD.ui.step = function (state, view, actions) {
   if (!gameOver && promptForP0) {
     var k = pr && pr.kind ? String(pr.kind) : "";
     // Phase 06: allow overlays during recipient placement prompt.
-    var allowOverlays = (k === "placeReceived");
+    var allowOverlays = (k === "placeReceived" || k === "replaceWindow");
     if (!allowOverlays) {
       // Prompts override overlays.
       if (view.mode === "menu") { view.menu.items = []; }
@@ -5469,31 +5935,46 @@ PD.ui.step = function (state, view, actions) {
       return (pick.item.x - cam);
     }
 
+    function sortCmdsByScreenX(cmds, rankFn, screenXFn, tieCmp) {
+      if (!cmds || cmds.length <= 1) return cmds;
+      var out = cmds.slice();
+      out.sort(function (a, b) {
+        var ar = rankFn ? rankFn(a) : 0;
+        var br = rankFn ? rankFn(b) : 0;
+        var dr = ar - br;
+        if (dr) return dr;
+        var ax = screenXFn ? screenXFn(a) : 0;
+        var bx = screenXFn ? screenXFn(b) : 0;
+        var dx = ax - bx;
+        if (dx) return dx;
+        return tieCmp ? tieCmp(a, b) : 0;
+      });
+      return out;
+    }
+
     function slyEnsureSorted() {
       if (t.kind !== "sly") return;
       if (t._slySorted) return;
       if (!t.cmds || t.cmds.length === 0) return;
 
       // Sort targets by screen-space X (left->right). Keep source last.
-      var cmds = t.cmds.slice();
-      cmds.sort(function (a, b) {
-        if (a && a.kind === "source") return 1;
-        if (b && b.kind === "source") return -1;
-        var ax = slyCmdScreenX(a);
-        var bx = slyCmdScreenX(b);
-        var d = ax - bx;
-        if (d) return d;
-        // Stable tie-breaker by setI/i.
-        var al = (a && a.target && a.target.loc) ? a.target.loc : null;
-        var bl = (b && b.target && b.target.loc) ? b.target.loc : null;
-        var asi = al && al.setI != null ? al.setI : 9999;
-        var bsi = bl && bl.setI != null ? bl.setI : 9999;
-        var di = asi - bsi;
-        if (di) return di;
-        var api = al && al.i != null ? al.i : 9999;
-        var bpi = bl && bl.i != null ? bl.i : 9999;
-        return api - bpi;
-      });
+      var cmds = sortCmdsByScreenX(
+        t.cmds,
+        function (c) { return (c && c.kind === "source") ? 1 : 0; },
+        slyCmdScreenX,
+        function (a, b) {
+          // Stable tie-breaker by setI/i.
+          var al = (a && a.target && a.target.loc) ? a.target.loc : null;
+          var bl = (b && b.target && b.target.loc) ? b.target.loc : null;
+          var asi = al && al.setI != null ? al.setI : 9999;
+          var bsi = bl && bl.setI != null ? bl.setI : 9999;
+          var di = asi - bsi;
+          if (di) return di;
+          var api = al && al.i != null ? al.i : 9999;
+          var bpi = bl && bl.i != null ? bl.i : 9999;
+          return api - bpi;
+        }
+      );
       t.cmds = cmds;
       // Default to first real target if possible.
       if (t.cmds.length > 0 && t.cmds[0] && t.cmds[0].kind === "source" && t.cmds.length > 1) t.cmdI = 1;
@@ -5515,6 +5996,65 @@ PD.ui.step = function (state, view, actions) {
     }
 
     slyEnsureSorted();
+
+    function moveWildCmdScreenX(cmdW) {
+      if (!cmdW || !cmdW.kind || cmdW.kind !== "moveWild") return 999999;
+      if (cmdW.dest && cmdW.dest.newSet) return 999999;
+      var setI = (cmdW.dest && cmdW.dest.setI != null) ? cmdW.dest.setI : null;
+      if (setI == null) return 999999;
+      var rmT = computed.models[PD.render.ROW_P_TABLE];
+      var st = (rmT && rmT.stacks) ? rmT.stacks["set:p0:set" + setI] : null;
+      if (!st) return 999999;
+      var x = st.x0 + st.nReal * st.stride * st.fanDir;
+      var cam = view.camX[PD.render.ROW_P_TABLE];
+      return x - cam;
+    }
+
+    function moveWildEnsureSorted() {
+      if (t.kind !== "moveWild") return;
+      if (t._moveWildSorted) return;
+      if (!t.cmds || t.cmds.length === 0) return;
+
+      var prev = t.cmds[PD.ui.clampI(t.cmdI, t.cmds.length)];
+      var keepNewSet = !!(prev && prev.dest && prev.dest.newSet);
+      var keepSetI = (prev && prev.dest && prev.dest.setI != null) ? prev.dest.setI : null;
+      var keepSource = !!(prev && prev.kind === "source");
+
+      var cmds = sortCmdsByScreenX(
+        t.cmds,
+        function (c) {
+          if (c && c.kind === "source") return 2;
+          if (c && c.dest && c.dest.newSet) return 1;
+          return 0;
+        },
+        moveWildCmdScreenX,
+        function (a, b) {
+          var asi = (a && a.dest && a.dest.setI != null) ? a.dest.setI : 9999;
+          var bsi = (b && b.dest && b.dest.setI != null) ? b.dest.setI : 9999;
+          var ds = asi - bsi;
+          if (ds) return ds;
+          var ac = (a && a.color != null) ? a.color : 9999;
+          var bc = (b && b.color != null) ? b.color : 9999;
+          return ac - bc;
+        }
+      );
+      t.cmds = cmds;
+
+      // Preserve selection if possible.
+      var selI = 0;
+      var i;
+      if (keepSource) {
+        for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].kind === "source") { selI = i; break; }
+      } else if (keepNewSet) {
+        for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].dest && cmds[i].dest.newSet) { selI = i; break; }
+      } else if (keepSetI != null) {
+        for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].dest && cmds[i].dest.setI === keepSetI) { selI = i; break; }
+      }
+      t.cmdI = selI;
+      t._moveWildSorted = true;
+    }
+
+    moveWildEnsureSorted();
 
     // Cycle destinations
     var nCmds = t.cmds ? t.cmds.length : 0;
@@ -5592,6 +6132,11 @@ PD.ui.step = function (state, view, actions) {
       if (pick) PD.ui.cursorMoveTo(view, pick);
     }
 
+    function snapCursorToFirstReplaceWild() {
+      var pick = PD.ui.pickReplaceWindowWild(state, computed);
+      if (pick) PD.ui.cursorMoveTo(view, pick);
+    }
+
     if (prompt.kind === "discardDown") {
       // Lock cursor to player hand cards only (not bank).
       var handIs = promptPickHandItemIndices();
@@ -5640,6 +6185,28 @@ PD.ui.step = function (state, view, actions) {
         return null;
       }
       PD.ui.targetingEnter(state, view, "place", true, selGrabP.uid, selGrabP.loc);
+      return null;
+    }
+    if (prompt.kind === "replaceWindow" && actions.a && actions.a.grabStart) {
+      var selGrabW = currentSelection();
+      if (!selGrabW || !selGrabW.loc) { PD.anim.feedbackError(view, "no_actions", "No actions"); snapCursorToFirstReplaceWild(); return null; }
+      if (selGrabW.loc.zone !== "setProps" || selGrabW.loc.p !== 0 || selGrabW.loc.setI == null || selGrabW.loc.setI !== prompt.srcSetI) {
+        PD.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
+        snapCursorToFirstReplaceWild();
+        return null;
+      }
+      if (selGrabW.uid === prompt.excludeUid) {
+        PD.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
+        snapCursorToFirstReplaceWild();
+        return null;
+      }
+      var defW = PD.state.defByUid(state, selGrabW.uid);
+      if (!defW || !PD.rules.isWildDef(defW)) {
+        PD.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
+        snapCursorToFirstReplaceWild();
+        return null;
+      }
+      PD.ui.targetingEnter(state, view, "moveWild", true, selGrabW.uid, selGrabW.loc);
       return null;
     }
 
@@ -5783,6 +6350,46 @@ PD.ui.step = function (state, view, actions) {
         }
         // Tap-A workflow: go directly to placement targeting (only action in this prompt).
         PD.ui.targetingEnter(state, view, "place", false, selR.uid, selR.loc);
+        return null;
+      }
+
+      return null;
+    }
+
+    if (prompt.kind === "replaceWindow") {
+      if (actions.b && actions.b.pressed) {
+        focusSnapshot();
+        return { kind: "applyCmd", cmd: { kind: "skipReplaceWindow" } };
+      }
+
+      if (actions.a && actions.a.tap) {
+        var selW = currentSelection();
+        // Allow debug buttons (Step/Reset/Next) during this prompt; End remains disallowed.
+        if (selW && selW.kind === "btn") {
+          if (selW.id === "step") { setAutoFocusPauseForCenterBtn("step"); focusSnapshot(); return { kind: "debug", action: "step" }; }
+          if (selW.id === "reset") { setAutoFocusPauseForCenterBtn("reset"); focusSnapshot(); return { kind: "debug", action: "reset" }; }
+          if (selW.id === "nextScenario") { setAutoFocusPauseForCenterBtn("nextScenario"); focusSnapshot(); return { kind: "debug", action: "nextScenario" }; }
+          if (selW.id === "endTurn") { PD.anim.feedbackError(view, "prompt_forced", "Move a Wild or skip"); snapCursorToFirstReplaceWild(); return null; }
+        }
+        if (!selW || !selW.loc) { PD.anim.feedbackError(view, "no_actions", "No actions"); snapCursorToFirstReplaceWild(); return null; }
+        if (selW.loc.zone !== "setProps" || selW.loc.p !== 0 || selW.loc.setI == null || selW.loc.setI !== prompt.srcSetI) {
+          PD.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
+          snapCursorToFirstReplaceWild();
+          return null;
+        }
+        if (selW.uid === prompt.excludeUid) {
+          PD.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
+          snapCursorToFirstReplaceWild();
+          return null;
+        }
+        var defW2 = PD.state.defByUid(state, selW.uid);
+        if (!defW2 || !PD.rules.isWildDef(defW2)) {
+          PD.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
+          snapCursorToFirstReplaceWild();
+          return null;
+        }
+        // Tap-A workflow: enter moveWild targeting.
+        PD.ui.targetingEnter(state, view, "moveWild", false, selW.uid, selW.loc);
         return null;
       }
 
@@ -6183,6 +6790,18 @@ PD.ui.focus.rules = [
       return PD.ui.findBestCursorTarget(ctx.computed.models, [PD.render.ROW_P_HAND], function (it) {
         return it && it.kind === "hand" && it.loc && it.loc.zone === "recvProps" && it.loc.p === 0;
       });
+    }
+  },
+  {
+    id: "OnEnterReplaceWindowPrompt_FocusWild",
+    enabled: function () { return true; },
+    when: function (ctx) {
+      var pr = ctx.state.prompt;
+      var cur = !!(pr && pr.kind === "replaceWindow" && pr.p === 0);
+      return cur && (!ctx.view.ux.lastPromptForP0 || ctx.view.ux.lastPromptKind !== "replaceWindow");
+    },
+    pick: function (ctx) {
+      return PD.ui.pickReplaceWindowWild(ctx.state, ctx.computed);
     }
   },
   {

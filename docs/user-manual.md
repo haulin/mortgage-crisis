@@ -84,6 +84,23 @@ When you receive properties as payment, you place them explicitly:
   - For Wild properties: **Up/Down** toggles the chosen color during targeting
 - **B** is not a general cancel during this prompt (you must place the received properties)
 
+### Wild replace-window (optional reposition prompt, Phase 09)
+
+After some property placements, the rules may offer an *optional* prompt to reposition a Wild:
+
+- Trigger: after placing a property **into a set**, if that set contains an eligible Wild that can be removed while leaving the source set still **complete**
+- A banner/toast shows **“Move a Wild? A: move  B: skip”**
+- The cursor auto-focuses an eligible Wild in the source set
+- **B**: skip (no reposition)
+- **A (tap)**: enter targeting to choose where the Wild goes
+- **A (hold + nudge)**: enter targeting in “hold” mode (release A confirms)
+
+While targeting the Wild move:
+
+- **Left/Right**: cycle destinations (matching-color sets + New set, plus **Source** to cancel)
+- **Up/Down**: toggle which color the Wild will count as at the destination
+- Confirm normally with **A**, or cancel by cycling to **Source** and confirming
+
 ### Playing a Rent card (Phase 06 vertical slice)
 
 If you have a Rent card and at least one eligible set, it can be played (not just banked):
@@ -153,7 +170,7 @@ There are two ways to enter targeting:
 While targeting:
 
 - **Left/Right**: cycle destinations (or **options** when using hold‑A quick targeting)
-- **Up/Down**: toggle Wild color (only when targeting a Wild property placement)
+- **Up/Down**: toggle Wild color (when targeting a Wild placement or Wild move)
 - **B**: cancel targeting and return to browse
 
 ### Hold‑A “quick targeting” (action cycling)
@@ -173,7 +190,8 @@ Note:
 Targeting includes a special destination called **Source**:
 
 - Cycling to **Source** and confirming cancels the action (no command is applied).
-- While targeting, the grabbed source card is hidden in-hand so it doesn’t look like you have “two copies” on screen.
+- While targeting, the grabbed source card is usually hidden at its source position so it doesn’t look like you have “two copies” on screen.
+  - When **Source** is the selected destination, the real source card is shown again with the normal selection highlight.
 
 ## Ghost/preview space reservation (no overlap)
 
@@ -224,6 +242,7 @@ The DebugText screen’s **left column** includes a `Prompt:` line to show which
 - `Prompt:(none)`
 - `Prompt:payDebt rem:$<n> buf:<n>` (selecting payment)
 - `Prompt:placeRecv n:<n>` (placing received properties)
+- `Prompt:replaceWindow` (optional Wild reposition after a placement)
 - `Prompt:discardDown to:<n> left:<n>` (discarding down to 7)
 
 ### DebugText “UI snapshot” column legend
@@ -239,10 +258,10 @@ The DebugText screen has a **right column** showing a compact UI snapshot (captu
 - **`Menu:<i>/<n> <id>`** (only when `UI:menu`)
   - hovered menu index / count, and menu item id (e.g. `place`, `build`, `bank`)
 - **`Tgt:<kind> <cmdI>/<n>`** (only when `UI:targeting`)
-  - `kind`: `place` | `build` | `bank` | `rent` | `sly` | `quick`
+  - `kind`: `place` | `moveWild` | `build` | `bank` | `rent` | `sly` | `quick`
   - `cmdI/n`: selected destination index + total destinations
 - **`Prompt:<kind>`** (only when `UI:prompt`)
-  - one of: `discardDown` | `payDebt` | `placeReceived` | `respondAction`
+  - one of: `discardDown` | `payDebt` | `placeReceived` | `replaceWindow` | `respondAction`
 - **`Tgt:<kind> <cmdI>/<n> h:<0/1>`** (only when `UI:targeting`)
   - `h`: 1 when targeting was entered from **holding A** (confirm on A release)
 - **`Down:...`**

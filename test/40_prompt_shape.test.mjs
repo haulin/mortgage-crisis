@@ -64,6 +64,25 @@ function assertPromptShape(ctx, pr) {
     return;
   }
 
+  if (pr.kind === "replaceWindow") {
+    assert.equal(typeof pr.srcSetI, "number");
+    assert.ok(Number.isFinite(pr.srcSetI));
+    assert.ok(Number.isInteger(pr.srcSetI));
+    assert.ok(pr.srcSetI >= 0);
+
+    assert.equal(typeof pr.excludeUid, "number");
+    assert.ok(Number.isFinite(pr.excludeUid));
+    assert.ok(Number.isInteger(pr.excludeUid));
+    assert.ok(pr.excludeUid > 0);
+
+    if (pr.resume != null) {
+      assert.ok(pr.resume && typeof pr.resume === "object", "expected resume object");
+      assert.equal(pr.resume.kind, "placeReceived");
+      assert.ok(Array.isArray(pr.resume.uids), "expected resume.uids array");
+    }
+    return;
+  }
+
   assert.fail(`unexpected prompt kind: ${pr.kind}`);
 }
 
@@ -113,6 +132,18 @@ test("setPrompt creates canonical prompt shapes and clones arrays", async () => 
   assert.equal(s.prompt.kind, "placeReceived");
   assert.notEqual(s.prompt.uids, uids, "expected uids to be cloned");
   assert.deepEqual(s.prompt.uids, uids);
+
+  // replaceWindow canonicalizes and clones resume
+  const resumeUids = [12, 13];
+  ctx.PD.state.setPrompt(s, { kind: "replaceWindow", p: 1, srcSetI: 2, excludeUid: 55, resume: { kind: "placeReceived", uids: resumeUids } });
+  assertPromptShape(ctx, s.prompt);
+  assert.equal(s.prompt.kind, "replaceWindow");
+  assert.equal(s.prompt.p, 1);
+  assert.equal(s.prompt.srcSetI, 2);
+  assert.equal(s.prompt.excludeUid, 55);
+  assert.ok(s.prompt.resume, "expected resume");
+  assert.notEqual(s.prompt.resume.uids, resumeUids, "expected resume.uids to be cloned");
+  assert.deepEqual(s.prompt.resume.uids, resumeUids);
 });
 
 test("setPrompt throws on unknown prompt kind", async () => {
@@ -150,6 +181,17 @@ test("engine-created prompts always satisfy prompt shape contract", async () => 
     assertPromptShape(ctx, s.prompt);
     assert.equal(s.prompt.kind, "placeReceived");
     assert.ok(s.prompt.uids.length > 0);
+  }
+
+  // replaceWindow via Phase 09 scenario (after a property play)
+  {
+    const s = ctx.PD.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
+    const mv = ctx.PD.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);
+    assert.ok(mv, "expected a playProp move into set 0");
+    ctx.PD.engine.applyCommand(s, mv);
+    assert.ok(s.prompt);
+    assertPromptShape(ctx, s.prompt);
+    assert.equal(s.prompt.kind, "replaceWindow");
   }
 });
 

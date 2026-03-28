@@ -726,7 +726,7 @@
     var y = maxBtnY - 7; // 6px font + 1
     var yPhase = y - 7;
     if (yPhase < 0) yPhase = 0;
-    printSafe("Phase 08", x, yPhase, cfg.hudLineCol);
+    printSafe("Phase 09", x, yPhase, cfg.hudLineCol);
     printSafe("Y:Mode", x, y, cfg.hudLineCol);
   }
 
@@ -897,7 +897,32 @@
     var itemsForStacks = rowModel.items;
     if (overlayItems && overlayItems.length) itemsForStacks = itemsForStacks.concat(overlayItems);
 
+    // Hide the source card when UI wants to represent its slot as a ghost/preview.
+    var hideSrc = (computed && computed.meta && computed.meta.hideSrc) ? computed.meta.hideSrc : null;
+
     if (row === R.ROW_OP_TABLE || row === R.ROW_P_TABLE) {
+      // When targeting moveWild, hide the source card in the table stack to avoid duplicating it
+      // at both the source and preview destination.
+      var selT = selected;
+      if (hideSrc && hideSrc.loc && String(hideSrc.loc.zone) === "setProps") {
+        // Remove the hidden card from the draw list.
+        var outItems = [];
+        for (i = 0; i < itemsForStacks.length; i++) {
+          var itHid = itemsForStacks[i];
+          if (!itHid || !itHid.loc) { outItems.push(itHid); continue; }
+          if (itHid.uid === hideSrc.uid && itHid.loc.p === hideSrc.loc.p && String(itHid.loc.zone) === "setProps" && itHid.loc.setI === hideSrc.loc.setI && itHid.loc.i === hideSrc.loc.i) {
+            continue;
+          }
+          outItems.push(itHid);
+        }
+        itemsForStacks = outItems;
+
+        // Also suppress highlight if the selected item is the hidden one.
+        if (selT && selT.loc && selT.uid === hideSrc.uid && selT.loc.p === hideSrc.loc.p && String(selT.loc.zone) === "setProps" && selT.loc.setI === hideSrc.loc.setI && selT.loc.i === hideSrc.loc.i) {
+          selT = null;
+        }
+      }
+
       // Table rows must be drawn by stack depth (bottom->top), not x-order,
       // otherwise fan-left stacks layer incorrectly.
       var grouped = groupStacksByKey(itemsForStacks, cam);
@@ -910,15 +935,15 @@
         var key = keys[si];
         var cards = byKey[key];
         var fanDir = (cards.length > 0 && cards[0].fanDir != null) ? cards[0].fanDir : (flipCards ? -1 : 1);
-        drawFannedStack(cards, { state: state, fanDir: fanDir, flip180: !!flipCards, camX: cam, selectedItem: selected, drawSelected: false, highlightCol: highlightCol });
+        drawFannedStack(cards, { state: state, fanDir: fanDir, flip180: !!flipCards, camX: cam, selectedItem: selT, drawSelected: false, highlightCol: highlightCol });
       }
 
       // Selected last + highlight.
-      if (selected) {
-        var sFan = (selected.fanDir != null) ? selected.fanDir : (flipCards ? -1 : 1);
-        var sk = String(selected.stackKey);
-        var stack = byKey[sk] || [selected];
-        drawFannedStack(stack, { state: state, fanDir: sFan, flip180: !!flipCards, camX: cam, selectedItem: selected, onlySelected: true, highlightCol: highlightCol });
+      if (selT) {
+        var sFan = (selT.fanDir != null) ? selT.fanDir : (flipCards ? -1 : 1);
+        var sk = String(selT.stackKey);
+        var stack = byKey[sk] || [selT];
+        drawFannedStack(stack, { state: state, fanDir: sFan, flip180: !!flipCards, camX: cam, selectedItem: selT, onlySelected: true, highlightCol: highlightCol });
       }
       return;
     }
@@ -927,9 +952,6 @@
     var groupedH = groupStacksByKey(itemsForStacks, cam);
     var byKeyH = groupedH.byKey;
     var keysH = groupedH.keys;
-
-    // Hide the source card when UI wants to represent its slot as a ghost/preview.
-    var hideSrc = (computed && computed.meta && computed.meta.hideSrc) ? computed.meta.hideSrc : null;
 
     // Draw non-bank hand items in x-order first.
     for (i = 0; i < rowModel.items.length; i++) {

@@ -182,6 +182,7 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   requirePosNum(PD.config.ai, "biasExistingSetK");
   requirePosNum(PD.config.ai, "biasPlayRentK");
   requirePosNum(PD.config.ai, "biasPlayJustSayNoK");
+  requirePosNum(PD.config.ai, "biasMoveWildK");
 });
 
 test("config sanity: rule notes are configured", async () => {
