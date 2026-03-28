@@ -54,12 +54,24 @@ If you end your turn with more than 7 cards, you enter a forced prompt:
 Some effects can force a “pay a debt” prompt (Phase 06 foundation).
 
 - A banner/toast shows **“Pay debt: $N left”**
+  - If the debt is action-sourced and **Just Say No** is currently legal, the toast teaches it (e.g. **“Rent: Pay $N or Just Say No”**).
 - **D-pad**: navigate to a payable card (bank cards, properties, or a House on a set)
 - **A**: pay the highlighted card (it’s removed immediately)
+- **B**: disallowed (forced prompt) — you must pay until it auto-finishes
 - **House-pay-first**: if a set has a House, you can’t pay properties from that set until the House is paid
   - pressing **A** on a property in that set redirects selection to the House (it does **not** pay automatically)
   - press **A** again on the House to pay it
 - The prompt **auto-finishes** when the debt is covered or you run out of payables (overpay is allowed; no change is returned)
+- Where paid cards go:
+  - paid **properties** → recipient gets a **placeReceived** prompt
+  - paid **money/action/house** → recipient’s **bank**
+
+#### Just Say No during pay-debt (Phase 08)
+
+For action-sourced debts (notably Rent), the payer may cancel the action by playing JSN:
+
+- JSN is legal only **before any payment is made** (i.e. buffer is empty).
+- If JSN is legal and you have a JSN in hand: **tap A** on the JSN card in hand to play it.
 
 ### Placing received properties (faux-turn placement prompt)
 
@@ -82,7 +94,30 @@ If you have a Rent card and at least one eligible set, it can be played (not jus
   - **Left/Right**: cycle which of your sets you’re charging rent from
   - the overlay shows the chosen set and the amount
   - **A** confirms, **B** cancels (or cycle to **Source** and confirm)
-- After confirming, the opponent pays (currently auto-resolved in the dev harness; full AI/response UX comes later)
+- After confirming, the opponent pays via the standard **pay-debt prompt** (and may be able to respond with JSN before paying anything).
+
+After confirming:
+
+- The Rent card is discarded, consumes a play, and the opponent enters a **pay-debt prompt**.
+- In Render mode the opponent is controlled by the AI (Phase 07), so you’ll see them pay (or respond with JSN if legal).
+
+### Playing Sly Deal (Phase 08)
+
+Sly Deal steals an opponent property that is **not** part of a complete set.
+
+- Enter from hand via:
+  - **tap A** → menu → `Sly Deal...`
+  - **hold A** → immediate Sly targeting (when legal targets exist)
+- While in Sly targeting:
+  - **Left/Right** cycles targets ordered by screen-space X (left→right)
+  - the cursor jumps onto the current target (cursor-moving targeting; avoids a “two cursors” look)
+  - a `Source` option exists at the end and returns selection to the Sly card
+
+If the defender has a JSN in hand, they enter a forced response prompt:
+
+- **A on the target**: Allow (the steal resolves)
+- **A on a JSN in hand**: Just Say No (cancels)
+- **B**: disallowed (forced prompt)
 
 ## Inspect (hold X)
 
@@ -128,6 +163,10 @@ When you **hold A** on certain hand cards (currently **Rent** and **House**), th
 - **Left/Right** cycles a flat list of options, such as: **Rent**, **Build**, **Bank**, **Source**
 - Default choice prefers **Rent (highest amount)** when available
 - Confirm by **releasing A**
+
+Note:
+
+- If you hold‑A on a Sly Deal card when there are **no legal Sly targets**, the UI falls back to **quick targeting** so you can still Bank the card quickly.
 
 ### Source destination (cancel-by-dropping-back)
 
@@ -200,10 +239,10 @@ The DebugText screen has a **right column** showing a compact UI snapshot (captu
 - **`Menu:<i>/<n> <id>`** (only when `UI:menu`)
   - hovered menu index / count, and menu item id (e.g. `place`, `build`, `bank`)
 - **`Tgt:<kind> <cmdI>/<n>`** (only when `UI:targeting`)
-  - `kind`: `place` | `build` | `bank`
+  - `kind`: `place` | `build` | `bank` | `rent` | `sly` | `quick`
   - `cmdI/n`: selected destination index + total destinations
 - **`Prompt:<kind>`** (only when `UI:prompt`)
-  - currently `discardDown`
+  - one of: `discardDown` | `payDebt` | `placeReceived` | `respondAction`
 - **`Tgt:<kind> <cmdI>/<n> h:<0/1>`** (only when `UI:targeting`)
   - `h`: 1 when targeting was entered from **holding A** (confirm on A release)
 - **`Down:...`**

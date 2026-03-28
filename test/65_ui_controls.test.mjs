@@ -914,6 +914,123 @@ test("ui: rent card menu shows Rent (not just Bank) when a matching set exists",
   assert.ok(view.menu.items.some((it) => it && it.id === "source"), "expected Cancel/Source menu item");
 });
 
+test("ui: sly card menu shows Sly Deal when a legal target exists", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ scenarioId: "moveStress", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const uid = s.players[0].hand.find((u) => ctx.PD.state.defByUid(s, u).id === "sly_deal");
+  assert.ok(uid, "expected sly_deal in hand");
+  const i = s.players[0].hand.indexOf(uid);
+
+  const view = ctx.PD.ui.newView();
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = i;
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(view.mode, "menu");
+  assert.ok(view.menu.items.some((it) => it && it.id === "sly"), "expected Sly Deal menu item");
+  assert.ok(view.menu.items.some((it) => it && it.id === "bank"), "expected Bank menu item");
+  assert.ok(view.menu.items.some((it) => it && it.id === "source"), "expected Cancel menu item");
+});
+
+test("ui: hold-A on Sly Deal enters sly targeting and cursor cycles targets then source", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+  ctx.PD.state.clearPrompt(s);
+
+  // Give P0 a Sly Deal in hand.
+  const slyUid = s.deck.find((u) => ctx.PD.state.defByUid(s, u).id === "sly_deal");
+  assert.ok(slyUid, "expected sly_deal in deck");
+  s.deck = s.deck.filter((u) => u !== slyUid);
+  s.players[0].hand.push(slyUid);
+
+  // Give opponent two separate 1-card sets so we have two targets.
+  const u0 = s.deck.find((u) => ctx.PD.state.defByUid(s, u).id === "prop_orange");
+  assert.ok(u0);
+  s.deck = s.deck.filter((u) => u !== u0);
+  const u1 = s.deck.find((u) => ctx.PD.state.defByUid(s, u).id === "prop_magenta");
+  assert.ok(u1);
+  s.deck = s.deck.filter((u) => u !== u1);
+  const set0 = ctx.PD.state.newEmptySet();
+  set0.props.push([u0, ctx.PD.Color.Orange]); // setI=0 (rightmost)
+  const set1 = ctx.PD.state.newEmptySet();
+  set1.props.push([u1, ctx.PD.Color.Magenta]); // setI=1 (left of set0)
+  s.players[1].sets = [set0, set1];
+
+  const view = ctx.PD.ui.newView();
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = s.players[0].hand.indexOf(slyUid);
+
+  // Enter targeting via hold-A.
+  ctx.PD.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
+  assert.equal(view.mode, "targeting");
+  assert.ok(view.targeting && view.targeting.active);
+  assert.equal(view.targeting.kind, "sly");
+  assert.equal(view.targeting.hold, true);
+
+  // Tick once: cursor should jump to the leftmost target (setI=1).
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  let c = ctx.PD.ui.computeRowModels(s, view);
+  assert.ok(c.selected && c.selected.loc);
+  assert.equal(c.selected.loc.zone, "setProps");
+  assert.equal(c.selected.loc.p, 1);
+  assert.equal(c.selected.loc.setI, 1);
+
+  // Right: cycle to next target (setI=0).
+  ctx.PD.ui.step(s, view, { nav: { right: true }, a: {}, b: {}, x: {} });
+  c = ctx.PD.ui.computeRowModels(s, view);
+  assert.ok(c.selected && c.selected.loc);
+  assert.equal(c.selected.loc.zone, "setProps");
+  assert.equal(c.selected.loc.p, 1);
+  assert.equal(c.selected.loc.setI, 0);
+
+  // Right: cycle to source (Sly card reappears and is selected).
+  ctx.PD.ui.step(s, view, { nav: { right: true }, a: {}, b: {}, x: {} });
+  c = ctx.PD.ui.computeRowModels(s, view);
+  assert.ok(c.selected && c.selected.loc);
+  assert.equal(c.selected.loc.zone, "hand");
+  assert.equal(c.selected.uid, slyUid);
+  assert.equal(!!(c.meta && c.meta.hideSrc), false, "expected source card not to be hidden when Source is selected");
+});
+
+test("ui: hold-A on Sly Deal with no targets falls back to quick targeting (Bank)", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+  ctx.PD.state.clearPrompt(s);
+
+  // Give P0 a Sly Deal in hand.
+  const slyUid = s.deck.find((u) => ctx.PD.state.defByUid(s, u).id === "sly_deal");
+  assert.ok(slyUid, "expected sly_deal in deck");
+  s.deck = s.deck.filter((u) => u !== slyUid);
+  s.players[0].hand.push(slyUid);
+
+  // Ensure opponent has no stealable props.
+  s.players[1].sets = [];
+
+  const view = ctx.PD.ui.newView();
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = s.players[0].hand.indexOf(slyUid);
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
+  assert.equal(view.mode, "targeting");
+  assert.ok(view.targeting && view.targeting.active);
+  assert.equal(view.targeting.kind, "quick");
+  assert.equal(view.targeting.hold, true);
+  assert.ok(view.targeting.cmds && view.targeting.cmds.length > 0);
+  assert.ok(view.targeting.cmds.some((c) => c && c.kind === "bank"), "expected Bank option in quick cmds");
+
+  // Release A should confirm the default option (bank).
+  const intent = ctx.PD.ui.step(s, view, { nav: {}, a: { released: true }, b: {}, x: {} });
+  assert.ok(intent && intent.kind === "applyCmd");
+  assert.equal(intent.cmd.kind, "bank");
+});
+
 test("ui: menu hover Rent previews default target set", async () => {
   const ctx = await loadSrcIntoVm();
   const s = ctx.PD.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
@@ -945,6 +1062,58 @@ test("ui: menu hover Rent previews default target set", async () => {
   assert.equal(c.meta.hideSrc.loc.p, 0);
   assert.equal(String(c.meta.hideSrc.loc.zone), "hand");
   assert.equal(c.meta.hideSrc.loc.i, i);
+});
+
+test("ui: respondAction prompt auto-focuses the target; A on target yields respondPass intent", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ scenarioId: "slyJSN", seedU32: 1 });
+  assert.ok(s.prompt && s.prompt.kind === "respondAction");
+  assert.equal(s.prompt.p, 0);
+
+  const view = ctx.PD.ui.newView();
+  // Start somewhere else to prove focus rule relocates us.
+  view.cursor.row = ctx.PD.render.ROW_CENTER;
+  view.cursor.i = 0;
+
+  // First tick: sync prompt mode + apply focus rule.
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  assert.equal(view.mode, "prompt");
+  const c0 = ctx.PD.ui.computeRowModels(s, view);
+  assert.ok(c0.selected && c0.selected.loc);
+  assert.equal(c0.selected.uid, s.prompt.target.uid);
+  assert.equal(c0.selected.loc.zone, "setProps");
+
+  // Tap A on target -> respondPass intent.
+  const intent = ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.ok(intent && intent.kind === "applyCmd");
+  assert.equal(intent.cmd.kind, "respondPass");
+});
+
+test("ui: respondAction prompt shows target ghost outline only when cursor is away", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ scenarioId: "slyJSN", seedU32: 1 });
+  const view = ctx.PD.ui.newView();
+  ctx.PD.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+
+  // When cursor is on the target, there should be no ghost overlay for it.
+  let c = ctx.PD.ui.computeRowModels(s, view);
+  const rowPT = ctx.PD.render.ROW_P_TABLE;
+  assert.ok(c.models[rowPT]);
+  assert.equal((c.models[rowPT].overlayItems || []).some((it) => it && it.kind === "ghost"), false);
+
+  // Move cursor to JSN in hand (manually) and recompute: expect a ghost overlay on the target.
+  const jsnUid = s.players[0].hand.find((u) => ctx.PD.state.defByUid(s, u).id === "just_say_no");
+  assert.ok(jsnUid);
+  const cHand = ctx.PD.ui.computeRowModels(s, view);
+  const rowHand = ctx.PD.render.ROW_P_HAND;
+  const jsnI = cHand.models[rowHand].items.findIndex((it) => it && it.uid === jsnUid && it.loc && it.loc.zone === "hand");
+  assert.ok(jsnI >= 0);
+  view.cursor.row = rowHand;
+  view.cursor.i = jsnI;
+
+  c = ctx.PD.ui.computeRowModels(s, view);
+  const ghosts = (c.models[rowPT].overlayItems || []).filter((it) => it && it.kind === "ghost");
+  assert.ok(ghosts.length > 0, "expected a ghost overlay while cursor is away from target");
 });
 
 test("ui: menu hover Rent (multi-target) previews the same default target as quick targeting", async () => {
@@ -1350,6 +1519,45 @@ test("debug: Next/Reset preserve autofocus pause latch across debugReset", async
   assert.notEqual(v2, v1, "expected debugReset to recreate the view");
   assert.ok(v2 && v2.ux);
   assert.equal(v2.ux.autoFocusPausedByDebug, true, "expected debugReset to preserve pause latch when previously set");
+});
+
+test("debug: game over does not freeze controls when actor!=0 (Reset still works)", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  // Enter Render mode deterministically.
+  ctx.PD._mainMode = 1;
+  ctx.PD.debug.reset();
+
+  // Simulate opponent win while it's still opponent's turn.
+  ctx.PD.debug.state.activeP = 1;
+  ctx.PD.debug.state.winnerP = 1;
+
+  // Put cursor on Reset.
+  const c0 = ctx.PD.ui.computeRowModels(ctx.PD.debug.state, ctx.PD.debug.view);
+  const rmC = c0.models[ctx.PD.render.ROW_CENTER];
+  const resetI = rmC.items.findIndex((it) => it && it.kind === "btn" && it.id === "reset");
+  assert.ok(resetI >= 0, "expected Reset button");
+  ctx.PD.debug.view.cursor.row = ctx.PD.render.ROW_CENTER;
+  ctx.PD.debug.view.cursor.i = resetI;
+
+  // Fake a 2-tick A tap (press then release). Keep btnp(7)=false so mode doesn't toggle.
+  let frame = 0;
+  ctx.btn = (i) => {
+    if (i === 4) return frame === 0; // A held on tick 0 only
+    return false;
+  };
+  ctx.btnp = (i) => {
+    if (i === 7) return false; // no Y toggle
+    if (i === 4) return frame === 0; // A pressed pulse on tick 0
+    return false;
+  };
+
+  frame = 0;
+  ctx.PD.mainTick();
+  frame = 1;
+  ctx.PD.mainTick();
+
+  assert.equal(ctx.PD.debug.state.winnerP, ctx.PD.state.NO_WINNER, "expected Reset to run even after opponent win");
 });
 
 test("ui: deck-empty style empty-hand nudges End once on turn start, but does not keep snapping while browsing", async () => {

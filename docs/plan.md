@@ -22,6 +22,16 @@ Documentation convention (for future phases):
 - **Phase 05c ✅**: draw + reshuffle visibility (staged dealing + shuffle toast/animation), plus renderer‑oblivious animation presentation. See `docs/phase05c.md`.
 - **Phase 06 ✅**: debt/payment prompt + recipient “faux-turn placement” for received properties (incl. Wild color choice), using prompt actor `prompt.p` (not `activeP`). See `docs/phase06.md`.
 - **Phase 07 ✅**: AI (random legal) + narrated pacing, plus Phase 07 UX/focus polish. See `docs/phase07.md`.
+- **Phase 08 ✅**: Actions + responses: Sly Deal targeting + Just Say No response windows (Sly prompt + Rent-in-payDebt), plus related UI/focus/policy knobs. See `docs/phase08.md`.
+- **Phase 08b ✅**: Low-risk UX tidy-ups: DebugText layout/wrapping, debug Next keeps cursor on Next, moveStress Sly target richness, and hold‑A Sly no-target fallback to Quick/Bank. See `docs/phase08b.md`.
+
+### Deferred-items capture (scope creep safety net)
+
+When we decide “this is post‑MVP / Phase 12+”, we must **immediately** capture it in this doc so it doesn’t get lost.
+
+- Add a bullet under **Phase 12 — UX/readability polish** (or a later phase if more appropriate).
+- Prefix with `Deferred:` and keep it concrete (1 sentence, includes where it shows up).
+- If we end up implementing it earlier (e.g. Phase 08b), delete/move the deferred bullet.
 
 ## Goals + Constraints
 
@@ -435,13 +445,21 @@ Content expansion readiness:
 
 Issues:
 - When player is out of moves and they attempt to place a card, the only valid destination is source. They no longer get negative feedback about no action possible. If only source is a valid destination then action should be disallowed.
-- scrolling in the last scenario is not good
+- scrolling in the banks shuffle stress scenario is not good
 - the project was renamed to Mortgage Crisis, so we should update all references
 - action menu should maybe get rendered as a bigger overlay, similar to inspect and not cover buttons
-- descriptions of some scenarios don't fit screen in Debug
 - I don't think I like "Opponent: " prefix for the AI prompts. It is not that important and it is too long.
-- When we do "Opponent: pay", the money just appears in user's bank. Difficult to notice. Perhaps we can animate it like dealing/drawing?
+- When we do transfers (paying rent/debt, stealing props, discarding), cards often just “appear” in the destination. Hard to notice. Perhaps animate transfers similarly to dealing/drawing?
 - when starting a game/default scenario, the 5/7 cards on each side are already dealt. We should probably start with the 2x5 draw animation and display a toast with who is starting.
+- Debt: house first does not auto-focus house when another property is selected
+
+### Phase 08b — low-risk UX tidy-ups ✅
+
+- DebugText: reclaim left margin pixels (start at x=0) + shorten `Scenario` label (`Scn`)
+- DebugText: wrap scenario descriptions so they never overflow the screen
+- Debug harness: after `Next` scenario switch, keep cursor on `Next`
+- `moveStress`: give opponent multiple stealable targets so Sly targeting cycles more meaningfully
+- Hold‑A on Sly with no targets: fall back to Quick targeting so Bank remains available
 
 ### Phase 09 — Wild replace-window
 
@@ -476,6 +494,14 @@ Content expansion readiness:
 
 - Optional vertical area labels explaining the different zones (hand/bank/properties/opponent areas)
 - Continue Inspect overlay polish as needed (still not “big cards”)
+- Reduce scenario list noise: merge `placeBasic` / `wildBasic` / `houseBasic` into a single “Basics” scenario (or otherwise consolidate)
+- Deferred: Denote complete property sets in the UI (e.g. badge/outline/marker and/or Inspect text “Complete set”) so Sly Deal restrictions are obvious
+- Deferred: Improve default AI debt payment heuristic to prefer paying from bank before paying properties (when legal), to reduce surprise property transfers
+- Deferred: Optional rule/UX: when a House is received via debt payment, allow recipient to place it onto a completed set (instead of always banking it as money)
+- Deferred: When entering `placeReceived` with exactly 1 received property (notably from Sly Deal), auto-enter Place targeting for that card to skip the extra “select received card then A” step
+- Broader spatially-aware targeting cycle redesign (directionally consistent cycling, improved Up/Down semantics, etc.)
+- Targeting-cycle refactor: directionally consistent L/R ordering across all targeting kinds (Rent/Place/Build/Bank/Sly)
+- Add a red chevron/arrow threat marker option (instead of ghost-only) for respond/target emphasis
 - (Optional later) Reduced motion accessibility toggle:
   - make animations/presentation a no-op pass-through
   - optionally skip/short-circuit animation timing so there’s no waiting/locks beyond essential toasts (or keep only toast pauses)

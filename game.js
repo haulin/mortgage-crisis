@@ -77,6 +77,10 @@ PD.config.ui = {
   // Phase 07: AI pacing (frames at 60fps).
   aiStepDelayFrames: 60,
   aiNarrateToastFrames: 60,
+
+  // Phase 08: Sly Deal targeting presentation.
+  // If true: show ghost outlines for non-selected Sly targets while targeting.
+  slyShowTargetGhosts: false
  
 };
 
@@ -91,7 +95,11 @@ PD.config.ai = {
 
   // Weight multiplier for "play Rent" moves (bias asking for rent over banking Rent).
   // 1 means no bias (equivalent to uniform random).
-  biasPlayRentK: 4
+  biasPlayRentK: 4,
+
+  // Phase 08: weight multiplier for "play Just Say No" response moves.
+  // 1 means no bias (equivalent to uniform random).
+  biasPlayJustSayNoK: 8
 };
 
 // Rule-note IDs (Phase 05+). These are small display-only annotations in Inspect.
@@ -792,12 +800,31 @@ PD.state.setPrompt = function (state, prompt) {
   }
 
   if (k === "payDebt") {
+    var src = prompt.srcAction;
+    var srcAction = src ? { kind: String(src.kind || ""), fromP: src.fromP, actionUid: Math.floor(src.actionUid) } : null;
     state.prompt = {
       kind: k,
       p: p,
       toP: prompt.toP,
       rem: Math.floor(prompt.rem),
-      buf: prompt.buf.slice()
+      buf: prompt.buf.slice(),
+      srcAction: srcAction
+    };
+    return;
+  }
+
+  if (k === "respondAction") {
+    // Generic response window prompt (Phase 08+).
+    // Keep payload minimal and validate via tests (avoid runtime shape asserts).
+    var src2 = prompt.srcAction;
+    var srcAction2 = src2 ? { kind: String(src2.kind || ""), fromP: src2.fromP, actionUid: Math.floor(src2.actionUid) } : null;
+    var tgt = prompt.target;
+    var loc = tgt && tgt.loc ? tgt.loc : null;
+    state.prompt = {
+      kind: k,
+      p: p,
+      srcAction: srcAction2,
+      target: { uid: tgt ? tgt.uid : 0, loc: { p: loc ? loc.p : 0, zone: loc ? loc.zone : "", setI: loc ? loc.setI : 0, i: loc ? loc.i : 0 } }
     };
     return;
   }
@@ -827,10 +854,10 @@ PD.state.hasAnyPayables = function (state, p) {
   return false;
 };
 
-PD.state.beginDebt = function (state, fromP, toP, amount) {
+PD.state.beginDebt = function (state, fromP, toP, amount, srcAction) {
   if (!(amount > 0)) return;
   if (!PD.state.hasAnyPayables(state, fromP)) return;
-  PD.state.setPrompt(state, { kind: "payDebt", p: fromP, toP: toP, rem: amount, buf: [] });
+  PD.state.setPrompt(state, { kind: "payDebt", p: fromP, toP: toP, rem: amount, buf: [], srcAction: srcAction || null });
 };
 
 PD.rules.otherPlayer = function (p) {
@@ -849,6 +876,18 @@ PD.rules.isBankableDef = function (def) {
 
 PD.rules.isWildDef = function (def) {
   return !!(def && def.kind === PD.CardKind.Property && def.wildColors && def.wildColors.length);
+};
+
+PD.rules.handHasActionKind = function (state, p, actionKind) {
+  var hand = state && state.players && state.players[p] ? state.players[p].hand : null;
+  if (!hand || hand.length === 0) return false;
+  var i;
+  for (i = 0; i < hand.length; i++) {
+    var uid = hand[i];
+    var def = PD.state.defByUid(state, uid);
+    if (def && def.kind === PD.CardKind.Action && def.actionKind === actionKind) return true;
+  }
+  return false;
 };
 
 PD.rules.wildAllowsColor = function (def, color) {
@@ -1111,6 +1150,51 @@ PD.engine.applyCommand = function (state, cmd) {
     }
   }
 
+  function cleanupEmptySetsForPlayer(pp) {
+    var sets = state.players[pp].sets;
+    var i;
+    for (i = sets.length - 1; i >= 0; i--) {
+      var set = sets[i];
+      var nProps = set.props.length;
+      var hasHouse = !!set.houseUid;
+      if (nProps === 0 && !hasHouse) sets.splice(i, 1);
+    }
+  }
+
+  function applySlySteal(fromP, target) {
+    if (!(fromP === 0 || fromP === 1)) throw new Error("bad_fromP");
+    if (!target || !target.loc) throw new Error("bad_target");
+    var loc = target.loc;
+    if (!PD.engine.locEqZone(loc, "setProps")) throw new Error("bad_loc");
+
+    var defP = loc.p;
+    var setI = loc.setI;
+    var pi = loc.i;
+    if (!(defP === 0 || defP === 1)) throw new Error("bad_loc");
+    var setsD = state.players[defP].sets;
+    if (!setsD || setI < 0 || setI >= setsD.length) throw new Error("bad_set");
+    var setD = setsD[setI];
+    if (!setD || !setD.props) throw new Error("bad_set");
+
+    var props = setD.props;
+    if (!props[pi] || props[pi][0] !== target.uid) throw new Error("bad_loc");
+
+    // Sly rule: cannot steal from a complete set (including overfilled).
+    var color = PD.rules.getSetColor(props);
+    if (color === PD.state.NO_COLOR) throw new Error("empty_set");
+    var req = PD.SET_RULES[color].requiredSize;
+    if (props.length >= req) throw new Error("sly_full_set");
+
+    // Remove from defender set.
+    props.splice(pi, 1);
+    cleanupEmptySetsForPlayer(defP);
+
+    // Attacker receives the property and must place it.
+    PD.state.setPrompt(state, { kind: "placeReceived", p: fromP, uids: [target.uid] });
+    // Direction: stolen from defender -> attacker.
+    events.push({ kind: "slySteal", fromP: defP, toP: fromP, uid: target.uid });
+  }
+
   // Prompt gating: only allow prompt-appropriate commands.
   if (prompt) {
     if (prompt.kind === "discardDown") {
@@ -1130,17 +1214,6 @@ PD.engine.applyCommand = function (state, cmd) {
       var def = PD.state.defByUid(state, uid);
       if (def.kind === PD.CardKind.Property) return def.propertyPayValue != null ? def.propertyPayValue : 0;
       return def.bankValue != null ? def.bankValue : 0;
-    }
-
-    function cleanupEmptySetsForPlayer(pp) {
-      var sets = state.players[pp].sets;
-      var i;
-      for (i = sets.length - 1; i >= 0; i--) {
-        var set = sets[i];
-        var nProps = set.props.length;
-        var hasHouse = !!set.houseUid;
-        if (nProps === 0 && !hasHouse) sets.splice(i, 1);
-      }
     }
 
     function applyPayDebt(cmdPay) {
@@ -1214,6 +1287,41 @@ PD.engine.applyCommand = function (state, cmd) {
       }
     }
 
+    function applyPlayJustSayNo(cmdJsn) {
+      var card = cmdJsn.card;
+      if (!card || !card.loc) throw new Error("bad_cmd");
+      if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+      if (card.loc.p !== p) throw new Error("not_your_card");
+
+      var uid = card.uid;
+      var def = PD.state.defByUid(state, uid);
+      if (!def || def.kind !== PD.CardKind.Action || def.actionKind !== PD.ActionKind.JustSayNo) throw new Error("not_jsn");
+
+      PD.engine.removeHandAtLoc(state, card);
+      state.discard.push(uid);
+      events.push({
+        kind: "move",
+        uid: uid,
+        from: card.loc,
+        to: { zone: "discard", i: state.discard.length - 1 }
+      });
+
+      // Cancel the active prompt and report the response (single-layer only).
+      var src = prompt && prompt.srcAction ? prompt.srcAction : null;
+      PD.state.clearPrompt(state);
+      events.push({ kind: "jsn", p: p, srcAction: src });
+    }
+
+    function applyRespondPass() {
+      if (!prompt || prompt.kind !== "respondAction") throw new Error("prompt_active");
+      if (!prompt.srcAction) throw new Error("bad_srcAction");
+      if (String(prompt.srcAction.kind || "") !== "slyDeal") throw new Error("bad_srcAction");
+      var fromP = prompt.srcAction.fromP;
+      var target = prompt.target;
+      PD.state.clearPrompt(state);
+      applySlySteal(fromP, target);
+    }
+
     function applyPlaceReceived(cmdProp) {
       var card = cmdProp.card;
       var dest = cmdProp.dest;
@@ -1277,6 +1385,17 @@ PD.engine.applyCommand = function (state, cmd) {
 
     if (prompt.kind === "payDebt") {
       if (cmd.kind === "payDebt") { applyPayDebt(cmd); return { events: events }; }
+      if (cmd.kind === "playJustSayNo") {
+        if (!prompt.srcAction) throw new Error("no_response_window");
+        if (prompt.buf && prompt.buf.length > 0) throw new Error("response_too_late");
+        applyPlayJustSayNo(cmd);
+        return { events: events };
+      }
+      throw new Error("prompt_active");
+    }
+    if (prompt.kind === "respondAction") {
+      if (cmd.kind === "respondPass") { applyRespondPass(); return { events: events }; }
+      if (cmd.kind === "playJustSayNo") { applyPlayJustSayNo(cmd); return { events: events }; }
       throw new Error("prompt_active");
     }
     if (prompt.kind === "placeReceived") {
@@ -1439,8 +1558,65 @@ PD.engine.applyCommand = function (state, cmd) {
 
     // Trigger debt prompt for the opponent (if they have payables).
     var payer = PD.rules.otherPlayer(p);
-    PD.state.beginDebt(state, payer, p, amount);
+    PD.state.beginDebt(state, payer, p, amount, { kind: "rent", fromP: p, actionUid: uid });
     events.push({ kind: "rent", p: p, setI: setI, color: color, amount: amount });
+  }
+
+  function applyPlaySlyDeal(cmdSly) {
+    var card = cmdSly.card;
+    var target = cmdSly.target;
+    if (!card || !card.loc || !target || !target.loc) throw new Error("bad_cmd");
+    if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if (card.loc.p !== p) throw new Error("not_your_card");
+
+    var uid = card.uid;
+    var def = PD.state.defByUid(state, uid);
+    if (!def || def.kind !== PD.CardKind.Action || def.actionKind !== PD.ActionKind.SlyDeal) throw new Error("not_sly");
+
+    // Validate target is opponent property.
+    var otherP = PD.rules.otherPlayer(p);
+    var tLoc = target.loc;
+    if (!PD.engine.locEqZone(tLoc, "setProps")) throw new Error("bad_loc");
+    if (tLoc.p !== otherP) throw new Error("bad_target");
+
+    // Validate not from full set.
+    var setsO = state.players[otherP].sets;
+    if (!setsO || tLoc.setI < 0 || tLoc.setI >= setsO.length) throw new Error("bad_set");
+    var setO = setsO[tLoc.setI];
+    if (!setO || !setO.props) throw new Error("bad_set");
+    var color = PD.rules.getSetColor(setO.props);
+    if (color === PD.state.NO_COLOR) throw new Error("empty_set");
+    var req = PD.SET_RULES[color].requiredSize;
+    if (setO.props.length >= req) throw new Error("sly_full_set");
+    if (!setO.props[tLoc.i] || setO.props[tLoc.i][0] !== target.uid) throw new Error("bad_loc");
+
+    // Discard the action card.
+    PD.engine.removeHandAtLoc(state, card);
+    state.discard.push(uid);
+    events.push({
+      kind: "move",
+      uid: uid,
+      from: card.loc,
+      to: { zone: "discard", i: state.discard.length - 1 }
+    });
+    decPlays();
+
+    // If defender has JSN, open a response prompt; otherwise resolve immediately.
+    var hasJsn = PD.rules.handHasActionKind(state, otherP, PD.ActionKind.JustSayNo);
+
+    if (hasJsn) {
+      PD.state.setPrompt(state, {
+        kind: "respondAction",
+        p: otherP,
+        srcAction: { kind: "slyDeal", fromP: p, actionUid: uid },
+        target: { uid: target.uid, loc: { p: tLoc.p, zone: tLoc.zone, setI: tLoc.setI, i: tLoc.i } }
+      });
+      events.push({ kind: "respondOffered", p: otherP, srcAction: { kind: "slyDeal", fromP: p, actionUid: uid } });
+      return;
+    }
+
+    events.push({ kind: "respondSkipped", p: otherP, reason: "no_jsn", srcAction: { kind: "slyDeal", fromP: p, actionUid: uid } });
+    applySlySteal(p, { uid: target.uid, loc: tLoc });
   }
 
   if (cmd.kind === "endTurn") {
@@ -1459,6 +1635,7 @@ PD.engine.applyCommand = function (state, cmd) {
   else if (cmd.kind === "playProp") applyPlayProp(cmd);
   else if (cmd.kind === "playHouse") applyPlayHouse(cmd);
   else if (cmd.kind === "playRent") applyPlayRent(cmd);
+  else if (cmd.kind === "playSlyDeal") applyPlaySlyDeal(cmd);
   else throw new Error("unknown_cmd:" + cmd.kind);
 
   return { events: events };
@@ -1537,7 +1714,33 @@ PD.engine.legalMoves = function (state) {
           out.push({ kind: "payDebt", card: { uid: props[pi][0], loc: { p: pPay, zone: "setProps", setI: si, i: pi } } });
         }
       }
+      if (pr.srcAction && pr.buf && pr.buf.length === 0) {
+        // Allow JSN response before any payment (Phase 08+).
+        var handJ = state.players[pPay].hand;
+        var hj;
+        for (hj = 0; hj < handJ.length; hj++) {
+          var uidJ = handJ[hj];
+          var defJ = PD.state.defByUid(state, uidJ);
+          if (defJ && defJ.kind === PD.CardKind.Action && defJ.actionKind === PD.ActionKind.JustSayNo) {
+            out.push({ kind: "playJustSayNo", card: { uid: uidJ, loc: { p: pPay, zone: "hand", i: hj } } });
+          }
+        }
+      }
       return out;
+    }
+    if (pr.kind === "respondAction") {
+      var pR = pr.p;
+      var outR = [{ kind: "respondPass" }];
+      var handR = state.players[pR].hand;
+      var hr;
+      for (hr = 0; hr < handR.length; hr++) {
+        var uidR = handR[hr];
+        var defR = PD.state.defByUid(state, uidR);
+        if (defR && defR.kind === PD.CardKind.Action && defR.actionKind === PD.ActionKind.JustSayNo) {
+          outR.push({ kind: "playJustSayNo", card: { uid: uidR, loc: { p: pR, zone: "hand", i: hr } } });
+        }
+      }
+      return outR;
     }
     if (pr.kind === "placeReceived") {
       var pR = pr.p;
@@ -1608,6 +1811,27 @@ PD.engine.legalMoves = function (state) {
         var amt = PD.rules.rentAmountForSet(state, p, siR);
         if (amt <= 0) continue;
         moves.push({ kind: "playRent", card: cardRef, setI: siR });
+      }
+    } else if (def.kind === PD.CardKind.Action && def.actionKind === PD.ActionKind.SlyDeal) {
+      // Sly Deal: one move per eligible opponent property (not from complete set).
+      var op = PD.rules.otherPlayer(p);
+      var setsOp = state.players[op].sets;
+      var siS;
+      for (siS = 0; siS < setsOp.length; siS++) {
+        var setS = setsOp[siS];
+        if (!setS || !setS.props || setS.props.length <= 0) continue;
+        var colS = PD.rules.getSetColor(setS.props);
+        if (colS === PD.state.NO_COLOR) continue;
+        var reqS = PD.SET_RULES[colS].requiredSize;
+        if (setS.props.length >= reqS) continue;
+        var piS;
+        for (piS = 0; piS < setS.props.length; piS++) {
+          moves.push({
+            kind: "playSlyDeal",
+            card: cardRef,
+            target: { uid: setS.props[piS][0], loc: { p: op, zone: "setProps", setI: siS, i: piS } }
+          });
+        }
       }
     }
   }
@@ -1689,7 +1913,9 @@ PD.scenarios.IDS = [
   "debtHouseFirst",
   "placeReceived",
   // Phase 07+: move generation smoke / AI policy stress
-  "moveStress"
+  "moveStress",
+  // Phase 08+: actions + responses
+  "slyJSN"
 ];
 
 // Optional metadata for debug UI / docs.
@@ -1699,9 +1925,10 @@ PD.scenarios.INFO = {
   houseBasic: { title: "House (basic)", desc: "Build House on complete set only." },
   winCheck: { title: "Win check", desc: "Already-winning board state (game over)." },
   bankScrollShuffle: { title: "Bank+shuffle stress", desc: "Huge bank + reshuffle-on-draw stress case." },
-  debtHouseFirst: { title: "Debt: house-first", desc: "Debt prompt where House must be paid before set properties." },
+  debtHouseFirst: { title: "Debt: house-first", desc: "Debt prompt where House must be paid before set properties (includes a JSN in hand to test action-sourced payDebt response gating)." },
   placeReceived: { title: "Place received", desc: "Faux-turn placement buffer (includes Wild color choice)." },
   moveStress: { title: "Move stress", desc: "Many partial sets + 9-card hand (props + wilds + rent-any + house) to maximize legalMoves fanout for smoke testing + AI policy tuning." },
+  slyJSN: { title: "Sly+JSN", desc: "RespondAction prompt for Sly Deal (Allow vs Just Say No)." },
 };
 
 PD.scenarios._applyById = {
@@ -1836,9 +2063,12 @@ PD.scenarios._applyById = {
 
     // Add a little hand so the UI isn't empty.
     state.players[0].hand.push(PD.state.takeUid(state, "rent_cb"));
+    state.players[0].hand.push(PD.state.takeUid(state, "just_say_no"));
 
     // Pay a small debt to P1; paying the House overpays and resolves immediately.
-    PD.state.setPrompt(state, { kind: "payDebt", p: 0, toP: 1, rem: 1, buf: [] });
+    var rentUid = PD.state.takeUid(state, "rent_any");
+    state.discard.push(rentUid);
+    PD.state.setPrompt(state, { kind: "payDebt", p: 0, toP: 1, rem: 1, buf: [], srcAction: { kind: "rent", fromP: 1, actionUid: rentUid } });
   },
 
   // Phase 06: recipient faux-turn placement buffer (received properties).
@@ -1872,6 +2102,14 @@ PD.scenarios._applyById = {
     PD.scenarios.setAddPropByDefId(state, setC, "prop_cyan", PD.state.NO_COLOR);
     state.players[0].sets.push(setC);
 
+    // Opponent has at least one stealable property so Sly Deal has targets.
+    // Prefer an Orange-ish pair (incomplete set) so Sly targeting can cycle more than one option.
+    // (Orange set requires 3, so 2 cards stays stealable.)
+    var setOp = PD.state.newEmptySet();
+    PD.scenarios.setAddPropByDefId(state, setOp, "wild_mo", PD.Color.Orange);
+    PD.scenarios.setAddPropByDefId(state, setOp, "prop_orange", PD.state.NO_COLOR);
+    state.players[1].sets.push(setOp);
+
     // 2 Magenta sets (each 1 prop) so Magenta + wild_mo can target multiple existing sets.
     var setM0 = PD.state.newEmptySet();
     PD.scenarios.setAddPropByDefId(state, setM0, "prop_magenta", PD.state.NO_COLOR);
@@ -1899,17 +2137,44 @@ PD.scenarios._applyById = {
     PD.scenarios.setAddPropByDefId(state, setB2, "prop_black", PD.state.NO_COLOR);
     state.players[0].sets.push(setB2);
 
-    // Hand: one of each base property (remaining), both wilds, plus rent-any + house + $1 + one action.
+    // Hand: one of each base property (remaining), one wild, plus rent-any + house + $1 + one action.
     state.players[0].hand.push(PD.state.takeUid(state, "prop_magenta"));
-    state.players[0].hand.push(PD.state.takeUid(state, "prop_orange"));
+    // Keep Orange out of hand here so we can use it for opponent Sly targets above.
+    state.players[0].hand.push(PD.state.takeUid(state, "money_2"));
     state.players[0].hand.push(PD.state.takeUid(state, "prop_black"));
-    state.players[0].hand.push(PD.state.takeUid(state, "wild_mo"));
     state.players[0].hand.push(PD.state.takeUid(state, "wild_cb"));
 
     state.players[0].hand.push(PD.state.takeUid(state, "house"));
     state.players[0].hand.push(PD.state.takeUid(state, "rent_any"));
     state.players[0].hand.push(PD.state.takeUid(state, "money_1"));
     state.players[0].hand.push(PD.state.takeUid(state, "sly_deal"));
+  },
+
+  // Phase 08: Sly Deal respondAction prompt (Allow vs JSN).
+  slyJSN: function (state) {
+    // P0 has a stealable (incomplete) set with a single property.
+    var setO = PD.state.newEmptySet();
+    var uidT = PD.state.takeUid(state, "prop_orange");
+    PD.scenarios.setAddFixedProp(setO, uidT, PD.Color.Orange);
+    state.players[0].sets.push(setO);
+
+    // P0 has JSN in hand to respond with.
+    state.players[0].hand.push(PD.state.takeUid(state, "just_say_no"));
+    state.players[0].hand.push(PD.state.takeUid(state, "money_1"));
+
+    // Opponent played Sly Deal; the action card is already discarded.
+    var slyUid = PD.state.takeUid(state, "sly_deal");
+    state.discard.push(slyUid);
+
+    PD.state.setPrompt(state, {
+      kind: "respondAction",
+      p: 0,
+      srcAction: { kind: "slyDeal", fromP: 1, actionUid: slyUid },
+      target: { uid: uidT, loc: { p: 0, zone: "setProps", setI: 0, i: 0 } }
+    });
+
+    state.activeP = 1;
+    state.playsLeft = 3;
   },
 };
 
@@ -1985,6 +2250,17 @@ PD.moves.rentMovesForUid = function (state, uid) {
   return rentMoves;
 };
 
+PD.moves.slyDealMovesForUid = function (state, uid) {
+  var moves = PD.engine.legalMoves(state);
+  var out = [];
+  var i;
+  for (i = 0; i < moves.length; i++) {
+    var mv = moves[i];
+    if (mv && mv.kind === "playSlyDeal" && mv.card && mv.card.uid === uid) out.push(mv);
+  }
+  return out;
+};
+
 PD.moves.sortRentMovesByAmount = function (state, p, rentMoves) {
   if (!rentMoves || rentMoves.length <= 1) return rentMoves;
   rentMoves.sort(function (a, b) {
@@ -2021,6 +2297,12 @@ PD.moves.cmdsForTargeting = function (state, kind, uid, loc) {
   if (kind === "rent") {
     out.cmds = PD.moves.rentMovesForUid(state, uid);
     PD.moves.sortRentMovesByAmount(state, loc ? loc.p : 0, out.cmds);
+    if (allowSource) out.cmds.push({ kind: "source" });
+    return out;
+  }
+
+  if (kind === "sly") {
+    out.cmds = PD.moves.slyDealMovesForUid(state, uid);
     if (allowSource) out.cmds.push({ kind: "source" });
     return out;
   }
@@ -2124,6 +2406,17 @@ PD.ai.policies = {
       if (move && move.kind === "playRent") return k;
       return 1;
     }
+  },
+
+  biasPlayJustSayNo: {
+    id: "biasPlayJustSayNo",
+    weight: function (state, move) {
+      // Soft bias: prefer canceling negative actions when a response window exists.
+      // Tuning knob lives in config.
+      var k = PD.config.ai.biasPlayJustSayNoK;
+      if (move && move.kind === "playJustSayNo") return k;
+      return 1;
+    }
   }
 };
 
@@ -2151,7 +2444,8 @@ PD.ai.composePolicies = function (id, policyIds) {
 
 PD.ai.policies.defaultHeuristic = PD.ai.composePolicies("defaultHeuristic", [
   "biasExistingSet",
-  "biasPlayRent"
+  "biasPlayRent",
+  "biasPlayJustSayNo"
 ]);
 
 PD.ai.pickMove = function (state, moves, policy) {
@@ -2212,6 +2506,9 @@ PD.ai.describeCmd = function (state, cmd) {
   if (k === "endTurn") return "Opponent: End turn";
   if (k === "bank") return "Opponent: Bank";
   if (k === "playRent") return "Opponent: Rent";
+  if (k === "playSlyDeal") return "Opponent: Sly Deal";
+  if (k === "respondPass") return "Opponent: Allow";
+  if (k === "playJustSayNo") return "Opponent: Just Say No";
   if (k === "playHouse") return "Opponent: Build";
   if (k === "playProp") {
     var dl = PD.fmt.destLabelForCmd(state, cmd);
@@ -2253,6 +2550,13 @@ PD.fmt.errorMessage = function (code) {
   if (code === "wild_color_illegal") return "Wild color illegal";
   if (code === "no_targets") return "No valid destination";
   if (code === "house_pay_first") return "House must be paid first";
+  // Phase 08+
+  if (code === "not_sly") return "Not a Sly Deal";
+  if (code === "sly_full_set") return "Can't steal from a complete set";
+  if (code === "not_jsn") return "Not Just Say No";
+  if (code === "no_response_window") return "No response window";
+  if (code === "response_too_late") return "Too late to respond";
+  if (code === "bad_srcAction") return "Bad source action";
   return code || "error";
 };
 
@@ -2344,6 +2648,7 @@ PD.fmt.targetingTitle = function (targeting, cmd) {
     if (cmd0.kind === "playHouse") return "Build";
     if (cmd0.kind === "bank") return "Bank";
     if (cmd0.kind === "playProp") return "Place";
+    if (cmd0.kind === "playSlyDeal") return "Sly Deal";
     if (cmd0.kind === "source") return "Source";
     return "Target";
   }
@@ -2351,6 +2656,7 @@ PD.fmt.targetingTitle = function (targeting, cmd) {
   if (tKind === "build") return "Build";
   if (tKind === "place") return "Place";
   if (tKind === "rent") return "Rent";
+  if (tKind === "sly") return "Sly Deal";
   if (tKind === "quick") return titleForCmd(cmd);
   return "Bank";
 };
@@ -2385,6 +2691,16 @@ PD.fmt.targetingDestLine = function (state, targeting, cmd) {
     return "From: " + PD.fmt.colorName(colR) + " set\nAmt: $" + amt;
   }
 
+  if (k === "playSlyDeal") {
+    var tl = (cmd && cmd.target && cmd.target.loc) ? cmd.target.loc : null;
+    var colT = PD.state.NO_COLOR;
+    if (tl && tl.zone === "setProps") {
+      var setT = state.players[tl.p].sets[tl.setI];
+      if (setT && setT.props && setT.props[tl.i]) colT = setT.props[tl.i][1];
+    }
+    return "Target: " + PD.fmt.colorName(colT);
+  }
+
   if (k === "bank") return "Dest: Bank";
   if (k === "source") return "Dest: Source";
   return "(no destination)";
@@ -2393,7 +2709,10 @@ PD.fmt.targetingDestLine = function (state, targeting, cmd) {
 PD.fmt.targetingHelp = function (targeting) {
   var t = targeting || null;
   var kind = t && t.kind ? String(t.kind) : "";
-  var help = (kind === "quick") ? "L/R: Option" : ((kind === "rent") ? "L/R: Set" : "L/R: Dest");
+  var help =
+    (kind === "quick") ? "L/R: Option" :
+    ((kind === "rent") ? "L/R: Set" :
+      ((kind === "sly") ? "L/R: Target" : "L/R: Dest"));
   if (t && t.card && t.card.def && PD.rules.isWildDef(t.card.def)) help += "  U/D: Color";
   help += (t && t.hold) ? "\nRelease A: Drop  B:Cancel" : "\nA:Confirm  B:Cancel";
   return help;
@@ -3161,7 +3480,7 @@ PD.layout.playerForRow = function (row) {
     var y = maxBtnY - 7; // 6px font + 1
     var yPhase = y - 7;
     if (yPhase < 0) yPhase = 0;
-    printSafe("Phase 07", x, yPhase, cfg.hudLineCol);
+    printSafe("Phase 08", x, yPhase, cfg.hudLineCol);
     printSafe("Y:Mode", x, y, cfg.hudLineCol);
   }
 
@@ -3681,9 +4000,28 @@ PD.ui.syncPromptToast = function (state, view) {
     var over = state.players[0].hand.length - PD.state.HAND_MAX;
     txt = "Too many cards. Discard " + over;
   } else if (pr.kind === "payDebt") {
-    txt = "Pay debt: $" + pr.rem + " left";
+    // Phase 08+: if action-sourced debt and JSN is available, teach the response window.
+    var jsnAvail = !!(pr.srcAction && pr.buf && pr.buf.length === 0 && PD.rules.handHasActionKind(state, 0, PD.ActionKind.JustSayNo));
+    if (jsnAvail && pr.srcAction && String(pr.srcAction.kind || "") === "rent") {
+      txt = "Rent: Pay $" + pr.rem + " or Just Say No";
+    } else if (jsnAvail) {
+      txt = "Pay $" + pr.rem + " or Just Say No";
+    } else {
+      txt = "Pay debt: $" + pr.rem + " left";
+    }
   } else if (pr.kind === "placeReceived") {
     txt = "Place received properties: " + pr.uids.length;
+  } else if (pr.kind === "respondAction") {
+    // Phase 08: Sly Deal response prompt.
+    var col = PD.state.NO_COLOR;
+    if (pr.target && pr.target.loc && pr.target.loc.zone === "setProps") {
+      var tp = pr.target.loc.p;
+      var setI = pr.target.loc.setI;
+      var iP = pr.target.loc.i;
+      var set = state.players[tp].sets[setI];
+      if (set && set.props && set.props[iP]) col = set.props[iP][1];
+    }
+    txt = "Sly Deal: " + PD.fmt.colorName(col) + " or Just Say No";
   } else {
     txt = "Prompt: " + pr.kind;
   }
@@ -3734,6 +4072,16 @@ PD.ui.clampI = function (i, n) {
   if (i < 0) return 0;
   if (i >= n) return n - 1;
   return i;
+};
+
+PD.ui.itemMatchesUidLoc = function (it, uid, loc) {
+  if (!it || !it.loc || !loc) return false;
+  if (it.uid !== uid) return false;
+  if (it.loc.p !== loc.p) return false;
+  if (String(it.loc.zone) !== String(loc.zone)) return false;
+  if ((it.loc.setI != null) && (loc.setI != null) && it.loc.setI !== loc.setI) return false;
+  if ((it.loc.i != null) && (loc.i != null) && it.loc.i !== loc.i) return false;
+  return true;
 };
 
 PD.ui.wrapI = function (i, n) {
@@ -4360,6 +4708,26 @@ PD.ui.computeRowModels = function (state, view) {
     rm0.overlayItems.push(it0);
   }
 
+  function findItemByUidLoc(uid, loc) {
+    if (!uid || !loc) return null;
+    var row;
+    for (row = 0; row < models.length; row++) {
+      var rm = models[row];
+      if (!rm || !rm.items) continue;
+      var i;
+      for (i = 0; i < rm.items.length; i++) {
+        var it = rm.items[i];
+        if (!it || it.uid !== uid || !it.loc) continue;
+        if (it.loc.p !== loc.p) continue;
+        if (String(it.loc.zone) !== String(loc.zone)) continue;
+        if ((it.loc.setI != null) && (loc.setI != null) && it.loc.setI !== loc.setI) continue;
+        if ((it.loc.i != null) && (loc.i != null) && it.loc.i !== loc.i) continue;
+        return it;
+      }
+    }
+    return null;
+  }
+
   function stackX(st, depth) {
     if (!st) return 0;
     return st.x0 + depth * st.stride * st.fanDir;
@@ -4489,6 +4857,9 @@ PD.ui.computeRowModels = function (state, view) {
     var cmds = t.cmds;
     var cmdI = PD.ui.clampI(t.cmdI, cmds.length);
     t.cmdI = cmdI;
+    var cmdSel0 = (cmds && cmds.length) ? cmds[cmdI] : null;
+    var isSly = (t && String(t.kind || "") === "sly");
+    var isSourceSel = !!(cmdSel0 && cmdSel0.kind === "source");
 
     // Find source slot in models (for hold-targeting Source destination).
     var srcX = null, srcY = null, srcRow = null;
@@ -4514,7 +4885,7 @@ PD.ui.computeRowModels = function (state, view) {
     }
 
     // While targeting, hide the source card so the source slot can be represented by a ghost/preview.
-    if (t.card && t.card.uid && t.card.loc && (t.card.loc.zone === "hand" || t.card.loc.zone === "recvProps")) {
+    if (!isSly || !isSourceSel) if (t.card && t.card.uid && t.card.loc && (t.card.loc.zone === "hand" || t.card.loc.zone === "recvProps")) {
       meta.hideSrc = { uid: t.card.uid, loc: t.card.loc };
     }
 
@@ -4522,35 +4893,58 @@ PD.ui.computeRowModels = function (state, view) {
       ? { row: srcRow, x: srcX, y: srcY, stackKey: "overlay:src:row" + srcRow, depth: 0 }
       : null;
 
-    // Ghosts for all non-selected legal destinations in this targeting mode.
-    var hasSourceCmd = false;
-    var j;
-    for (j = 0; j < cmds.length; j++) if (cmds[j] && cmds[j].kind === "source") { hasSourceCmd = true; break; }
+    if (isSly) {
+      // Sly targeting: no preview card (avoid “two cursors” look). Cursor moves to the target instead.
+      // Source slot is still represented by a ghost when the real source card is hidden.
+      if (meta.hideSrc && srcRow != null && srcX != null && srcY != null) {
+        pushOverlay(srcRow, { kind: "ghost", x: srcX, y: srcY, stackKey: "overlay:src:row" + srcRow, depth: 0 });
+      }
 
-    for (j = 0; j < cmds.length; j++) {
-      if (j === cmdI) continue;
-      var c = cmds[j];
-      if (!c || !c.kind) continue;
-      pushGhost(slotForCmd(c, srcSlot));
-    }
+      // Optional: ghost outlines for non-selected Sly targets (opponent rows only).
+      var showGhosts = !!PD.config.ui.slyShowTargetGhosts;
+      if (showGhosts && cmds && cmds.length) {
+        var jS;
+        for (jS = 0; jS < cmds.length; jS++) {
+          var cS = cmds[jS];
+          if (!cS || cS.kind !== "playSlyDeal" || !cS.target || !cS.target.loc) continue;
+          if (!isSourceSel && jS === cmdI) continue;
+          var itT = findItemByUidLoc(cS.target.uid, cS.target.loc);
+          if (!itT) continue;
+          // Draw the outline late so it stays readable.
+          pushOverlay(itT.row, { kind: "ghost", x: itT.x, y: itT.y, stackKey: itT.stackKey, depth: (itT.depth != null ? itT.depth + 100 : 100) });
+        }
+      }
+    } else {
+      // Ghosts for all non-selected legal destinations in this targeting mode.
+      var hasSourceCmd = false;
+      var j;
+      for (j = 0; j < cmds.length; j++) if (cmds[j] && cmds[j].kind === "source") { hasSourceCmd = true; break; }
 
-    // Preview-in-stack for selected destination.
-    var cmdSel = cmds[cmdI];
-    setFocusForCmd(cmdSel, srcSlot, { uid: (t.card && t.card.uid) ? t.card.uid : 0, def: (t.card && t.card.def) ? t.card.def : null, wildColor: t.wildColor });
+      for (j = 0; j < cmds.length; j++) {
+        if (j === cmdI) continue;
+        var c = cmds[j];
+        if (!c || !c.kind) continue;
+        pushGhost(slotForCmd(c, srcSlot));
+      }
 
-    // If the selected destination previews the same uid elsewhere, ensure the source slot is still readable.
-    // (This keeps menu-targeting and recvProps placement consistent with hold-targeting: source becomes a ghost.)
-    if (
-      t.card &&
-      t.card.uid &&
-      srcX != null &&
-      srcY != null &&
-      srcRow != null &&
-      meta.focus &&
-      (meta.focus.uid === t.card.uid || meta.focus.forCmdKind === "rent") &&
-      !hasSourceCmd
-    ) {
-      pushOverlay(srcRow, { kind: "ghost", x: srcX, y: srcY, stackKey: "overlay:src:row" + srcRow, depth: 0 });
+      // Preview-in-stack for selected destination.
+      var cmdSel = cmds[cmdI];
+      setFocusForCmd(cmdSel, srcSlot, { uid: (t.card && t.card.uid) ? t.card.uid : 0, def: (t.card && t.card.def) ? t.card.def : null, wildColor: t.wildColor });
+
+      // If the selected destination previews the same uid elsewhere, ensure the source slot is still readable.
+      // (This keeps menu-targeting and recvProps placement consistent with hold-targeting: source becomes a ghost.)
+      if (
+        t.card &&
+        t.card.uid &&
+        srcX != null &&
+        srcY != null &&
+        srcRow != null &&
+        meta.focus &&
+        (meta.focus.uid === t.card.uid || meta.focus.forCmdKind === "rent") &&
+        !hasSourceCmd
+      ) {
+        pushOverlay(srcRow, { kind: "ghost", x: srcX, y: srcY, stackKey: "overlay:src:row" + srcRow, depth: 0 });
+      }
     }
   }
 
@@ -4584,6 +4978,22 @@ PD.ui.computeRowModels = function (state, view) {
           models[rowHandM].overlayItems.push({ kind: "ghost", x: itHM.x, y: itHM.y, stackKey: "overlay:menuSrc:row" + rowHandM, depth: 0 });
           break;
         }
+      }
+    }
+  }
+
+  // RespondAction prompt: keep a ghost outline on the forced target when cursor is away.
+  var pr = state ? state.prompt : null;
+  if (pr && pr.kind === "respondAction" && pr.p === 0 && pr.target && pr.target.loc) {
+    var tgt = pr.target;
+    var onTarget = false;
+    if (sel && sel.loc) {
+      onTarget = PD.ui.itemMatchesUidLoc(sel, tgt.uid, tgt.loc);
+    }
+    if (!onTarget) {
+      var itT2 = findItemByUidLoc(tgt.uid, tgt.loc);
+      if (itT2) {
+        pushOverlay(itT2.row, { kind: "ghost", x: itT2.x, y: itT2.y, stackKey: itT2.stackKey, depth: (itT2.depth != null ? itT2.depth + 100 : 100) });
       }
     }
   }
@@ -4690,6 +5100,12 @@ PD.ui.menuOpenForSelection = function (state, view, sel) {
       view.menu.items.push({ id: "rent", label: PD.fmt.menuLabelForRentMoves(state, rentMoves) });
     }
   }
+  if (def.kind === PD.CardKind.Action && def.actionKind === PD.ActionKind.SlyDeal) {
+    var slyMoves = PD.moves.slyDealMovesForUid(state, uid);
+    if (slyMoves.length > 0) {
+      view.menu.items.push({ id: "sly", label: "Sly Deal..." });
+    }
+  }
   if (PD.rules.isBankableDef(def)) {
     view.menu.items.push({ id: "bank", label: "Bank" });
   }
@@ -4705,6 +5121,8 @@ PD.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
   var t = view.targeting;
   t.active = true;
   t.kind = String(kind || "");
+  t._slySorted = false;
+  t._slySyncCmdI = -1;
   t.hold = !!hold;
   t.cmds = [];
   t.cmdI = 0;
@@ -4973,6 +5391,12 @@ PD.ui.step = function (state, view, actions) {
         return null;
       }
 
+      if (it.id === "sly") {
+        if (srcZone !== "hand") return null;
+        PD.ui.targetingEnter(state, view, "sly", false, uid, src.loc);
+        return null;
+      }
+
       if (it.id === "place") {
         if (!(srcZone === "hand" || srcZone === "recvProps")) return null;
         PD.ui.targetingEnter(state, view, "place", false, uid, src.loc);
@@ -5018,6 +5442,80 @@ PD.ui.step = function (state, view, actions) {
       return null;
     }
 
+    function slyFindItemForCmd(cmdSly) {
+      if (!cmdSly || !cmdSly.kind) return null;
+      if (cmdSly.kind === "source") {
+        // Source is the grabbed card in hand/recvProps.
+        if (!t.card || !t.card.loc) return null;
+        return PD.ui.findBestCursorTarget(computed.models, [PD.render.ROW_P_HAND], function (it) {
+          return PD.ui.itemMatchesUidLoc(it, t.card.uid, t.card.loc);
+        });
+      }
+      if (cmdSly.kind === "playSlyDeal" && cmdSly.target && cmdSly.target.loc) {
+        var loc = cmdSly.target.loc;
+        var uid = cmdSly.target.uid;
+        return PD.ui.findBestCursorTarget(computed.models, [PD.render.ROW_OP_TABLE], function (it) {
+          return PD.ui.itemMatchesUidLoc(it, uid, loc);
+        });
+      }
+      return null;
+    }
+
+    function slyCmdScreenX(cmdSly) {
+      var pick = slyFindItemForCmd(cmdSly);
+      if (!pick || !pick.item) return 999999;
+      var row = pick.item.row;
+      var cam = view.camX[row];
+      return (pick.item.x - cam);
+    }
+
+    function slyEnsureSorted() {
+      if (t.kind !== "sly") return;
+      if (t._slySorted) return;
+      if (!t.cmds || t.cmds.length === 0) return;
+
+      // Sort targets by screen-space X (left->right). Keep source last.
+      var cmds = t.cmds.slice();
+      cmds.sort(function (a, b) {
+        if (a && a.kind === "source") return 1;
+        if (b && b.kind === "source") return -1;
+        var ax = slyCmdScreenX(a);
+        var bx = slyCmdScreenX(b);
+        var d = ax - bx;
+        if (d) return d;
+        // Stable tie-breaker by setI/i.
+        var al = (a && a.target && a.target.loc) ? a.target.loc : null;
+        var bl = (b && b.target && b.target.loc) ? b.target.loc : null;
+        var asi = al && al.setI != null ? al.setI : 9999;
+        var bsi = bl && bl.setI != null ? bl.setI : 9999;
+        var di = asi - bsi;
+        if (di) return di;
+        var api = al && al.i != null ? al.i : 9999;
+        var bpi = bl && bl.i != null ? bl.i : 9999;
+        return api - bpi;
+      });
+      t.cmds = cmds;
+      // Default to first real target if possible.
+      if (t.cmds.length > 0 && t.cmds[0] && t.cmds[0].kind === "source" && t.cmds.length > 1) t.cmdI = 1;
+      else t.cmdI = 0;
+      t._slySorted = true;
+    }
+
+    function slySyncCursor() {
+      if (t.kind !== "sly") return false;
+      if (!t.cmds || t.cmds.length === 0) return false;
+      var cmdI = PD.ui.clampI(t.cmdI, t.cmds.length);
+      t.cmdI = cmdI;
+      if (t._slySyncCmdI === cmdI) return false;
+      var cmdSel = t.cmds[cmdI];
+      var pick = slyFindItemForCmd(cmdSel);
+      if (pick) PD.ui.cursorMoveTo(view, pick);
+      t._slySyncCmdI = cmdI;
+      return true;
+    }
+
+    slyEnsureSorted();
+
     // Cycle destinations
     var nCmds = t.cmds ? t.cmds.length : 0;
     if (nCmds > 0) {
@@ -5036,8 +5534,9 @@ PD.ui.step = function (state, view, actions) {
     if (!t.hold && actions.a && actions.a.tap) shouldConfirm = true;
     if (t.hold && actions.a && actions.a.released) shouldConfirm = true;
     if (!shouldConfirm) {
-      // Update cameras to follow destination preview.
+      // Update cameras to follow destination preview / cursor-moving selection.
       computed = PD.ui.computeRowModels(state, view);
+      slySyncCursor();
       PD.ui.updateCameras(state, view, computed);
       return null;
     }
@@ -5168,6 +5667,18 @@ PD.ui.step = function (state, view, actions) {
         }
         if (!selD || !selD.loc) { PD.anim.feedbackError(view, "no_actions", "No actions"); return null; }
 
+        // Phase 08+: JSN response for action-sourced debt before any payment is made.
+        if (selD.loc.zone === "hand" && selD.loc.p === 0) {
+          var canJsn = !!(prompt.srcAction && prompt.buf && prompt.buf.length === 0);
+          if (canJsn) {
+            var defJ = PD.state.defByUid(state, selD.uid);
+            if (defJ && defJ.kind === PD.CardKind.Action && defJ.actionKind === PD.ActionKind.JustSayNo) {
+              focusSnapshot();
+              return { kind: "applyCmd", cmd: { kind: "playJustSayNo", card: { uid: selD.uid, loc: selD.loc } } };
+            }
+          }
+        }
+
         // House-pay-first redirect: selecting a property in a housed set snaps to the House.
         if (selD.loc.zone === "setProps" && selD.loc.setI != null) {
           var setI = selD.loc.setI;
@@ -5199,6 +5710,46 @@ PD.ui.step = function (state, view, actions) {
         }
 
         PD.anim.feedbackError(view, "cant_pay", "Can't pay with that");
+      }
+
+      return null;
+    }
+
+    if (prompt.kind === "respondAction") {
+      if (actions.b && actions.b.pressed) {
+        PD.anim.feedbackError(view, "prompt_forced", "Must respond");
+        return null;
+      }
+
+      if (actions.a && actions.a.tap) {
+        var selR0 = currentSelection();
+        if (!selR0 || !selR0.loc) { PD.anim.feedbackError(view, "no_actions", "No actions"); return null; }
+
+        var tgt = prompt.target;
+        var isTarget =
+          tgt &&
+          tgt.loc &&
+          (selR0.uid === tgt.uid) &&
+          (selR0.loc.p === tgt.loc.p) &&
+          (String(selR0.loc.zone) === String(tgt.loc.zone)) &&
+          ((selR0.loc.setI == null) || (selR0.loc.setI === tgt.loc.setI)) &&
+          ((selR0.loc.i == null) || (selR0.loc.i === tgt.loc.i));
+
+        if (isTarget) {
+          focusSnapshot();
+          return { kind: "applyCmd", cmd: { kind: "respondPass" } };
+        }
+
+        if (selR0.loc.zone === "hand" && selR0.loc.p === 0) {
+          var defRJ = PD.state.defByUid(state, selR0.uid);
+          if (defRJ && defRJ.kind === PD.CardKind.Action && defRJ.actionKind === PD.ActionKind.JustSayNo) {
+            focusSnapshot();
+            return { kind: "applyCmd", cmd: { kind: "playJustSayNo", card: { uid: selR0.uid, loc: selR0.loc } } };
+          }
+        }
+
+        PD.anim.feedbackError(view, "must_respond", "Select the target or Just Say No");
+        return null;
       }
 
       return null;
@@ -5257,6 +5808,12 @@ PD.ui.step = function (state, view, actions) {
       var defGrab = PD.state.defByUid(state, uidGrab);
       if (defGrab && defGrab.kind === PD.CardKind.Property) {
         PD.ui.targetingEnter(state, view, "place", true, uidGrab, selGrab.loc);
+        return null;
+      } else if (defGrab && defGrab.kind === PD.CardKind.Action && defGrab.actionKind === PD.ActionKind.SlyDeal) {
+        // Phase 08b: if there are no Sly targets, fall back to Quick so Bank remains available.
+        var slyMoves = PD.moves.slyDealMovesForUid(state, uidGrab);
+        if (slyMoves && slyMoves.length > 0) PD.ui.targetingEnter(state, view, "sly", true, uidGrab, selGrab.loc);
+        else PD.ui.targetingEnter(state, view, "quick", true, uidGrab, selGrab.loc);
         return null;
       } else if (defGrab && (defGrab.kind === PD.CardKind.House || (defGrab.kind === PD.CardKind.Action && defGrab.actionKind === PD.ActionKind.Rent))) {
         PD.ui.targetingEnter(state, view, "quick", true, uidGrab, selGrab.loc);
@@ -5643,6 +6200,29 @@ PD.ui.focus.rules = [
     },
     pick: function (ctx) {
       return PD.ui.focus._pickCenterBtn(ctx.computed, "endTurn");
+    }
+  },
+  {
+    id: "OnEnterRespondActionPrompt_FocusTarget",
+    enabled: function () { return true; },
+    when: function (ctx) {
+      var pr = ctx.state.prompt;
+      var cur = !!(pr && pr.kind === "respondAction" && pr.p === 0);
+      return cur && (!ctx.view.ux.lastPromptForP0 || ctx.view.ux.lastPromptKind !== "respondAction");
+    },
+    pick: function (ctx) {
+      var pr = ctx.state.prompt;
+      if (!pr || !pr.target || !pr.target.loc) return null;
+      var tgt = pr.target;
+      // Prefer opponent table row, but fall back to any match.
+      return (
+        PD.ui.findBestCursorTarget(ctx.computed.models, [PD.render.ROW_OP_TABLE], function (it) {
+          return PD.ui.itemMatchesUidLoc(it, tgt.uid, tgt.loc);
+        }) ||
+        PD.ui.findBestCursorTarget(ctx.computed.models, [0, 1, 2, 3, 4], function (it) {
+          return PD.ui.itemMatchesUidLoc(it, tgt.uid, tgt.loc);
+        })
+      );
     }
   },
   {
@@ -6083,6 +6663,19 @@ PD.debug.nextScenario = function () {
   var d = PD.debug;
   d.scenarioI = (d.scenarioI + 1) % d.scenarios.length;
   PD.debug.reset({ pauseAutoFocus: true });
+
+  // Keep cursor on Next after switching scenarios (debug harness ergonomics).
+  var view = d.view;
+  var state = d.state;
+  if (view && state && PD.ui && PD.render) {
+    var computed = PD.ui.computeRowModels(state, view);
+    PD.ui.updateCameras(state, view, computed);
+    computed = PD.ui.computeRowModels(state, view);
+    var pick = PD.ui.findBestCursorTarget(computed.models, [PD.render.ROW_CENTER], function (it) {
+      return it && it.kind === "btn" && it.id === "nextScenario" && !it.disabled;
+    });
+    if (pick) PD.ui.cursorMoveTo(view, pick);
+  }
 };
 
 PD.debug.step = function () {
@@ -6129,6 +6722,38 @@ PD.debug.tickTextMode = function () {
 
   function bool01(v) { return v ? 1 : 0; }
 
+  function wrapLines(txt, maxChars) {
+    txt = String(txt || "");
+    maxChars = maxChars || 55;
+    if (!txt) return [];
+
+    // Preserve explicit newlines, but word-wrap within each paragraph.
+    var paras = txt.split("\n");
+    var out = [];
+    var pi;
+    for (pi = 0; pi < paras.length; pi++) {
+      var p = String(paras[pi] || "").trim();
+      if (!p) { out.push(""); continue; }
+
+      var words = p.split(/\s+/);
+      var line = "";
+      var wi;
+      for (wi = 0; wi < words.length; wi++) {
+        var w = words[wi];
+        if (!w) continue;
+        if (!line) { line = w; continue; }
+        if ((line.length + 1 + w.length) <= maxChars) {
+          line += " " + w;
+        } else {
+          out.push(line);
+          line = w;
+        }
+      }
+      if (line) out.push(line);
+    }
+    return out;
+  }
+
   function promptLine(state) {
     if (!state) return "Prompt:(none)";
     var pr = state.prompt;
@@ -6163,7 +6788,7 @@ PD.debug.tickTextMode = function () {
   }
 
   cls(0);
-  var x = 6;
+  var x = 0;
   var y = 6;
   var step = 6;
   var xR = 120;
@@ -6172,7 +6797,7 @@ PD.debug.tickTextMode = function () {
   var sid = d.scenarios[d.scenarioI];
   var info = (PD.scenarios.INFO && sid) ? PD.scenarios.INFO[String(sid)] : null;
   var title = (info && info.title) ? String(info.title) : String(sid);
-  printSmall("Scenario:" + title, x, y, 12); y += step;
+  printSmall("Scn:" + title, x, y, 12); y += step;
   var pendingDesc = (info && info.desc) ? String(info.desc) : "";
   printSmall("Seed:" + PD.seed.computeSeedU32(), x, y, 12); y += step;
 
@@ -6213,7 +6838,14 @@ PD.debug.tickTextMode = function () {
   }
 
   // Render scenario description after Events so it doesn't overlap the right UI column.
-  if (pendingDesc) { printSmall(pendingDesc, x, y, 13); y += step; }
+  if (pendingDesc) {
+    var lines = wrapLines(pendingDesc, 55);
+    var li;
+    for (li = 0; li < lines.length; li++) {
+      if (lines[li]) printSmall(lines[li], x, y, 13);
+      y += step;
+    }
+  }
 
   // Right column: UI snapshot (from last Render-mode tick).
   var v = d.view;
@@ -6228,7 +6860,12 @@ PD.debug.tickTextMode = function () {
       var a = v.ux.selAnchor;
       if (a) {
         var zone = (a.loc && a.loc.zone) ? String(a.loc.zone) : "?";
-        printSmall("Anchor:uid" + a.uid + " " + zone, xR, yR, 12); yR += step;
+        var head = "Anchor:";
+        if (a.uid != null && a.uid !== 0) head += "uid" + String(a.uid);
+        else if (a.id) head += String(a.id);
+        else if (a.kind) head += String(a.kind);
+        else head += "?";
+        printSmall(head + " " + zone, xR, yR, 12); yR += step;
       }
       if (v.ux.pendingFocusErrorCode) {
         printSmall("FocusErr:" + String(v.ux.pendingFocusErrorCode), xR, yR, 12); yR += step;
@@ -6321,7 +6958,8 @@ PD.mainTick = function () {
 
     // Phase 07: AI acts for actor=1 (activeP or prompt.p). While AI is acting, suppress player input.
     var actor = PD.ai.actor(d.state);
-    if (actor !== 0) actions = {};
+    var gameOver = (d.state.winnerP !== PD.state.NO_WINNER);
+    if (actor !== 0 && !gameOver) actions = {};
 
     var intent = PD.ui.step(d.state, d.view, actions);
     d.lastUiIntentSummary = summarizeUiIntent(intent);
@@ -6339,7 +6977,7 @@ PD.mainTick = function () {
         var msg = PD.fmt.errorMessage(code);
         PD.anim.feedbackError(d.view, code, msg);
       }
-    } else if (actor === 0 && intent && intent.kind === "debug") {
+    } else if ((actor === 0 || gameOver) && intent && intent.kind === "debug") {
       if (intent.action === "step") {
         PD.debug.step();
         PD.anim.onEvents(d.state, d.view, d.lastEvents);
@@ -6349,7 +6987,7 @@ PD.mainTick = function () {
     }
 
     // Phase 07: AI pacing loop (one command per step, with fixed delay).
-    if (actor !== 0 && !(d.view && d.view.anim && d.view.anim.lock)) {
+    if (!gameOver && actor !== 0 && !(d.view && d.view.anim && d.view.anim.lock)) {
       if (d.ai.wait > 0) {
         d.ai.wait -= 1;
       } else {

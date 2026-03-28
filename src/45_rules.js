@@ -106,6 +106,51 @@ PD.engine.applyCommand = function (state, cmd) {
     }
   }
 
+  function cleanupEmptySetsForPlayer(pp) {
+    var sets = state.players[pp].sets;
+    var i;
+    for (i = sets.length - 1; i >= 0; i--) {
+      var set = sets[i];
+      var nProps = set.props.length;
+      var hasHouse = !!set.houseUid;
+      if (nProps === 0 && !hasHouse) sets.splice(i, 1);
+    }
+  }
+
+  function applySlySteal(fromP, target) {
+    if (!(fromP === 0 || fromP === 1)) throw new Error("bad_fromP");
+    if (!target || !target.loc) throw new Error("bad_target");
+    var loc = target.loc;
+    if (!PD.engine.locEqZone(loc, "setProps")) throw new Error("bad_loc");
+
+    var defP = loc.p;
+    var setI = loc.setI;
+    var pi = loc.i;
+    if (!(defP === 0 || defP === 1)) throw new Error("bad_loc");
+    var setsD = state.players[defP].sets;
+    if (!setsD || setI < 0 || setI >= setsD.length) throw new Error("bad_set");
+    var setD = setsD[setI];
+    if (!setD || !setD.props) throw new Error("bad_set");
+
+    var props = setD.props;
+    if (!props[pi] || props[pi][0] !== target.uid) throw new Error("bad_loc");
+
+    // Sly rule: cannot steal from a complete set (including overfilled).
+    var color = PD.rules.getSetColor(props);
+    if (color === PD.state.NO_COLOR) throw new Error("empty_set");
+    var req = PD.SET_RULES[color].requiredSize;
+    if (props.length >= req) throw new Error("sly_full_set");
+
+    // Remove from defender set.
+    props.splice(pi, 1);
+    cleanupEmptySetsForPlayer(defP);
+
+    // Attacker receives the property and must place it.
+    PD.state.setPrompt(state, { kind: "placeReceived", p: fromP, uids: [target.uid] });
+    // Direction: stolen from defender -> attacker.
+    events.push({ kind: "slySteal", fromP: defP, toP: fromP, uid: target.uid });
+  }
+
   // Prompt gating: only allow prompt-appropriate commands.
   if (prompt) {
     if (prompt.kind === "discardDown") {
@@ -125,17 +170,6 @@ PD.engine.applyCommand = function (state, cmd) {
       var def = PD.state.defByUid(state, uid);
       if (def.kind === PD.CardKind.Property) return def.propertyPayValue != null ? def.propertyPayValue : 0;
       return def.bankValue != null ? def.bankValue : 0;
-    }
-
-    function cleanupEmptySetsForPlayer(pp) {
-      var sets = state.players[pp].sets;
-      var i;
-      for (i = sets.length - 1; i >= 0; i--) {
-        var set = sets[i];
-        var nProps = set.props.length;
-        var hasHouse = !!set.houseUid;
-        if (nProps === 0 && !hasHouse) sets.splice(i, 1);
-      }
     }
 
     function applyPayDebt(cmdPay) {
@@ -209,6 +243,41 @@ PD.engine.applyCommand = function (state, cmd) {
       }
     }
 
+    function applyPlayJustSayNo(cmdJsn) {
+      var card = cmdJsn.card;
+      if (!card || !card.loc) throw new Error("bad_cmd");
+      if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+      if (card.loc.p !== p) throw new Error("not_your_card");
+
+      var uid = card.uid;
+      var def = PD.state.defByUid(state, uid);
+      if (!def || def.kind !== PD.CardKind.Action || def.actionKind !== PD.ActionKind.JustSayNo) throw new Error("not_jsn");
+
+      PD.engine.removeHandAtLoc(state, card);
+      state.discard.push(uid);
+      events.push({
+        kind: "move",
+        uid: uid,
+        from: card.loc,
+        to: { zone: "discard", i: state.discard.length - 1 }
+      });
+
+      // Cancel the active prompt and report the response (single-layer only).
+      var src = prompt && prompt.srcAction ? prompt.srcAction : null;
+      PD.state.clearPrompt(state);
+      events.push({ kind: "jsn", p: p, srcAction: src });
+    }
+
+    function applyRespondPass() {
+      if (!prompt || prompt.kind !== "respondAction") throw new Error("prompt_active");
+      if (!prompt.srcAction) throw new Error("bad_srcAction");
+      if (String(prompt.srcAction.kind || "") !== "slyDeal") throw new Error("bad_srcAction");
+      var fromP = prompt.srcAction.fromP;
+      var target = prompt.target;
+      PD.state.clearPrompt(state);
+      applySlySteal(fromP, target);
+    }
+
     function applyPlaceReceived(cmdProp) {
       var card = cmdProp.card;
       var dest = cmdProp.dest;
@@ -272,6 +341,17 @@ PD.engine.applyCommand = function (state, cmd) {
 
     if (prompt.kind === "payDebt") {
       if (cmd.kind === "payDebt") { applyPayDebt(cmd); return { events: events }; }
+      if (cmd.kind === "playJustSayNo") {
+        if (!prompt.srcAction) throw new Error("no_response_window");
+        if (prompt.buf && prompt.buf.length > 0) throw new Error("response_too_late");
+        applyPlayJustSayNo(cmd);
+        return { events: events };
+      }
+      throw new Error("prompt_active");
+    }
+    if (prompt.kind === "respondAction") {
+      if (cmd.kind === "respondPass") { applyRespondPass(); return { events: events }; }
+      if (cmd.kind === "playJustSayNo") { applyPlayJustSayNo(cmd); return { events: events }; }
       throw new Error("prompt_active");
     }
     if (prompt.kind === "placeReceived") {
@@ -434,8 +514,65 @@ PD.engine.applyCommand = function (state, cmd) {
 
     // Trigger debt prompt for the opponent (if they have payables).
     var payer = PD.rules.otherPlayer(p);
-    PD.state.beginDebt(state, payer, p, amount);
+    PD.state.beginDebt(state, payer, p, amount, { kind: "rent", fromP: p, actionUid: uid });
     events.push({ kind: "rent", p: p, setI: setI, color: color, amount: amount });
+  }
+
+  function applyPlaySlyDeal(cmdSly) {
+    var card = cmdSly.card;
+    var target = cmdSly.target;
+    if (!card || !card.loc || !target || !target.loc) throw new Error("bad_cmd");
+    if (!PD.engine.locEqZone(card.loc, "hand")) throw new Error("bad_loc");
+    if (card.loc.p !== p) throw new Error("not_your_card");
+
+    var uid = card.uid;
+    var def = PD.state.defByUid(state, uid);
+    if (!def || def.kind !== PD.CardKind.Action || def.actionKind !== PD.ActionKind.SlyDeal) throw new Error("not_sly");
+
+    // Validate target is opponent property.
+    var otherP = PD.rules.otherPlayer(p);
+    var tLoc = target.loc;
+    if (!PD.engine.locEqZone(tLoc, "setProps")) throw new Error("bad_loc");
+    if (tLoc.p !== otherP) throw new Error("bad_target");
+
+    // Validate not from full set.
+    var setsO = state.players[otherP].sets;
+    if (!setsO || tLoc.setI < 0 || tLoc.setI >= setsO.length) throw new Error("bad_set");
+    var setO = setsO[tLoc.setI];
+    if (!setO || !setO.props) throw new Error("bad_set");
+    var color = PD.rules.getSetColor(setO.props);
+    if (color === PD.state.NO_COLOR) throw new Error("empty_set");
+    var req = PD.SET_RULES[color].requiredSize;
+    if (setO.props.length >= req) throw new Error("sly_full_set");
+    if (!setO.props[tLoc.i] || setO.props[tLoc.i][0] !== target.uid) throw new Error("bad_loc");
+
+    // Discard the action card.
+    PD.engine.removeHandAtLoc(state, card);
+    state.discard.push(uid);
+    events.push({
+      kind: "move",
+      uid: uid,
+      from: card.loc,
+      to: { zone: "discard", i: state.discard.length - 1 }
+    });
+    decPlays();
+
+    // If defender has JSN, open a response prompt; otherwise resolve immediately.
+    var hasJsn = PD.rules.handHasActionKind(state, otherP, PD.ActionKind.JustSayNo);
+
+    if (hasJsn) {
+      PD.state.setPrompt(state, {
+        kind: "respondAction",
+        p: otherP,
+        srcAction: { kind: "slyDeal", fromP: p, actionUid: uid },
+        target: { uid: target.uid, loc: { p: tLoc.p, zone: tLoc.zone, setI: tLoc.setI, i: tLoc.i } }
+      });
+      events.push({ kind: "respondOffered", p: otherP, srcAction: { kind: "slyDeal", fromP: p, actionUid: uid } });
+      return;
+    }
+
+    events.push({ kind: "respondSkipped", p: otherP, reason: "no_jsn", srcAction: { kind: "slyDeal", fromP: p, actionUid: uid } });
+    applySlySteal(p, { uid: target.uid, loc: tLoc });
   }
 
   if (cmd.kind === "endTurn") {
@@ -454,6 +591,7 @@ PD.engine.applyCommand = function (state, cmd) {
   else if (cmd.kind === "playProp") applyPlayProp(cmd);
   else if (cmd.kind === "playHouse") applyPlayHouse(cmd);
   else if (cmd.kind === "playRent") applyPlayRent(cmd);
+  else if (cmd.kind === "playSlyDeal") applyPlaySlyDeal(cmd);
   else throw new Error("unknown_cmd:" + cmd.kind);
 
   return { events: events };
@@ -532,7 +670,33 @@ PD.engine.legalMoves = function (state) {
           out.push({ kind: "payDebt", card: { uid: props[pi][0], loc: { p: pPay, zone: "setProps", setI: si, i: pi } } });
         }
       }
+      if (pr.srcAction && pr.buf && pr.buf.length === 0) {
+        // Allow JSN response before any payment (Phase 08+).
+        var handJ = state.players[pPay].hand;
+        var hj;
+        for (hj = 0; hj < handJ.length; hj++) {
+          var uidJ = handJ[hj];
+          var defJ = PD.state.defByUid(state, uidJ);
+          if (defJ && defJ.kind === PD.CardKind.Action && defJ.actionKind === PD.ActionKind.JustSayNo) {
+            out.push({ kind: "playJustSayNo", card: { uid: uidJ, loc: { p: pPay, zone: "hand", i: hj } } });
+          }
+        }
+      }
       return out;
+    }
+    if (pr.kind === "respondAction") {
+      var pR = pr.p;
+      var outR = [{ kind: "respondPass" }];
+      var handR = state.players[pR].hand;
+      var hr;
+      for (hr = 0; hr < handR.length; hr++) {
+        var uidR = handR[hr];
+        var defR = PD.state.defByUid(state, uidR);
+        if (defR && defR.kind === PD.CardKind.Action && defR.actionKind === PD.ActionKind.JustSayNo) {
+          outR.push({ kind: "playJustSayNo", card: { uid: uidR, loc: { p: pR, zone: "hand", i: hr } } });
+        }
+      }
+      return outR;
     }
     if (pr.kind === "placeReceived") {
       var pR = pr.p;
@@ -603,6 +767,27 @@ PD.engine.legalMoves = function (state) {
         var amt = PD.rules.rentAmountForSet(state, p, siR);
         if (amt <= 0) continue;
         moves.push({ kind: "playRent", card: cardRef, setI: siR });
+      }
+    } else if (def.kind === PD.CardKind.Action && def.actionKind === PD.ActionKind.SlyDeal) {
+      // Sly Deal: one move per eligible opponent property (not from complete set).
+      var op = PD.rules.otherPlayer(p);
+      var setsOp = state.players[op].sets;
+      var siS;
+      for (siS = 0; siS < setsOp.length; siS++) {
+        var setS = setsOp[siS];
+        if (!setS || !setS.props || setS.props.length <= 0) continue;
+        var colS = PD.rules.getSetColor(setS.props);
+        if (colS === PD.state.NO_COLOR) continue;
+        var reqS = PD.SET_RULES[colS].requiredSize;
+        if (setS.props.length >= reqS) continue;
+        var piS;
+        for (piS = 0; piS < setS.props.length; piS++) {
+          moves.push({
+            kind: "playSlyDeal",
+            card: cardRef,
+            target: { uid: setS.props[piS][0], loc: { p: op, zone: "setProps", setI: siS, i: piS } }
+          });
+        }
       }
     }
   }

@@ -26,12 +26,31 @@ PD.state.setPrompt = function (state, prompt) {
   }
 
   if (k === "payDebt") {
+    var src = prompt.srcAction;
+    var srcAction = src ? { kind: String(src.kind || ""), fromP: src.fromP, actionUid: Math.floor(src.actionUid) } : null;
     state.prompt = {
       kind: k,
       p: p,
       toP: prompt.toP,
       rem: Math.floor(prompt.rem),
-      buf: prompt.buf.slice()
+      buf: prompt.buf.slice(),
+      srcAction: srcAction
+    };
+    return;
+  }
+
+  if (k === "respondAction") {
+    // Generic response window prompt (Phase 08+).
+    // Keep payload minimal and validate via tests (avoid runtime shape asserts).
+    var src2 = prompt.srcAction;
+    var srcAction2 = src2 ? { kind: String(src2.kind || ""), fromP: src2.fromP, actionUid: Math.floor(src2.actionUid) } : null;
+    var tgt = prompt.target;
+    var loc = tgt && tgt.loc ? tgt.loc : null;
+    state.prompt = {
+      kind: k,
+      p: p,
+      srcAction: srcAction2,
+      target: { uid: tgt ? tgt.uid : 0, loc: { p: loc ? loc.p : 0, zone: loc ? loc.zone : "", setI: loc ? loc.setI : 0, i: loc ? loc.i : 0 } }
     };
     return;
   }
@@ -61,10 +80,10 @@ PD.state.hasAnyPayables = function (state, p) {
   return false;
 };
 
-PD.state.beginDebt = function (state, fromP, toP, amount) {
+PD.state.beginDebt = function (state, fromP, toP, amount, srcAction) {
   if (!(amount > 0)) return;
   if (!PD.state.hasAnyPayables(state, fromP)) return;
-  PD.state.setPrompt(state, { kind: "payDebt", p: fromP, toP: toP, rem: amount, buf: [] });
+  PD.state.setPrompt(state, { kind: "payDebt", p: fromP, toP: toP, rem: amount, buf: [], srcAction: srcAction || null });
 };
 
 PD.rules.otherPlayer = function (p) {
@@ -83,6 +102,18 @@ PD.rules.isBankableDef = function (def) {
 
 PD.rules.isWildDef = function (def) {
   return !!(def && def.kind === PD.CardKind.Property && def.wildColors && def.wildColors.length);
+};
+
+PD.rules.handHasActionKind = function (state, p, actionKind) {
+  var hand = state && state.players && state.players[p] ? state.players[p].hand : null;
+  if (!hand || hand.length === 0) return false;
+  var i;
+  for (i = 0; i < hand.length; i++) {
+    var uid = hand[i];
+    var def = PD.state.defByUid(state, uid);
+    if (def && def.kind === PD.CardKind.Action && def.actionKind === actionKind) return true;
+  }
+  return false;
 };
 
 PD.rules.wildAllowsColor = function (def, color) {

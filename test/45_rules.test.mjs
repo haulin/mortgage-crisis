@@ -321,10 +321,14 @@ test("Phase 06: prompt actor is prompt.p (can act even if activeP differs)", asy
 
   const moves = ctx.PD.engine.legalMoves(state);
   assert.ok(moves.length > 0, "expected payDebt moves");
-  assert.ok(moves.every((m) => m.kind === "payDebt"), "expected only payDebt moves during payDebt prompt");
+  assert.ok(moves.some((m) => m.kind === "payDebt"), "expected at least one payDebt move during payDebt prompt");
+  assert.ok(
+    moves.every((m) => m.kind === "payDebt" || m.kind === "playJustSayNo"),
+    "expected only payDebt/playJustSayNo moves during payDebt prompt"
+  );
 
   // Applying a legal prompt move should succeed even though activeP is different.
-  const mv = moves[0];
+  const mv = moves.find((m) => m.kind === "payDebt") || moves[0];
   assert.doesNotThrow(() => ctx.PD.engine.applyCommand(state, mv));
 });
 
@@ -405,9 +409,190 @@ test("Rent: playRent discards rent card, decrements plays, and creates payDebt p
   assert.ok(state.prompt && state.prompt.kind === "payDebt", "expected debt prompt to begin");
   assert.equal(state.prompt.p, 1, "expected opponent to be payer");
   assert.equal(state.prompt.toP, 0, "expected active player to be payee");
+  assert.ok(state.prompt.srcAction, "expected action-sourced debt metadata");
+  assert.equal(state.prompt.srcAction.kind, "rent");
+  assert.equal(state.prompt.srcAction.fromP, 0);
+  assert.equal(state.prompt.srcAction.actionUid, uid);
   assert.equal(typeof state.prompt.rem, "number", "expected numeric remaining rent");
   assert.ok(Number.isFinite(state.prompt.rem), "expected finite remaining rent");
   assert.ok(Number.isInteger(state.prompt.rem), "expected integer remaining rent");
   assert.ok(state.prompt.rem > 0, "expected positive remaining rent");
+});
+
+test("Phase 08: payDebt(JSN) is legal only when srcAction exists and buf is empty", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  // Scenario includes: payDebt prompt with srcAction and a JSN in P0 hand.
+  const s = ctx.PD.state.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
+  assert.ok(s.prompt && s.prompt.kind === "payDebt");
+  assert.ok(s.prompt.srcAction, "expected srcAction in debtHouseFirst");
+  assert.equal(s.prompt.buf.length, 0);
+
+  const moves = ctx.PD.engine.legalMoves(s);
+  assert.ok(moves.some((m) => m.kind === "playJustSayNo"), "expected JSN move");
+
+  const jsnI = s.players[0].hand.findIndex((u) => ctx.PD.state.defByUid(s, u).id === "just_say_no");
+  assert.ok(jsnI >= 0, "expected JSN in hand");
+  const jsnUid = s.players[0].hand[jsnI];
+
+  ctx.PD.engine.applyCommand(s, { kind: "playJustSayNo", card: { uid: jsnUid, loc: { p: 0, zone: "hand", i: jsnI } } });
+  assert.equal(s.prompt, null, "expected prompt cleared after JSN");
+  assert.ok(s.discard.includes(jsnUid), "expected JSN discarded");
+
+  // Too late: once buf is non-empty, JSN is disallowed.
+  const s2 = ctx.PD.state.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
+  const jsnI2 = s2.players[0].hand.findIndex((u) => ctx.PD.state.defByUid(s2, u).id === "just_say_no");
+  const jsnUid2 = s2.players[0].hand[jsnI2];
+  s2.prompt.buf = [1]; // simulate partial payment started
+  assert.equal(ctx.PD.engine.legalMoves(s2).some((m) => m.kind === "playJustSayNo"), false);
+  assert.throws(() => {
+    ctx.PD.engine.applyCommand(s2, { kind: "playJustSayNo", card: { uid: jsnUid2, loc: { p: 0, zone: "hand", i: jsnI2 } } });
+  }, /response_too_late/);
+
+  // No srcAction: JSN is disallowed even with empty buf.
+  const s3 = ctx.PD.state.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
+  const jsnI3 = s3.players[0].hand.findIndex((u) => ctx.PD.state.defByUid(s3, u).id === "just_say_no");
+  const jsnUid3 = s3.players[0].hand[jsnI3];
+  s3.prompt.srcAction = null;
+  assert.equal(ctx.PD.engine.legalMoves(s3).some((m) => m.kind === "playJustSayNo"), false);
+  assert.throws(() => {
+    ctx.PD.engine.applyCommand(s3, { kind: "playJustSayNo", card: { uid: jsnUid3, loc: { p: 0, zone: "hand", i: jsnI3 } } });
+  }, /no_response_window/);
+});
+
+test("Phase 08: Sly Deal - respondAction offered when defender has JSN; respondPass steals and opens placeReceived", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  // Move a Sly Deal into P0 hand.
+  const slyUid = s.deck.find((u) => ctx.PD.state.defByUid(s, u).id === "sly_deal");
+  assert.ok(slyUid, "expected sly_deal in deck");
+  s.deck = s.deck.filter((u) => u !== slyUid);
+  s.players[0].hand.push(slyUid);
+
+  // Opponent has one stealable property in a set.
+  const propUid = s.deck.find((u) => ctx.PD.state.defByUid(s, u).id === "prop_orange");
+  assert.ok(propUid, "expected prop_orange in deck");
+  s.deck = s.deck.filter((u) => u !== propUid);
+  const set = ctx.PD.state.newEmptySet();
+  set.props.push([propUid, ctx.PD.Color.Orange]);
+  s.players[1].sets = [set];
+
+  // Opponent has JSN in hand.
+  const jsnUid = s.deck.find((u) => ctx.PD.state.defByUid(s, u).id === "just_say_no");
+  assert.ok(jsnUid, "expected just_say_no in deck");
+  s.deck = s.deck.filter((u) => u !== jsnUid);
+  s.players[1].hand.push(jsnUid);
+
+  const moves = ctx.PD.engine.legalMoves(s);
+  const mv = moves.find((m) => m.kind === "playSlyDeal" && m.card && m.card.uid === slyUid);
+  assert.ok(mv, "expected playSlyDeal move");
+
+  ctx.PD.engine.applyCommand(s, mv);
+  assert.ok(s.prompt && s.prompt.kind === "respondAction", "expected respondAction prompt");
+  assert.equal(s.prompt.p, 1, "expected defender to respond");
+
+  // Defender passes -> steal resolves and opens placement prompt for attacker.
+  ctx.PD.engine.applyCommand(s, { kind: "respondPass" });
+  assert.ok(s.prompt && s.prompt.kind === "placeReceived", "expected placeReceived prompt");
+  assert.equal(s.prompt.p, 0, "expected attacker to place received property");
+  assert.equal(s.prompt.uids.length, 1);
+  assert.equal(s.prompt.uids[0], propUid);
+  assert.equal(s.players[1].sets.length, 0, "expected defender set removed after stealing last prop");
+});
+
+test("Phase 08: Sly Deal - JSN cancels the action (no steal)", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const slyUid = s.deck.find((u) => ctx.PD.state.defByUid(s, u).id === "sly_deal");
+  assert.ok(slyUid);
+  s.deck = s.deck.filter((u) => u !== slyUid);
+  s.players[0].hand.push(slyUid);
+
+  const propUid = s.deck.find((u) => ctx.PD.state.defByUid(s, u).id === "prop_orange");
+  assert.ok(propUid);
+  s.deck = s.deck.filter((u) => u !== propUid);
+  const set = ctx.PD.state.newEmptySet();
+  set.props.push([propUid, ctx.PD.Color.Orange]);
+  s.players[1].sets = [set];
+
+  const jsnUid = s.deck.find((u) => ctx.PD.state.defByUid(s, u).id === "just_say_no");
+  assert.ok(jsnUid);
+  s.deck = s.deck.filter((u) => u !== jsnUid);
+  s.players[1].hand.push(jsnUid);
+  const jsnI = s.players[1].hand.indexOf(jsnUid);
+
+  const mv = ctx.PD.engine.legalMoves(s).find((m) => m.kind === "playSlyDeal" && m.card && m.card.uid === slyUid);
+  ctx.PD.engine.applyCommand(s, mv);
+  assert.ok(s.prompt && s.prompt.kind === "respondAction");
+
+  ctx.PD.engine.applyCommand(s, { kind: "playJustSayNo", card: { uid: jsnUid, loc: { p: 1, zone: "hand", i: jsnI } } });
+  assert.equal(s.prompt, null, "expected prompt cleared after JSN");
+  assert.equal(s.players[1].sets[0].props.length, 1, "expected target property not stolen");
+});
+
+test("Phase 08: Sly Deal - when defender has no JSN, it resolves immediately into placeReceived", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const slyUid = s.deck.find((u) => ctx.PD.state.defByUid(s, u).id === "sly_deal");
+  assert.ok(slyUid);
+  s.deck = s.deck.filter((u) => u !== slyUid);
+  s.players[0].hand.push(slyUid);
+
+  const propUid = s.deck.find((u) => ctx.PD.state.defByUid(s, u).id === "prop_orange");
+  assert.ok(propUid);
+  s.deck = s.deck.filter((u) => u !== propUid);
+  const set = ctx.PD.state.newEmptySet();
+  set.props.push([propUid, ctx.PD.Color.Orange]);
+  s.players[1].sets = [set];
+  s.players[1].hand = []; // no JSN
+
+  const mv = ctx.PD.engine.legalMoves(s).find((m) => m.kind === "playSlyDeal" && m.card && m.card.uid === slyUid);
+  ctx.PD.engine.applyCommand(s, mv);
+  assert.ok(s.prompt && s.prompt.kind === "placeReceived", "expected immediate placeReceived");
+  assert.equal(s.prompt.p, 0);
+});
+
+test("Phase 08: Sly Deal - cannot target properties in a complete set", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const slyUid = s.deck.find((u) => ctx.PD.state.defByUid(s, u).id === "sly_deal");
+  assert.ok(slyUid);
+  s.deck = s.deck.filter((u) => u !== slyUid);
+  s.players[0].hand.push(slyUid);
+
+  // Build a complete Cyan set (2) for opponent.
+  const c0 = s.deck.find((u) => ctx.PD.state.defByUid(s, u).id === "prop_cyan");
+  assert.ok(c0);
+  s.deck = s.deck.filter((u) => u !== c0);
+  const c1 = s.deck.find((u) => ctx.PD.state.defByUid(s, u).id === "prop_cyan");
+  assert.ok(c1);
+  s.deck = s.deck.filter((u) => u !== c1);
+  const setC = ctx.PD.state.newEmptySet();
+  setC.props.push([c0, ctx.PD.Color.Cyan]);
+  setC.props.push([c1, ctx.PD.Color.Cyan]);
+  s.players[1].sets = [setC];
+
+  const moves = ctx.PD.engine.legalMoves(s).filter((m) => m.kind === "playSlyDeal" && m.card && m.card.uid === slyUid);
+  assert.equal(moves.length, 0, "expected no sly targets from a complete set");
+
+  assert.throws(() => {
+    ctx.PD.engine.applyCommand(s, {
+      kind: "playSlyDeal",
+      card: { uid: slyUid, loc: { p: 0, zone: "hand", i: s.players[0].hand.indexOf(slyUid) } },
+      target: { uid: c0, loc: { p: 1, zone: "setProps", setI: 0, i: 0 } }
+    });
+  }, /sly_full_set/);
 });
 

@@ -48,6 +48,10 @@ PD.config.ui = {
   // Phase 07: AI pacing (frames at 60fps).
   aiStepDelayFrames: 60,
   aiNarrateToastFrames: 60,
+
+  // Phase 08: Sly Deal targeting presentation.
+  // If true: show ghost outlines for non-selected Sly targets while targeting.
+  slyShowTargetGhosts: false
  
 };
 
@@ -62,7 +66,11 @@ PD.config.ai = {
 
   // Weight multiplier for "play Rent" moves (bias asking for rent over banking Rent).
   // 1 means no bias (equivalent to uniform random).
-  biasPlayRentK: 4
+  biasPlayRentK: 4,
+
+  // Phase 08: weight multiplier for "play Just Say No" response moves.
+  // 1 means no bias (equivalent to uniform random).
+  biasPlayJustSayNoK: 8
 };
 
 // Rule-note IDs (Phase 05+). These are small display-only annotations in Inspect.

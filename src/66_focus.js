@@ -286,6 +286,29 @@ PD.ui.focus.rules = [
     }
   },
   {
+    id: "OnEnterRespondActionPrompt_FocusTarget",
+    enabled: function () { return true; },
+    when: function (ctx) {
+      var pr = ctx.state.prompt;
+      var cur = !!(pr && pr.kind === "respondAction" && pr.p === 0);
+      return cur && (!ctx.view.ux.lastPromptForP0 || ctx.view.ux.lastPromptKind !== "respondAction");
+    },
+    pick: function (ctx) {
+      var pr = ctx.state.prompt;
+      if (!pr || !pr.target || !pr.target.loc) return null;
+      var tgt = pr.target;
+      // Prefer opponent table row, but fall back to any match.
+      return (
+        PD.ui.findBestCursorTarget(ctx.computed.models, [PD.render.ROW_OP_TABLE], function (it) {
+          return PD.ui.itemMatchesUidLoc(it, tgt.uid, tgt.loc);
+        }) ||
+        PD.ui.findBestCursorTarget(ctx.computed.models, [0, 1, 2, 3, 4], function (it) {
+          return PD.ui.itemMatchesUidLoc(it, tgt.uid, tgt.loc);
+        })
+      );
+    }
+  },
+  {
     id: "OnEnterPayDebtPrompt_DefaultFocus",
     enabled: function () { return true; },
     when: function (ctx) {

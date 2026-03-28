@@ -169,6 +169,9 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   requirePosNum(PD.config.ui, "aiStepDelayFrames");
   requirePosNum(PD.config.ui, "aiNarrateToastFrames");
 
+  // Phase 08 UI knobs.
+  assert.equal(typeof PD.config.ui.slyShowTargetGhosts, "boolean", "expected slyShowTargetGhosts boolean");
+
   // AI policy knobs.
   assert.ok(Array.isArray(PD.config.ai.policyByP), "expected PD.config.ai.policyByP array");
   assert.equal(PD.config.ai.policyByP.length, 2, "expected PD.config.ai.policyByP length=2");
@@ -178,6 +181,7 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   assert.ok(PD.config.ai.policyByP[1].length > 0);
   requirePosNum(PD.config.ai, "biasExistingSetK");
   requirePosNum(PD.config.ai, "biasPlayRentK");
+  requirePosNum(PD.config.ai, "biasPlayJustSayNoK");
 });
 
 test("config sanity: rule notes are configured", async () => {

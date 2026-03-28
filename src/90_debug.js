@@ -37,6 +37,19 @@ PD.debug.nextScenario = function () {
   var d = PD.debug;
   d.scenarioI = (d.scenarioI + 1) % d.scenarios.length;
   PD.debug.reset({ pauseAutoFocus: true });
+
+  // Keep cursor on Next after switching scenarios (debug harness ergonomics).
+  var view = d.view;
+  var state = d.state;
+  if (view && state && PD.ui && PD.render) {
+    var computed = PD.ui.computeRowModels(state, view);
+    PD.ui.updateCameras(state, view, computed);
+    computed = PD.ui.computeRowModels(state, view);
+    var pick = PD.ui.findBestCursorTarget(computed.models, [PD.render.ROW_CENTER], function (it) {
+      return it && it.kind === "btn" && it.id === "nextScenario" && !it.disabled;
+    });
+    if (pick) PD.ui.cursorMoveTo(view, pick);
+  }
 };
 
 PD.debug.step = function () {
@@ -83,6 +96,38 @@ PD.debug.tickTextMode = function () {
 
   function bool01(v) { return v ? 1 : 0; }
 
+  function wrapLines(txt, maxChars) {
+    txt = String(txt || "");
+    maxChars = maxChars || 55;
+    if (!txt) return [];
+
+    // Preserve explicit newlines, but word-wrap within each paragraph.
+    var paras = txt.split("\n");
+    var out = [];
+    var pi;
+    for (pi = 0; pi < paras.length; pi++) {
+      var p = String(paras[pi] || "").trim();
+      if (!p) { out.push(""); continue; }
+
+      var words = p.split(/\s+/);
+      var line = "";
+      var wi;
+      for (wi = 0; wi < words.length; wi++) {
+        var w = words[wi];
+        if (!w) continue;
+        if (!line) { line = w; continue; }
+        if ((line.length + 1 + w.length) <= maxChars) {
+          line += " " + w;
+        } else {
+          out.push(line);
+          line = w;
+        }
+      }
+      if (line) out.push(line);
+    }
+    return out;
+  }
+
   function promptLine(state) {
     if (!state) return "Prompt:(none)";
     var pr = state.prompt;
@@ -117,7 +162,7 @@ PD.debug.tickTextMode = function () {
   }
 
   cls(0);
-  var x = 6;
+  var x = 0;
   var y = 6;
   var step = 6;
   var xR = 120;
@@ -126,7 +171,7 @@ PD.debug.tickTextMode = function () {
   var sid = d.scenarios[d.scenarioI];
   var info = (PD.scenarios.INFO && sid) ? PD.scenarios.INFO[String(sid)] : null;
   var title = (info && info.title) ? String(info.title) : String(sid);
-  printSmall("Scenario:" + title, x, y, 12); y += step;
+  printSmall("Scn:" + title, x, y, 12); y += step;
   var pendingDesc = (info && info.desc) ? String(info.desc) : "";
   printSmall("Seed:" + PD.seed.computeSeedU32(), x, y, 12); y += step;
 
@@ -167,7 +212,14 @@ PD.debug.tickTextMode = function () {
   }
 
   // Render scenario description after Events so it doesn't overlap the right UI column.
-  if (pendingDesc) { printSmall(pendingDesc, x, y, 13); y += step; }
+  if (pendingDesc) {
+    var lines = wrapLines(pendingDesc, 55);
+    var li;
+    for (li = 0; li < lines.length; li++) {
+      if (lines[li]) printSmall(lines[li], x, y, 13);
+      y += step;
+    }
+  }
 
   // Right column: UI snapshot (from last Render-mode tick).
   var v = d.view;
@@ -182,7 +234,12 @@ PD.debug.tickTextMode = function () {
       var a = v.ux.selAnchor;
       if (a) {
         var zone = (a.loc && a.loc.zone) ? String(a.loc.zone) : "?";
-        printSmall("Anchor:uid" + a.uid + " " + zone, xR, yR, 12); yR += step;
+        var head = "Anchor:";
+        if (a.uid != null && a.uid !== 0) head += "uid" + String(a.uid);
+        else if (a.id) head += String(a.id);
+        else if (a.kind) head += String(a.kind);
+        else head += "?";
+        printSmall(head + " " + zone, xR, yR, 12); yR += step;
       }
       if (v.ux.pendingFocusErrorCode) {
         printSmall("FocusErr:" + String(v.ux.pendingFocusErrorCode), xR, yR, 12); yR += step;
@@ -275,7 +332,8 @@ PD.mainTick = function () {
 
     // Phase 07: AI acts for actor=1 (activeP or prompt.p). While AI is acting, suppress player input.
     var actor = PD.ai.actor(d.state);
-    if (actor !== 0) actions = {};
+    var gameOver = (d.state.winnerP !== PD.state.NO_WINNER);
+    if (actor !== 0 && !gameOver) actions = {};
 
     var intent = PD.ui.step(d.state, d.view, actions);
     d.lastUiIntentSummary = summarizeUiIntent(intent);
@@ -293,7 +351,7 @@ PD.mainTick = function () {
         var msg = PD.fmt.errorMessage(code);
         PD.anim.feedbackError(d.view, code, msg);
       }
-    } else if (actor === 0 && intent && intent.kind === "debug") {
+    } else if ((actor === 0 || gameOver) && intent && intent.kind === "debug") {
       if (intent.action === "step") {
         PD.debug.step();
         PD.anim.onEvents(d.state, d.view, d.lastEvents);
@@ -303,7 +361,7 @@ PD.mainTick = function () {
     }
 
     // Phase 07: AI pacing loop (one command per step, with fixed delay).
-    if (actor !== 0 && !(d.view && d.view.anim && d.view.anim.lock)) {
+    if (!gameOver && actor !== 0 && !(d.view && d.view.anim && d.view.anim.lock)) {
       if (d.ai.wait > 0) {
         d.ai.wait -= 1;
       } else {

@@ -27,6 +27,13 @@ PD.fmt.errorMessage = function (code) {
   if (code === "wild_color_illegal") return "Wild color illegal";
   if (code === "no_targets") return "No valid destination";
   if (code === "house_pay_first") return "House must be paid first";
+  // Phase 08+
+  if (code === "not_sly") return "Not a Sly Deal";
+  if (code === "sly_full_set") return "Can't steal from a complete set";
+  if (code === "not_jsn") return "Not Just Say No";
+  if (code === "no_response_window") return "No response window";
+  if (code === "response_too_late") return "Too late to respond";
+  if (code === "bad_srcAction") return "Bad source action";
   return code || "error";
 };
 
@@ -118,6 +125,7 @@ PD.fmt.targetingTitle = function (targeting, cmd) {
     if (cmd0.kind === "playHouse") return "Build";
     if (cmd0.kind === "bank") return "Bank";
     if (cmd0.kind === "playProp") return "Place";
+    if (cmd0.kind === "playSlyDeal") return "Sly Deal";
     if (cmd0.kind === "source") return "Source";
     return "Target";
   }
@@ -125,6 +133,7 @@ PD.fmt.targetingTitle = function (targeting, cmd) {
   if (tKind === "build") return "Build";
   if (tKind === "place") return "Place";
   if (tKind === "rent") return "Rent";
+  if (tKind === "sly") return "Sly Deal";
   if (tKind === "quick") return titleForCmd(cmd);
   return "Bank";
 };
@@ -159,6 +168,16 @@ PD.fmt.targetingDestLine = function (state, targeting, cmd) {
     return "From: " + PD.fmt.colorName(colR) + " set\nAmt: $" + amt;
   }
 
+  if (k === "playSlyDeal") {
+    var tl = (cmd && cmd.target && cmd.target.loc) ? cmd.target.loc : null;
+    var colT = PD.state.NO_COLOR;
+    if (tl && tl.zone === "setProps") {
+      var setT = state.players[tl.p].sets[tl.setI];
+      if (setT && setT.props && setT.props[tl.i]) colT = setT.props[tl.i][1];
+    }
+    return "Target: " + PD.fmt.colorName(colT);
+  }
+
   if (k === "bank") return "Dest: Bank";
   if (k === "source") return "Dest: Source";
   return "(no destination)";
@@ -167,7 +186,10 @@ PD.fmt.targetingDestLine = function (state, targeting, cmd) {
 PD.fmt.targetingHelp = function (targeting) {
   var t = targeting || null;
   var kind = t && t.kind ? String(t.kind) : "";
-  var help = (kind === "quick") ? "L/R: Option" : ((kind === "rent") ? "L/R: Set" : "L/R: Dest");
+  var help =
+    (kind === "quick") ? "L/R: Option" :
+    ((kind === "rent") ? "L/R: Set" :
+      ((kind === "sly") ? "L/R: Target" : "L/R: Dest"));
   if (t && t.card && t.card.def && PD.rules.isWildDef(t.card.def)) help += "  U/D: Color";
   help += (t && t.hold) ? "\nRelease A: Drop  B:Cancel" : "\nA:Confirm  B:Cancel";
   return help;

@@ -18,7 +18,11 @@ The AI loop is intentionally simple:
 - Generate legal commands, pick **one** using deterministic RNG, and apply it.
 - Emit short narration toasts for readability while playtesting.
 
-Render-mode input is suppressed while the AI is the actor, and the pacing loop runs only when not animation-locked.
+Render-mode input is suppressed while the AI is the actor (to prevent conflicting commands), and the pacing loop runs only when not animation-locked.
+
+Game over exception:
+
+- When a winner is present, inputs remain available so the dev harness can always Reset/Next even if `activeP` is still the opponent.
 
 ## Policy system (future hook)
 

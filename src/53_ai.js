@@ -26,6 +26,17 @@ PD.ai.policies = {
       if (move && move.kind === "playRent") return k;
       return 1;
     }
+  },
+
+  biasPlayJustSayNo: {
+    id: "biasPlayJustSayNo",
+    weight: function (state, move) {
+      // Soft bias: prefer canceling negative actions when a response window exists.
+      // Tuning knob lives in config.
+      var k = PD.config.ai.biasPlayJustSayNoK;
+      if (move && move.kind === "playJustSayNo") return k;
+      return 1;
+    }
   }
 };
 
@@ -53,7 +64,8 @@ PD.ai.composePolicies = function (id, policyIds) {
 
 PD.ai.policies.defaultHeuristic = PD.ai.composePolicies("defaultHeuristic", [
   "biasExistingSet",
-  "biasPlayRent"
+  "biasPlayRent",
+  "biasPlayJustSayNo"
 ]);
 
 PD.ai.pickMove = function (state, moves, policy) {
@@ -114,6 +126,9 @@ PD.ai.describeCmd = function (state, cmd) {
   if (k === "endTurn") return "Opponent: End turn";
   if (k === "bank") return "Opponent: Bank";
   if (k === "playRent") return "Opponent: Rent";
+  if (k === "playSlyDeal") return "Opponent: Sly Deal";
+  if (k === "respondPass") return "Opponent: Allow";
+  if (k === "playJustSayNo") return "Opponent: Just Say No";
   if (k === "playHouse") return "Opponent: Build";
   if (k === "playProp") {
     var dl = PD.fmt.destLabelForCmd(state, cmd);

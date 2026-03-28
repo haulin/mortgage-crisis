@@ -69,6 +69,17 @@ PD.moves.rentMovesForUid = function (state, uid) {
   return rentMoves;
 };
 
+PD.moves.slyDealMovesForUid = function (state, uid) {
+  var moves = PD.engine.legalMoves(state);
+  var out = [];
+  var i;
+  for (i = 0; i < moves.length; i++) {
+    var mv = moves[i];
+    if (mv && mv.kind === "playSlyDeal" && mv.card && mv.card.uid === uid) out.push(mv);
+  }
+  return out;
+};
+
 PD.moves.sortRentMovesByAmount = function (state, p, rentMoves) {
   if (!rentMoves || rentMoves.length <= 1) return rentMoves;
   rentMoves.sort(function (a, b) {
@@ -105,6 +116,12 @@ PD.moves.cmdsForTargeting = function (state, kind, uid, loc) {
   if (kind === "rent") {
     out.cmds = PD.moves.rentMovesForUid(state, uid);
     PD.moves.sortRentMovesByAmount(state, loc ? loc.p : 0, out.cmds);
+    if (allowSource) out.cmds.push({ kind: "source" });
+    return out;
+  }
+
+  if (kind === "sly") {
+    out.cmds = PD.moves.slyDealMovesForUid(state, uid);
     if (allowSource) out.cmds.push({ kind: "source" });
     return out;
   }

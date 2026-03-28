@@ -8,6 +8,17 @@ function assertPromptShape(ctx, pr) {
   assert.ok(pr.kind.length > 0, "expected prompt.kind non-empty");
   assert.ok(pr.p === 0 || pr.p === 1, "expected prompt.p to be 0 or 1");
 
+  const assertSrcActionShape = (srcAction) => {
+    assert.ok(srcAction && typeof srcAction === "object", "expected srcAction object");
+    assert.equal(typeof srcAction.kind, "string", "expected srcAction.kind string");
+    assert.ok(srcAction.kind.length > 0, "expected srcAction.kind non-empty");
+    assert.ok(srcAction.fromP === 0 || srcAction.fromP === 1, "expected srcAction.fromP to be 0 or 1");
+    assert.equal(typeof srcAction.actionUid, "number", "expected srcAction.actionUid number");
+    assert.ok(Number.isFinite(srcAction.actionUid));
+    assert.ok(Number.isInteger(srcAction.actionUid));
+    assert.ok(srcAction.actionUid > 0);
+  };
+
   if (pr.kind === "discardDown") {
     assert.equal(typeof pr.nDiscarded, "number");
     assert.ok(Number.isFinite(pr.nDiscarded));
@@ -22,6 +33,29 @@ function assertPromptShape(ctx, pr) {
     assert.ok(Number.isFinite(pr.rem));
     assert.ok(Number.isInteger(pr.rem));
     assert.ok(Array.isArray(pr.buf), "expected prompt.buf array");
+    if (pr.srcAction != null) assertSrcActionShape(pr.srcAction);
+    return;
+  }
+
+  if (pr.kind === "respondAction") {
+    if (pr.srcAction != null) assertSrcActionShape(pr.srcAction);
+    assert.ok(pr.target && typeof pr.target === "object", "expected prompt.target object");
+    assert.equal(typeof pr.target.uid, "number", "expected prompt.target.uid number");
+    assert.ok(Number.isFinite(pr.target.uid));
+    assert.ok(Number.isInteger(pr.target.uid));
+    assert.ok(pr.target.uid > 0);
+    assert.ok(pr.target.loc && typeof pr.target.loc === "object", "expected prompt.target.loc object");
+    assert.ok(pr.target.loc.p === 0 || pr.target.loc.p === 1, "expected target.loc.p 0|1");
+    assert.equal(typeof pr.target.loc.zone, "string", "expected target.loc.zone string");
+    assert.ok(pr.target.loc.zone.length > 0, "expected target.loc.zone non-empty");
+    if (pr.target.loc.zone === "setProps") {
+      assert.equal(typeof pr.target.loc.setI, "number");
+      assert.ok(Number.isInteger(pr.target.loc.setI));
+      assert.ok(pr.target.loc.setI >= 0);
+      assert.equal(typeof pr.target.loc.i, "number");
+      assert.ok(Number.isInteger(pr.target.loc.i));
+      assert.ok(pr.target.loc.i >= 0);
+    }
     return;
   }
 
@@ -46,12 +80,31 @@ test("setPrompt creates canonical prompt shapes and clones arrays", async () => 
 
   // payDebt clones buf
   const buf = [1, 2, 3];
-  ctx.PD.state.setPrompt(s, { kind: "payDebt", p: 1, toP: 0, rem: 7, buf });
+  const srcAction = { kind: "rent", fromP: 0, actionUid: 123 };
+  ctx.PD.state.setPrompt(s, { kind: "payDebt", p: 1, toP: 0, rem: 7, buf, srcAction });
   assertPromptShape(ctx, s.prompt);
   assert.equal(s.prompt.kind, "payDebt");
   assert.notEqual(s.prompt.buf, buf, "expected buf to be cloned");
   assert.deepEqual(s.prompt.buf, buf);
   assert.equal(s.prompt.rem, 7);
+  assert.ok(s.prompt.srcAction, "expected srcAction to be preserved when provided");
+  assert.notEqual(s.prompt.srcAction, srcAction, "expected srcAction to be cloned");
+  assert.equal(s.prompt.srcAction.kind, "rent");
+  assert.equal(s.prompt.srcAction.fromP, 0);
+  assert.equal(s.prompt.srcAction.actionUid, 123);
+
+  // respondAction canonicalizes payload
+  ctx.PD.state.setPrompt(s, {
+    kind: "respondAction",
+    p: 1,
+    srcAction: { kind: "slyDeal", fromP: 0, actionUid: 77 },
+    target: { uid: 88, loc: { p: 0, zone: "setProps", setI: 0, i: 0 } }
+  });
+  assertPromptShape(ctx, s.prompt);
+  assert.equal(s.prompt.kind, "respondAction");
+  assert.equal(s.prompt.p, 1);
+  assert.equal(s.prompt.srcAction.kind, "slyDeal");
+  assert.equal(s.prompt.target.uid, 88);
 
   // placeReceived clones uids
   const uids = [10, 11];

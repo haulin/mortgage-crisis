@@ -133,9 +133,28 @@ PD.ui.syncPromptToast = function (state, view) {
     var over = state.players[0].hand.length - PD.state.HAND_MAX;
     txt = "Too many cards. Discard " + over;
   } else if (pr.kind === "payDebt") {
-    txt = "Pay debt: $" + pr.rem + " left";
+    // Phase 08+: if action-sourced debt and JSN is available, teach the response window.
+    var jsnAvail = !!(pr.srcAction && pr.buf && pr.buf.length === 0 && PD.rules.handHasActionKind(state, 0, PD.ActionKind.JustSayNo));
+    if (jsnAvail && pr.srcAction && String(pr.srcAction.kind || "") === "rent") {
+      txt = "Rent: Pay $" + pr.rem + " or Just Say No";
+    } else if (jsnAvail) {
+      txt = "Pay $" + pr.rem + " or Just Say No";
+    } else {
+      txt = "Pay debt: $" + pr.rem + " left";
+    }
   } else if (pr.kind === "placeReceived") {
     txt = "Place received properties: " + pr.uids.length;
+  } else if (pr.kind === "respondAction") {
+    // Phase 08: Sly Deal response prompt.
+    var col = PD.state.NO_COLOR;
+    if (pr.target && pr.target.loc && pr.target.loc.zone === "setProps") {
+      var tp = pr.target.loc.p;
+      var setI = pr.target.loc.setI;
+      var iP = pr.target.loc.i;
+      var set = state.players[tp].sets[setI];
+      if (set && set.props && set.props[iP]) col = set.props[iP][1];
+    }
+    txt = "Sly Deal: " + PD.fmt.colorName(col) + " or Just Say No";
   } else {
     txt = "Prompt: " + pr.kind;
   }
@@ -186,6 +205,16 @@ PD.ui.clampI = function (i, n) {
   if (i < 0) return 0;
   if (i >= n) return n - 1;
   return i;
+};
+
+PD.ui.itemMatchesUidLoc = function (it, uid, loc) {
+  if (!it || !it.loc || !loc) return false;
+  if (it.uid !== uid) return false;
+  if (it.loc.p !== loc.p) return false;
+  if (String(it.loc.zone) !== String(loc.zone)) return false;
+  if ((it.loc.setI != null) && (loc.setI != null) && it.loc.setI !== loc.setI) return false;
+  if ((it.loc.i != null) && (loc.i != null) && it.loc.i !== loc.i) return false;
+  return true;
 };
 
 PD.ui.wrapI = function (i, n) {
@@ -812,6 +841,26 @@ PD.ui.computeRowModels = function (state, view) {
     rm0.overlayItems.push(it0);
   }
 
+  function findItemByUidLoc(uid, loc) {
+    if (!uid || !loc) return null;
+    var row;
+    for (row = 0; row < models.length; row++) {
+      var rm = models[row];
+      if (!rm || !rm.items) continue;
+      var i;
+      for (i = 0; i < rm.items.length; i++) {
+        var it = rm.items[i];
+        if (!it || it.uid !== uid || !it.loc) continue;
+        if (it.loc.p !== loc.p) continue;
+        if (String(it.loc.zone) !== String(loc.zone)) continue;
+        if ((it.loc.setI != null) && (loc.setI != null) && it.loc.setI !== loc.setI) continue;
+        if ((it.loc.i != null) && (loc.i != null) && it.loc.i !== loc.i) continue;
+        return it;
+      }
+    }
+    return null;
+  }
+
   function stackX(st, depth) {
     if (!st) return 0;
     return st.x0 + depth * st.stride * st.fanDir;
@@ -941,6 +990,9 @@ PD.ui.computeRowModels = function (state, view) {
     var cmds = t.cmds;
     var cmdI = PD.ui.clampI(t.cmdI, cmds.length);
     t.cmdI = cmdI;
+    var cmdSel0 = (cmds && cmds.length) ? cmds[cmdI] : null;
+    var isSly = (t && String(t.kind || "") === "sly");
+    var isSourceSel = !!(cmdSel0 && cmdSel0.kind === "source");
 
     // Find source slot in models (for hold-targeting Source destination).
     var srcX = null, srcY = null, srcRow = null;
@@ -966,7 +1018,7 @@ PD.ui.computeRowModels = function (state, view) {
     }
 
     // While targeting, hide the source card so the source slot can be represented by a ghost/preview.
-    if (t.card && t.card.uid && t.card.loc && (t.card.loc.zone === "hand" || t.card.loc.zone === "recvProps")) {
+    if (!isSly || !isSourceSel) if (t.card && t.card.uid && t.card.loc && (t.card.loc.zone === "hand" || t.card.loc.zone === "recvProps")) {
       meta.hideSrc = { uid: t.card.uid, loc: t.card.loc };
     }
 
@@ -974,35 +1026,58 @@ PD.ui.computeRowModels = function (state, view) {
       ? { row: srcRow, x: srcX, y: srcY, stackKey: "overlay:src:row" + srcRow, depth: 0 }
       : null;
 
-    // Ghosts for all non-selected legal destinations in this targeting mode.
-    var hasSourceCmd = false;
-    var j;
-    for (j = 0; j < cmds.length; j++) if (cmds[j] && cmds[j].kind === "source") { hasSourceCmd = true; break; }
+    if (isSly) {
+      // Sly targeting: no preview card (avoid “two cursors” look). Cursor moves to the target instead.
+      // Source slot is still represented by a ghost when the real source card is hidden.
+      if (meta.hideSrc && srcRow != null && srcX != null && srcY != null) {
+        pushOverlay(srcRow, { kind: "ghost", x: srcX, y: srcY, stackKey: "overlay:src:row" + srcRow, depth: 0 });
+      }
 
-    for (j = 0; j < cmds.length; j++) {
-      if (j === cmdI) continue;
-      var c = cmds[j];
-      if (!c || !c.kind) continue;
-      pushGhost(slotForCmd(c, srcSlot));
-    }
+      // Optional: ghost outlines for non-selected Sly targets (opponent rows only).
+      var showGhosts = !!PD.config.ui.slyShowTargetGhosts;
+      if (showGhosts && cmds && cmds.length) {
+        var jS;
+        for (jS = 0; jS < cmds.length; jS++) {
+          var cS = cmds[jS];
+          if (!cS || cS.kind !== "playSlyDeal" || !cS.target || !cS.target.loc) continue;
+          if (!isSourceSel && jS === cmdI) continue;
+          var itT = findItemByUidLoc(cS.target.uid, cS.target.loc);
+          if (!itT) continue;
+          // Draw the outline late so it stays readable.
+          pushOverlay(itT.row, { kind: "ghost", x: itT.x, y: itT.y, stackKey: itT.stackKey, depth: (itT.depth != null ? itT.depth + 100 : 100) });
+        }
+      }
+    } else {
+      // Ghosts for all non-selected legal destinations in this targeting mode.
+      var hasSourceCmd = false;
+      var j;
+      for (j = 0; j < cmds.length; j++) if (cmds[j] && cmds[j].kind === "source") { hasSourceCmd = true; break; }
 
-    // Preview-in-stack for selected destination.
-    var cmdSel = cmds[cmdI];
-    setFocusForCmd(cmdSel, srcSlot, { uid: (t.card && t.card.uid) ? t.card.uid : 0, def: (t.card && t.card.def) ? t.card.def : null, wildColor: t.wildColor });
+      for (j = 0; j < cmds.length; j++) {
+        if (j === cmdI) continue;
+        var c = cmds[j];
+        if (!c || !c.kind) continue;
+        pushGhost(slotForCmd(c, srcSlot));
+      }
 
-    // If the selected destination previews the same uid elsewhere, ensure the source slot is still readable.
-    // (This keeps menu-targeting and recvProps placement consistent with hold-targeting: source becomes a ghost.)
-    if (
-      t.card &&
-      t.card.uid &&
-      srcX != null &&
-      srcY != null &&
-      srcRow != null &&
-      meta.focus &&
-      (meta.focus.uid === t.card.uid || meta.focus.forCmdKind === "rent") &&
-      !hasSourceCmd
-    ) {
-      pushOverlay(srcRow, { kind: "ghost", x: srcX, y: srcY, stackKey: "overlay:src:row" + srcRow, depth: 0 });
+      // Preview-in-stack for selected destination.
+      var cmdSel = cmds[cmdI];
+      setFocusForCmd(cmdSel, srcSlot, { uid: (t.card && t.card.uid) ? t.card.uid : 0, def: (t.card && t.card.def) ? t.card.def : null, wildColor: t.wildColor });
+
+      // If the selected destination previews the same uid elsewhere, ensure the source slot is still readable.
+      // (This keeps menu-targeting and recvProps placement consistent with hold-targeting: source becomes a ghost.)
+      if (
+        t.card &&
+        t.card.uid &&
+        srcX != null &&
+        srcY != null &&
+        srcRow != null &&
+        meta.focus &&
+        (meta.focus.uid === t.card.uid || meta.focus.forCmdKind === "rent") &&
+        !hasSourceCmd
+      ) {
+        pushOverlay(srcRow, { kind: "ghost", x: srcX, y: srcY, stackKey: "overlay:src:row" + srcRow, depth: 0 });
+      }
     }
   }
 
@@ -1036,6 +1111,22 @@ PD.ui.computeRowModels = function (state, view) {
           models[rowHandM].overlayItems.push({ kind: "ghost", x: itHM.x, y: itHM.y, stackKey: "overlay:menuSrc:row" + rowHandM, depth: 0 });
           break;
         }
+      }
+    }
+  }
+
+  // RespondAction prompt: keep a ghost outline on the forced target when cursor is away.
+  var pr = state ? state.prompt : null;
+  if (pr && pr.kind === "respondAction" && pr.p === 0 && pr.target && pr.target.loc) {
+    var tgt = pr.target;
+    var onTarget = false;
+    if (sel && sel.loc) {
+      onTarget = PD.ui.itemMatchesUidLoc(sel, tgt.uid, tgt.loc);
+    }
+    if (!onTarget) {
+      var itT2 = findItemByUidLoc(tgt.uid, tgt.loc);
+      if (itT2) {
+        pushOverlay(itT2.row, { kind: "ghost", x: itT2.x, y: itT2.y, stackKey: itT2.stackKey, depth: (itT2.depth != null ? itT2.depth + 100 : 100) });
       }
     }
   }
@@ -1142,6 +1233,12 @@ PD.ui.menuOpenForSelection = function (state, view, sel) {
       view.menu.items.push({ id: "rent", label: PD.fmt.menuLabelForRentMoves(state, rentMoves) });
     }
   }
+  if (def.kind === PD.CardKind.Action && def.actionKind === PD.ActionKind.SlyDeal) {
+    var slyMoves = PD.moves.slyDealMovesForUid(state, uid);
+    if (slyMoves.length > 0) {
+      view.menu.items.push({ id: "sly", label: "Sly Deal..." });
+    }
+  }
   if (PD.rules.isBankableDef(def)) {
     view.menu.items.push({ id: "bank", label: "Bank" });
   }
@@ -1157,6 +1254,8 @@ PD.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
   var t = view.targeting;
   t.active = true;
   t.kind = String(kind || "");
+  t._slySorted = false;
+  t._slySyncCmdI = -1;
   t.hold = !!hold;
   t.cmds = [];
   t.cmdI = 0;
@@ -1425,6 +1524,12 @@ PD.ui.step = function (state, view, actions) {
         return null;
       }
 
+      if (it.id === "sly") {
+        if (srcZone !== "hand") return null;
+        PD.ui.targetingEnter(state, view, "sly", false, uid, src.loc);
+        return null;
+      }
+
       if (it.id === "place") {
         if (!(srcZone === "hand" || srcZone === "recvProps")) return null;
         PD.ui.targetingEnter(state, view, "place", false, uid, src.loc);
@@ -1470,6 +1575,80 @@ PD.ui.step = function (state, view, actions) {
       return null;
     }
 
+    function slyFindItemForCmd(cmdSly) {
+      if (!cmdSly || !cmdSly.kind) return null;
+      if (cmdSly.kind === "source") {
+        // Source is the grabbed card in hand/recvProps.
+        if (!t.card || !t.card.loc) return null;
+        return PD.ui.findBestCursorTarget(computed.models, [PD.render.ROW_P_HAND], function (it) {
+          return PD.ui.itemMatchesUidLoc(it, t.card.uid, t.card.loc);
+        });
+      }
+      if (cmdSly.kind === "playSlyDeal" && cmdSly.target && cmdSly.target.loc) {
+        var loc = cmdSly.target.loc;
+        var uid = cmdSly.target.uid;
+        return PD.ui.findBestCursorTarget(computed.models, [PD.render.ROW_OP_TABLE], function (it) {
+          return PD.ui.itemMatchesUidLoc(it, uid, loc);
+        });
+      }
+      return null;
+    }
+
+    function slyCmdScreenX(cmdSly) {
+      var pick = slyFindItemForCmd(cmdSly);
+      if (!pick || !pick.item) return 999999;
+      var row = pick.item.row;
+      var cam = view.camX[row];
+      return (pick.item.x - cam);
+    }
+
+    function slyEnsureSorted() {
+      if (t.kind !== "sly") return;
+      if (t._slySorted) return;
+      if (!t.cmds || t.cmds.length === 0) return;
+
+      // Sort targets by screen-space X (left->right). Keep source last.
+      var cmds = t.cmds.slice();
+      cmds.sort(function (a, b) {
+        if (a && a.kind === "source") return 1;
+        if (b && b.kind === "source") return -1;
+        var ax = slyCmdScreenX(a);
+        var bx = slyCmdScreenX(b);
+        var d = ax - bx;
+        if (d) return d;
+        // Stable tie-breaker by setI/i.
+        var al = (a && a.target && a.target.loc) ? a.target.loc : null;
+        var bl = (b && b.target && b.target.loc) ? b.target.loc : null;
+        var asi = al && al.setI != null ? al.setI : 9999;
+        var bsi = bl && bl.setI != null ? bl.setI : 9999;
+        var di = asi - bsi;
+        if (di) return di;
+        var api = al && al.i != null ? al.i : 9999;
+        var bpi = bl && bl.i != null ? bl.i : 9999;
+        return api - bpi;
+      });
+      t.cmds = cmds;
+      // Default to first real target if possible.
+      if (t.cmds.length > 0 && t.cmds[0] && t.cmds[0].kind === "source" && t.cmds.length > 1) t.cmdI = 1;
+      else t.cmdI = 0;
+      t._slySorted = true;
+    }
+
+    function slySyncCursor() {
+      if (t.kind !== "sly") return false;
+      if (!t.cmds || t.cmds.length === 0) return false;
+      var cmdI = PD.ui.clampI(t.cmdI, t.cmds.length);
+      t.cmdI = cmdI;
+      if (t._slySyncCmdI === cmdI) return false;
+      var cmdSel = t.cmds[cmdI];
+      var pick = slyFindItemForCmd(cmdSel);
+      if (pick) PD.ui.cursorMoveTo(view, pick);
+      t._slySyncCmdI = cmdI;
+      return true;
+    }
+
+    slyEnsureSorted();
+
     // Cycle destinations
     var nCmds = t.cmds ? t.cmds.length : 0;
     if (nCmds > 0) {
@@ -1488,8 +1667,9 @@ PD.ui.step = function (state, view, actions) {
     if (!t.hold && actions.a && actions.a.tap) shouldConfirm = true;
     if (t.hold && actions.a && actions.a.released) shouldConfirm = true;
     if (!shouldConfirm) {
-      // Update cameras to follow destination preview.
+      // Update cameras to follow destination preview / cursor-moving selection.
       computed = PD.ui.computeRowModels(state, view);
+      slySyncCursor();
       PD.ui.updateCameras(state, view, computed);
       return null;
     }
@@ -1620,6 +1800,18 @@ PD.ui.step = function (state, view, actions) {
         }
         if (!selD || !selD.loc) { PD.anim.feedbackError(view, "no_actions", "No actions"); return null; }
 
+        // Phase 08+: JSN response for action-sourced debt before any payment is made.
+        if (selD.loc.zone === "hand" && selD.loc.p === 0) {
+          var canJsn = !!(prompt.srcAction && prompt.buf && prompt.buf.length === 0);
+          if (canJsn) {
+            var defJ = PD.state.defByUid(state, selD.uid);
+            if (defJ && defJ.kind === PD.CardKind.Action && defJ.actionKind === PD.ActionKind.JustSayNo) {
+              focusSnapshot();
+              return { kind: "applyCmd", cmd: { kind: "playJustSayNo", card: { uid: selD.uid, loc: selD.loc } } };
+            }
+          }
+        }
+
         // House-pay-first redirect: selecting a property in a housed set snaps to the House.
         if (selD.loc.zone === "setProps" && selD.loc.setI != null) {
           var setI = selD.loc.setI;
@@ -1651,6 +1843,46 @@ PD.ui.step = function (state, view, actions) {
         }
 
         PD.anim.feedbackError(view, "cant_pay", "Can't pay with that");
+      }
+
+      return null;
+    }
+
+    if (prompt.kind === "respondAction") {
+      if (actions.b && actions.b.pressed) {
+        PD.anim.feedbackError(view, "prompt_forced", "Must respond");
+        return null;
+      }
+
+      if (actions.a && actions.a.tap) {
+        var selR0 = currentSelection();
+        if (!selR0 || !selR0.loc) { PD.anim.feedbackError(view, "no_actions", "No actions"); return null; }
+
+        var tgt = prompt.target;
+        var isTarget =
+          tgt &&
+          tgt.loc &&
+          (selR0.uid === tgt.uid) &&
+          (selR0.loc.p === tgt.loc.p) &&
+          (String(selR0.loc.zone) === String(tgt.loc.zone)) &&
+          ((selR0.loc.setI == null) || (selR0.loc.setI === tgt.loc.setI)) &&
+          ((selR0.loc.i == null) || (selR0.loc.i === tgt.loc.i));
+
+        if (isTarget) {
+          focusSnapshot();
+          return { kind: "applyCmd", cmd: { kind: "respondPass" } };
+        }
+
+        if (selR0.loc.zone === "hand" && selR0.loc.p === 0) {
+          var defRJ = PD.state.defByUid(state, selR0.uid);
+          if (defRJ && defRJ.kind === PD.CardKind.Action && defRJ.actionKind === PD.ActionKind.JustSayNo) {
+            focusSnapshot();
+            return { kind: "applyCmd", cmd: { kind: "playJustSayNo", card: { uid: selR0.uid, loc: selR0.loc } } };
+          }
+        }
+
+        PD.anim.feedbackError(view, "must_respond", "Select the target or Just Say No");
+        return null;
       }
 
       return null;
@@ -1709,6 +1941,12 @@ PD.ui.step = function (state, view, actions) {
       var defGrab = PD.state.defByUid(state, uidGrab);
       if (defGrab && defGrab.kind === PD.CardKind.Property) {
         PD.ui.targetingEnter(state, view, "place", true, uidGrab, selGrab.loc);
+        return null;
+      } else if (defGrab && defGrab.kind === PD.CardKind.Action && defGrab.actionKind === PD.ActionKind.SlyDeal) {
+        // Phase 08b: if there are no Sly targets, fall back to Quick so Bank remains available.
+        var slyMoves = PD.moves.slyDealMovesForUid(state, uidGrab);
+        if (slyMoves && slyMoves.length > 0) PD.ui.targetingEnter(state, view, "sly", true, uidGrab, selGrab.loc);
+        else PD.ui.targetingEnter(state, view, "quick", true, uidGrab, selGrab.loc);
         return null;
       } else if (defGrab && (defGrab.kind === PD.CardKind.House || (defGrab.kind === PD.CardKind.Action && defGrab.actionKind === PD.ActionKind.Rent))) {
         PD.ui.targetingEnter(state, view, "quick", true, uidGrab, selGrab.loc);
