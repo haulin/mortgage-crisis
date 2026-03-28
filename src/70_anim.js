@@ -223,6 +223,16 @@ PD.anim.present = function (state, view, computed) {
         out.push(it0);
       }
       rm.items = out;
+
+      // If the cursor is on this row, recompute selection from the filtered items so
+      // hidden cards can't be revealed via the selection redraw path in the renderer.
+      if (view.cursor && view.cursor.row === row) {
+        if (rm.items.length === 0) computed.selected = null;
+        else {
+          var ci = PD.ui.clampI(view.cursor.i, rm.items.length);
+          computed.selected = rm.items[ci];
+        }
+      }
     }
   }
 

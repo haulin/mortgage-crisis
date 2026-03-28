@@ -8,10 +8,22 @@ Target: 1v1 player vs AI, controller-first design for couch gaming on Google TV.
 
 ## Language
 
-JavaScript (TIC-80 JS mode via duktape).
+JavaScript (TIC-80 JS mode; runtime historically Duktape and commonly QuickJS in newer builds).
 
 - The **runtime cartridge** is `game.js`. It must start with TIC-80 JS headers (`// script: js`, etc.).
 - The **source of truth** lives in `src/` and is concatenated into `game.js`.
+
+### JS engine compatibility note (Duktape vs QuickJS)
+
+Historically TIC-80 used **Duktape** for its JavaScript runtime. In Aug 2023, the upstream project switched to **QuickJS** (see commit [#1191: Duktape changed to QuickJS](https://github.com/nesbox/TIC-80/commit/530d7f825)).
+
+Even though newer builds are likely QuickJS-based (and therefore support more modern JavaScript syntax), we intentionally write the cartridge in an **ES5-compatible** style to stay maximally compatible with:
+
+- older TIC-80 builds/ports
+- community builds that may lag behind upstream
+- environments where the JS backend or feature set is unclear
+
+Practical consequence: avoid modern syntax like optional chaining (`?.`) and nullish coalescing (`??`) in `src/`.
 
 ## Documentation
 

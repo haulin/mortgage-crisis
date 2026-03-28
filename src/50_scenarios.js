@@ -75,7 +75,9 @@ PD.scenarios.IDS = [
   // Phase 07+: move generation smoke / AI policy stress
   "moveStress",
   // Phase 08+: actions + responses
-  "slyJSN"
+  "slyJSN",
+  // Anim edge cases
+  "payDebtShuffleDeal"
 ];
 
 // Optional metadata for debug UI / docs.
@@ -90,6 +92,7 @@ PD.scenarios.INFO = {
   placeReceived: { title: "Place received", desc: "Faux-turn placement buffer (includes Wild color choice)." },
   moveStress: { title: "Move stress", desc: "Many partial sets + 9-card hand (props + wilds + rent-any + house) to maximize legalMoves fanout for smoke testing + AI policy tuning." },
   slyJSN: { title: "Sly+JSN", desc: "RespondAction prompt for Sly Deal (Allow vs Just Say No)." },
+  payDebtShuffleDeal: { title: "PayDebt→shuffle+deal", desc: "Repro helper: start in a rent-sourced payDebt prompt with empty hand + bank payment, then opponent is forced to endTurn and your next startTurn triggers deck reshuffle + staged deal animation." },
 };
 
 PD.scenarios._applyById = {
@@ -358,5 +361,42 @@ PD.scenarios._applyById = {
     state.activeP = 1;
     state.playsLeft = 3;
   },
+
+  payDebtShuffleDeal: function (state) {
+    // Start in a payDebt prompt (rent-sourced). After payment, opponent has playsLeft=0
+    // so the AI will immediately endTurn; the next startTurn draws with reshuffle+deal.
+    state.activeP = 1;
+    state.playsLeft = 0;
+
+    // P0 has an empty hand and a single payable bank card to cover the debt.
+    var payUid = PD.state.takeUid(state, "money_1");
+    state.players[0].bank.push(payUid);
+
+    // Put enough cards into discard so startTurn draw(5) must reshuffle from discard.
+    // Include a rent card uid so srcAction can reference a real uid in discard.
+    var rentUid = PD.state.takeUid(state, "rent_mo");
+    state.discard.push(rentUid);
+    state.discard.push(PD.state.takeUid(state, "money_2"));
+    state.discard.push(PD.state.takeUid(state, "money_3"));
+    state.discard.push(PD.state.takeUid(state, "prop_orange"));
+    state.discard.push(PD.state.takeUid(state, "prop_magenta"));
+    state.discard.push(PD.state.takeUid(state, "wild_mo"));
+
+    // Open the debt prompt for P0 (payer). activeP remains the opponent (rent actor),
+    // matching real gameplay: the prompt actor is prompt.p.
+    PD.state.setPrompt(state, {
+      kind: "payDebt",
+      p: 0,
+      toP: 1,
+      rem: 1,
+      buf: [],
+      srcAction: { kind: "rent", fromP: 1, actionUid: rentUid }
+    });
+
+    // Ensure no additional pool cards get moved into deck by the scenario framework.
+    // (We want deck empty so reshuffle is guaranteed.)
+    var defId;
+    for (defId in state._pool) state._pool[defId] = [];
+  }
 };
 

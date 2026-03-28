@@ -131,72 +131,23 @@ PD.moves.locAllowsSource = function (loc) {
 // Returns { cmds, wildColor } or null (unknown kind).
 PD.moves.cmdsForTargeting = function (state, kind, uid, loc) {
   kind = String(kind || "");
-  var allowSource = PD.moves.locAllowsSource(loc);
   var out = { cmds: [], wildColor: PD.state.NO_COLOR };
 
-  if (kind === "bank") {
-    out.cmds = PD.moves.bankCmdsForUid(state, uid);
-    if (allowSource) out.cmds.push({ kind: "source" });
-    return out;
-  }
+  // Cmd profiles: the single source of truth for targeting-mode cmd lists.
+  var prof = PD.cmd.getProfile(kind);
+  if (!prof) return null;
 
-  if (kind === "rent") {
-    out.cmds = PD.moves.rentMovesForUid(state, uid);
-    PD.moves.sortRentMovesByAmount(state, loc ? loc.p : 0, out.cmds);
-    if (allowSource) out.cmds.push({ kind: "source" });
-    return out;
-  }
+  var def = PD.state.defByUid(state, uid);
+  var isWild = !!(def && PD.rules.isWildDef(def));
+  if (isWild && prof.defaultWildColor) out.wildColor = prof.defaultWildColor(state, uid, def, loc);
+  else out.wildColor = PD.state.NO_COLOR;
 
-  if (kind === "sly") {
-    out.cmds = PD.moves.slyDealMovesForUid(state, uid);
-    if (allowSource) out.cmds.push({ kind: "source" });
-    return out;
-  }
+  if (prof.cmdsForUid) out.cmds = prof.cmdsForUid(state, uid, loc);
+  else if (prof.cmdsForWildColor) out.cmds = prof.cmdsForWildColor(state, uid, def, out.wildColor, loc);
+  else out.cmds = [];
 
-  if (kind === "quick") {
-    var rentCmds = PD.moves.rentMovesForUid(state, uid);
-    PD.moves.sortRentMovesByAmount(state, loc ? loc.p : 0, rentCmds);
-    var buildCmds = PD.moves.buildCmdsForUid(state, uid);
-    var bankCmds = PD.moves.bankCmdsForUid(state, uid);
-    out.cmds = rentCmds.concat(buildCmds).concat(bankCmds);
-    if (allowSource) out.cmds.push({ kind: "source" });
-    return out;
-  }
-
-  if (kind === "build") {
-    out.cmds = PD.moves.buildCmdsForUid(state, uid);
-    if (allowSource) out.cmds.push({ kind: "source" });
-    return out;
-  }
-
-  if (kind === "place") {
-    var def = PD.state.defByUid(state, uid);
-    if (def && PD.rules.isWildDef(def)) {
-      out.wildColor = PD.moves.defaultWildColorForPlace(state, uid, def);
-      out.cmds = PD.moves.placeCmdsForUid(state, uid, def, out.wildColor);
-    } else {
-      out.wildColor = PD.state.NO_COLOR;
-      out.cmds = PD.moves.placeCmdsForUid(state, uid, def, PD.state.NO_COLOR);
-    }
-    if (allowSource) out.cmds.push({ kind: "source" });
-    return out;
-  }
-
-  if (kind === "moveWild") {
-    var defW = PD.state.defByUid(state, uid);
-    if (defW && PD.rules.isWildDef(defW)) {
-      out.wildColor = PD.moves.defaultWildColorForMoveWild(state, uid, defW, loc);
-      out.cmds = PD.moves.moveWildCmdsForUid(state, uid, defW, out.wildColor);
-    } else {
-      out.wildColor = PD.state.NO_COLOR;
-      out.cmds = PD.moves.moveWildCmdsForUid(state, uid, defW, PD.state.NO_COLOR);
-    }
-    // Replace-window moveWild targeting originates from setProps; still allow cancel via Source for consistency.
-    out.cmds.push({ kind: "source" });
-    return out;
-  }
-
-  return null;
+  if (prof.includeSource && prof.includeSource(loc)) out.cmds.push({ kind: "source" });
+  return out;
 };
 
 // Command semantics: interpret a cmd's destination in board-space terms.

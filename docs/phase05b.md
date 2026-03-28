@@ -40,14 +40,14 @@ To keep centering predictable, toast text is rendered in **fixed-width** mode.
 
 ### QoL targeting improvements
 
-- If a menu action (Place/Build) has **exactly 1** destination, the UI auto-applies it (skips the extra targeting step).
+- If a menu action (e.g. Place/Build/Rent) has **exactly 1** destination, the UI auto-applies it (skips the extra targeting step).
 - For **hold‑A targeting**, we add **Source** as a destination so you can cycle back and drop onto the source to cancel.
   - During hold-targeting, the grabbed card is hidden in its source slot so you don’t see “two copies” on screen; it appears only as the preview at the current destination.
 - Menu-driven targeting uses the **same Source destination + hidden source card** behavior as hold-targeting (so targeting is visually consistent regardless of how you entered it).
 - **Early grab**: while holding `A`, tapping a D-pad direction enters targeting immediately, and the nudge **does not change** which card is being grabbed.
 - Banking preview no longer overlaps the current bank top card:
   - when banking is previewed, the existing bank stack shifts left by one stack-stride so the preview can occupy the rightmost “new top” slot.
-- While in **menu mode**, hovering **Place / Build / Bank** shows a destination preview **only when there is exactly 1 real destination** (to keep the UI from getting noisy).
+- While in **menu mode**, hovering an action shows a destination preview **only when there is exactly 1 real destination** (to keep the UI from getting noisy).
 
 ## Tests
 

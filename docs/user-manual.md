@@ -21,7 +21,7 @@ Button IDs are TIC-80 defaults for player 1: UP=0 DOWN=1 LEFT=2 RIGHT=3 A=4 B=5 
 
 - **D-pad**: move selection (cursor) between zones and items.
 - **A (tap)**:
-  - on a hand card: open the action menu (Place/Build/Bank, depending on the card)
+  - on a hand card: open the action menu (Place/Build/Rent/Sly/Bank, depending on the card)
   - in menus: choose the hovered menu item
   - in prompts: confirm the prompt action (e.g. discard)
 - **A (hold)**:
@@ -149,11 +149,17 @@ When your cursor is on a hand card, **tap A** to open a menu of actions that are
 
 - **Place** (property cards)
 - **Build** (house cards, only when legal)
-- **Bank** (money/action cards that can be banked)
+- **Rent** (rent action cards, only when legal)
+- **Sly Deal** (sly deal action cards, only when legal)
+- **Bank** (money/action cards that can be banked, only when legal)
+
+Notes:
+
+- The menu is **actionable-only**: if nothing is legal right now (e.g. **no plays left** while browsing), the menu may show **only Cancel**.
 
 ### Single-destination shortcuts
 
-If **Place** or **Build** has exactly **one** legal destination, the UI may:
+If **Place**, **Build**, or **Rent** has exactly **one** legal destination, the UI may:
 
 - show a more specific label (e.g. **“Place → New Set”**), and
 - auto-apply the action without making you go through targeting.
@@ -164,7 +170,7 @@ Targeting appears when an action needs a destination selection (e.g. placing a p
 
 There are two ways to enter targeting:
 
-- **From the menu**: tap A on Place/Build to enter targeting; confirm with **tap A**.
+- **From the menu**: tap A on Place/Build/Rent/Sly Deal to enter targeting; confirm with **tap A**.
 - **From a hold**: hold A on a hand card to enter targeting; confirm with **release A**.
 
 While targeting:
@@ -256,7 +262,7 @@ The DebugText screen has a **right column** showing a compact UI snapshot (captu
 - **`Cur:r<row> i<i>`**
   - current cursor position (row + index)
 - **`Menu:<i>/<n> <id>`** (only when `UI:menu`)
-  - hovered menu index / count, and menu item id (e.g. `place`, `build`, `bank`)
+  - hovered menu index / count, and menu item id (e.g. `place`, `build`, `rent`, `sly`, `bank`)
 - **`Tgt:<kind> <cmdI>/<n>`** (only when `UI:targeting`)
   - `kind`: `place` | `moveWild` | `build` | `bank` | `rent` | `sly` | `quick`
   - `cmdI/n`: selected destination index + total destinations

@@ -119,90 +119,29 @@ PD.fmt.menuLabelForRentMoves = function (state, rentMoves) {
 PD.fmt.targetingTitle = function (targeting, cmd) {
   var tKind = targeting && targeting.kind ? String(targeting.kind) : "";
 
-  function titleForCmd(cmd0) {
-    if (!cmd0 || !cmd0.kind) return (tKind === "quick") ? "Action" : "Target";
-    if (cmd0.kind === "playRent") return "Rent";
-    if (cmd0.kind === "playHouse") return "Build";
-    if (cmd0.kind === "bank") return "Bank";
-    if (cmd0.kind === "playProp") return "Place";
-    if (cmd0.kind === "playSlyDeal") return "Sly Deal";
-    if (cmd0.kind === "source") return "Source";
-    return "Target";
+  var prof = PD.cmd.getProfile(tKind);
+  if (prof && prof.title) {
+    if (typeof prof.title === "function") return String(prof.title(targeting || null, cmd || null));
+    return String(prof.title);
   }
 
-  if (tKind === "build") return "Build";
-  if (tKind === "place") return "Place";
-  if (tKind === "moveWild") return "Place";
-  if (tKind === "rent") return "Rent";
-  if (tKind === "sly") return "Sly Deal";
-  if (tKind === "quick") return titleForCmd(cmd);
-  return "Bank";
+  return PD.cmd.titleForCmdKind(cmd);
 };
 
 PD.fmt.targetingDestLine = function (state, targeting, cmd) {
   var t = targeting || null;
-  var k = String(cmd.kind);
 
-  if (k === "playProp") {
-    var out = "";
-    if (cmd.dest && cmd.dest.newSet) out = "Dest: New set";
-    else if (cmd.dest && cmd.dest.setI != null) {
-      var set = state.players[cmd.dest.p].sets[cmd.dest.setI];
-      var col = set ? PD.rules.getSetColor(set.props) : PD.state.NO_COLOR;
-      out = "Dest: " + PD.fmt.colorName(col) + " set";
-    }
-    if (t && t.card && t.card.def && PD.rules.isWildDef(t.card.def)) out += "\nAs: " + PD.fmt.colorName(t.wildColor);
-    return out || "(no destination)";
-  }
-
-  if (k === "moveWild") {
-    var outW = "";
-    if (cmd.dest && cmd.dest.newSet) outW = "Dest: New set";
-    else if (cmd.dest && cmd.dest.setI != null) {
-      var setW = state.players[cmd.dest.p].sets[cmd.dest.setI];
-      var colW = setW ? PD.rules.getSetColor(setW.props) : PD.state.NO_COLOR;
-      outW = "Dest: " + PD.fmt.colorName(colW) + " set";
-    }
-    if (t && t.card && t.card.def && PD.rules.isWildDef(t.card.def)) outW += "\nAs: " + PD.fmt.colorName(t.wildColor);
-    return outW || "(no destination)";
-  }
-
-  if (k === "playHouse") {
-    var set2 = state.players[cmd.dest.p].sets[cmd.dest.setI];
-    var col2 = set2 ? PD.rules.getSetColor(set2.props) : PD.state.NO_COLOR;
-    return "Dest: " + PD.fmt.colorName(col2) + " set";
-  }
-
-  if (k === "playRent") {
-    var p = cmd.card.loc.p;
-    var setR = state.players[p].sets[cmd.setI];
-    var colR = setR ? PD.rules.getSetColor(setR.props) : PD.state.NO_COLOR;
-    var amt = PD.rules.rentAmountForSet(state, p, cmd.setI);
-    return "From: " + PD.fmt.colorName(colR) + " set\nAmt: $" + amt;
-  }
-
-  if (k === "playSlyDeal") {
-    var tl = (cmd && cmd.target && cmd.target.loc) ? cmd.target.loc : null;
-    var colT = PD.state.NO_COLOR;
-    if (tl && tl.zone === "setProps") {
-      var setT = state.players[tl.p].sets[tl.setI];
-      if (setT && setT.props && setT.props[tl.i]) colT = setT.props[tl.i][1];
-    }
-    return "Target: " + PD.fmt.colorName(colT);
-  }
-
-  if (k === "bank") return "Dest: Bank";
-  if (k === "source") return "Dest: Source";
-  return "(no destination)";
+  var tKind = t && t.kind ? String(t.kind) : "";
+  var prof = PD.cmd.getProfile(tKind);
+  if (prof && prof.destLine) return prof.destLine(state, t, cmd);
+  return PD.cmd.destLineForCmd(state, t, cmd);
 };
 
 PD.fmt.targetingHelp = function (targeting) {
   var t = targeting || null;
   var kind = t && t.kind ? String(t.kind) : "";
-  var help =
-    (kind === "quick") ? "L/R: Option" :
-    ((kind === "rent") ? "L/R: Set" :
-      ((kind === "sly") ? "L/R: Target" : "L/R: Dest"));
+  var prof = PD.cmd.getProfile(kind);
+  var help = (prof && prof.helpLR) ? String(prof.helpLR) : "L/R: Dest";
   if (t && t.card && t.card.def && PD.rules.isWildDef(t.card.def)) help += "  U/D: Color";
   help += (t && t.hold) ? "\nRelease A: Drop  B:Cancel" : "\nA:Confirm  B:Cancel";
   return help;

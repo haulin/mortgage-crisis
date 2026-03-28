@@ -705,12 +705,50 @@ test("ui: menu hover Bank produces a preview when unambiguous", async () => {
   assert.equal(c.meta.focus.forCmdKind, "bank");
 });
 
+test("ui: menu is actionable-only (no plays left shows only Cancel)", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  const s = ctx.PD.state.newGame({ seedU32: 1 });
+  const moneyUid = ctx.PD.state.takeUid(s, "money_1");
+  assert.ok(moneyUid, "expected money_1 uid");
+
+  // Force a simple state: one money card in hand, no plays left.
+  s.deck = s.deck.filter((u) => u !== moneyUid);
+  s.discard = s.discard.filter((u) => u !== moneyUid);
+  for (let p = 0; p < 2; p++) {
+    s.players[p].hand = s.players[p].hand.filter((u) => u !== moneyUid);
+    s.players[p].bank = s.players[p].bank.filter((u) => u !== moneyUid);
+    for (const set of (s.players[p].sets || [])) {
+      if (!set) continue;
+      if (set.props) set.props = set.props.filter(([u]) => u !== moneyUid);
+      if (set.houseUid === moneyUid) set.houseUid = 0;
+    }
+  }
+  s.players[0].hand = [moneyUid];
+  s.players[0].bank = [];
+  s.players[0].sets = [];
+  s.activeP = 0;
+  s.playsLeft = 0;
+  ctx.PD.state.clearPrompt(s);
+
+  const view = ctx.PD.ui.newView();
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = 0;
+
+  ctx.PD.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(view.mode, "menu");
+  assert.equal(view.menu.items.length, 1);
+  assert.equal(view.menu.items[0].id, "source");
+});
+
 test("ui: onEvents stages dealing and hides drawn cards until revealed", async () => {
   const ctx = await loadSrcIntoVm();
 
   const s = ctx.PD.state.newGame({ seedU32: 1 });
   const p = 0;
   const view = ctx.PD.ui.newView();
+  view.cursor.row = ctx.PD.render.ROW_P_HAND;
+  view.cursor.i = 1; // intentionally not 0 to exercise selection after filtering
 
   // Force a known draw and capture events.
   const events = [];
@@ -735,6 +773,7 @@ test("ui: onEvents stages dealing and hides drawn cards until revealed", async (
   const visibleUids0 = handItems0.map((it) => it.uid);
   assert.ok(!visibleUids0.includes(uid0), "expected uid0 hidden from hand row models");
   assert.ok(!visibleUids0.includes(uid1), "expected uid1 hidden from hand row models");
+  assert.ok(!(c.selected && c.selected.kind === "hand" && (c.selected.uid === uid0 || c.selected.uid === uid1)), "expected selection to not reveal hidden dealt cards");
 
   // Tick until first card is revealed.
   const frames = ctx.PD.config.ui.dealFramesPerCard;

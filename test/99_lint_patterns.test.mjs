@@ -123,3 +123,26 @@ test("lint: numeric coercion is localized (|0 / >>>0)", async () => {
   assert.deepEqual(violations, [], `bitwise coercion found outside allowlist:\n${violations.map((v) => `- ${v.fileName}:${v.line} ${v.text}`).join("\n")}`);
 });
 
+test("lint: cmd profiles avoid defensive ctx checks", async () => {
+  const fileName = "54_cmd_profiles.js";
+  const fullPath = path.join(SRC_DIR, fileName);
+  const source = await fs.readFile(fullPath, "utf8");
+  const lines = source.split(/\r?\n/);
+
+  const allowMarker = /lint-allow\(defensive-ctx\)/;
+  const violations = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line) continue;
+    if (allowMarker.test(line)) continue;
+
+    const code = stripLineComment(line);
+    if (/\bctx\s*&&/.test(code) || /&&\s*ctx\b/.test(code)) {
+      violations.push({ fileName, line: i + 1, text: line.trim() });
+    }
+  }
+
+  assert.deepEqual(violations, [], `defensive ctx checks found:\n${violations.map((v) => `- ${v.fileName}:${v.line} ${v.text}`).join("\n")}`);
+});
+

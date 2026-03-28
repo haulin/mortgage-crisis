@@ -36,7 +36,7 @@ When we decide “this is post‑MVP / Phase 12+”, we must **immediately** cap
 
 ## Goals + Constraints
 
-- **Platform**: TIC-80 fantasy console, **JavaScript** (duktape)
+- **Platform**: TIC-80 fantasy console, **JavaScript** (historically Duktape; many newer builds use QuickJS — we still write ES5-style for broad compatibility)
 - **Cartridge**: single pasted file output **`game.js`**
 - **Constraints**: no DOM/Node/browser APIs, no external libs, 8 banks of 64KB code limit
 - **Target**: **1v1 player vs AI**, controller-first (Google TV couch play)
@@ -214,11 +214,11 @@ Overflow:
 
 ### Hand card action
 
-- Pressing `A` on a hand card opens a **context menu** (card-dependent):
-  - Property: place to new/existing set
-  - Wild: place to eligible set + pick active color
-  - Action: play (and/or bank if bankable)
-  - Money: bank
+- Pressing `A` on a hand card opens a **context menu** of **currently legal** actions (actionable-only; card/state dependent), such as:
+  - Property/Wild: place to a set (and pick Wild color when relevant)
+  - House: build onto a legal set
+  - Rent/Sly Deal: play the action (enters targeting when multi-target)
+  - Money/other bankables: bank
 
 ### Center row selectables
 
@@ -338,7 +338,7 @@ This is a small “in-between” phase to keep the debug/render harness faithful
   - player hand (primary selection)
 - **Controller UX (Phase 04)**:
   - D-pad navigation with **repeat** (hold to scroll)
-  - `A` **tap**: open a context menu (Place/Build/Bank depending on card)
+  - `A` **tap**: open a context menu (actionable-only; card/state dependent)
   - `A` **hold+move** (or fallback hold): enter **targeting**; release `A` to drop
   - `B`: back/cancel (menu/targeting)
   - `X` **hold** (after short delay): **Inspect** overlay; D-pad still navigates while held
@@ -376,7 +376,7 @@ This is a small “in-between” phase to keep the debug/render harness faithful
 
 Quality-of-life (still UX-level; no new rules commands):
 
-- Targeting/menu shortcut: if a menu action (e.g. Place/Build) yields **exactly 1** legal destination, consider skipping the extra confirm step (or at minimum show a more specific label like “Place → New set”)
+- Targeting/menu shortcut: if a menu action (e.g. Place/Build/Rent) yields **exactly 1** legal destination, consider skipping the extra confirm step (or at minimum show a more specific label like “Place → New set”)
 - Add an easier cancel path for hold‑A targeting (avoid requiring `B` while holding `A`):
   - option A: treat the **source** as a valid “destination” (drop back onto source = cancel)
 
