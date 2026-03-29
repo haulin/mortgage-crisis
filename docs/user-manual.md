@@ -15,6 +15,13 @@ npm run build
 - In TIC-80, import/run `game.js` (see `README.md` for workflow notes).
 - Controls are **controller-first** (D-pad + A/B/X/Y).
 
+## Title screen (current)
+
+On boot you start on the **Title screen**:
+
+- It shows the project name, a static main menu, and a controls quick-reference.
+- **Press any button** to continue into the dev harness (DebugText/Render). This will become a real menu entry point in Phase 13.
+
 ## Controls (current)
 
 Button IDs are TIC-80 defaults for player 1: UP=0 DOWN=1 LEFT=2 RIGHT=3 A=4 B=5 X=6 Y=7.

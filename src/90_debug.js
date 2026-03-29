@@ -303,9 +303,24 @@ MC.debug.tickTextMode = function () {
   printSmall("A:Step  B:Next  X:Reset  Y:Mode", 6, 128, 13);
 };
 
+// Main modes:
+// 0=DebugText, 1=Render, 2=Title
 MC.mainTick = function () {
-  // Modes: 0=DebugText, 1=Render
-  if (typeof btnp === "function" && btnp(7)) MC._mainMode = MC._mainMode ? 0 : 1;
+  // Title mode: boot-first, any press continues to DebugText harness.
+  if (MC._mainMode === 2) {
+    var rawT = MC.controls.pollGlobals();
+    if (MC.title && typeof MC.title.anyPressed === "function" && MC.title.anyPressed(rawT)) {
+      MC._mainMode = 0;
+      return;
+    }
+    if (MC.title && typeof MC.title.tick === "function") MC.title.tick();
+    return;
+  }
+
+  // Modes: 0=DebugText, 1=Render. Y toggles DebugText ↔ Render.
+  if ((MC._mainMode === 0 || MC._mainMode === 1) && typeof btnp === "function" && btnp(7)) {
+    MC._mainMode = MC._mainMode ? 0 : 1;
+  }
 
   if (MC._mainMode === 0) {
     if (MC.debug.state == null) MC.debug.reset(null);
@@ -399,5 +414,5 @@ MC.mainTick = function () {
   }
 };
 
-MC._mainMode = 0;
+MC._mainMode = 2;
 

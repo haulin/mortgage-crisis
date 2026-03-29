@@ -147,12 +147,18 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
 
   assert.equal(typeof MC.config.controls, "object", "expected MC.config.controls");
   assert.equal(typeof MC.config.ui, "object", "expected MC.config.ui");
+  assert.equal(typeof MC.config.title, "object", "expected MC.config.title");
   assert.equal(typeof MC.config.ai, "object", "expected MC.config.ai");
 
   const requirePosNum = (obj, key) => {
     assert.equal(typeof obj[key], "number", `expected ${key} to be a number`);
     assert.ok(Number.isFinite(obj[key]), `expected ${key} to be finite`);
     assert.ok(obj[key] > 0, `expected ${key} > 0`);
+  };
+
+  const requireNum = (obj, key) => {
+    assert.equal(typeof obj[key], "number", `expected ${key} to be a number`);
+    assert.ok(Number.isFinite(obj[key]), `expected ${key} to be finite`);
   };
 
   // Controls (frames).
@@ -175,6 +181,33 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
 
   // Phase 08 UI knobs.
   assert.equal(typeof MC.config.ui.slyShowTargetGhosts, "boolean", "expected slyShowTargetGhosts boolean");
+
+  // Title screen knobs.
+  requirePosNum(MC.config.title, "menuW");
+  requirePosNum(MC.config.title, "logoScale");
+  requirePosNum(MC.config.title, "logoX");
+  requirePosNum(MC.config.title, "logoY");
+  assert.equal(typeof MC.config.title.subtitleText, "string", "expected subtitleText string");
+  assert.ok(MC.config.title.subtitleText.length > 0, "expected subtitleText non-empty");
+  requirePosNum(MC.config.title, "subtitleX");
+  requirePosNum(MC.config.title, "subtitleY");
+  requirePosNum(MC.config.title, "controlsX");
+  requirePosNum(MC.config.title, "controlsW");
+  requirePosNum(MC.config.title, "controlsH");
+  requirePosNum(MC.config.title, "controlsBottomY");
+  requirePosNum(MC.config.title, "menuY");
+  requirePosNum(MC.config.title, "menuDy");
+  requirePosNum(MC.config.title, "menuArrowX");
+  requirePosNum(MC.config.title, "menuTextX");
+  assert.equal(typeof MC.config.title.menuItemBoxes, "boolean", "expected menuItemBoxes boolean");
+  requireNum(MC.config.title, "menuItemGapY");
+  requirePosNum(MC.config.title, "menuItemBoxPadX");
+  requirePosNum(MC.config.title, "menuItemBoxPadY");
+  assert.equal(typeof MC.config.title.bgTileEnabled, "boolean", "expected bgTileEnabled boolean");
+  requireNum(MC.config.title, "bgTileSprId");
+  requireNum(MC.config.title, "bgTileColorkey");
+  // allow 0 to disable blink
+  requireNum(MC.config.title, "pressAnyBlinkPeriodFrames");
 
   // AI policy knobs.
   assert.ok(Array.isArray(MC.config.ai.policyByP), "expected MC.config.ai.policyByP array");

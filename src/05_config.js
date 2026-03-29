@@ -60,6 +60,47 @@ MC.config.ui = {
  
 };
 
+// Title screen knobs (Phase 12). Keep numeric/layout values here for easy iteration.
+MC.config.title = {
+  // Right panel width (menu area).
+  menuW: 90,
+
+  // Logo text scale (TIC-80 print scale).
+  logoScale: 3,
+  logoX: 10,
+  logoY: 18,
+
+  // Subtitle (small).
+  subtitleText: "Inspired by Monopoly Deal",
+  subtitleX: 34,
+  subtitleY: 69,
+
+  // Controls panel (bottom-left).
+  controlsX: 20,
+  controlsW: 117,
+  controlsH: 40,
+  controlsBottomY: 8,
+
+  // Menu layout (right panel).
+  menuY: 50,
+  menuDy: 12,
+  menuArrowX: 6,
+  menuTextX: 12,
+  menuItemBoxes: true,
+  menuItemGapY: 4,
+  menuItemBoxPadX: 6,
+  menuItemBoxPadY: 4,
+
+  // Background tiling (optional): sprite id is top-left of a 2x2 block (16x16).
+  // Defaults to the card-back TL sprite, which should exist in the cart.
+  bgTileEnabled: true,
+  bgTileSprId: 34,
+  bgTileColorkey: 15,
+
+  // 0 disables blink; otherwise, show/hide on half-period.
+  pressAnyBlinkPeriodFrames: 60
+};
+
 // AI policy knobs (Phase 07+).
 MC.config.ai = {
   // Per-player policy IDs (0=player, 1=opponent by default).

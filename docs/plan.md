@@ -26,12 +26,13 @@ Documentation convention (for future phases):
 - **Phase 09 ✅**: Low-risk UX tidy-ups: DebugText layout/wrapping, debug Next keeps cursor on Next, moveStress Sly target richness, and hold‑A Sly no-target flow starts at Bank (hold-chain). See `docs/phase09.md`.
 - **Phase 10 ✅**: Wild replace-window prompt + moveWild targeting (incl. Source-cancel consistency) + eligibility/AI/tests polish. See `docs/phase10.md`.
 - **Phase 11 ✅**: Quick wins: rename to Mortgage Crisis + `MC` namespace, HUD version string, AI prompt prefix (`AI:`), AI debt payment bias toward bank, Source-only disallow, and early-turn AI heuristics (Rent gating, early discipline, Sly bias). See `docs/phase11.md`.
+- **Phase 12 ✅**: Title screen (boot-first) with static menu + controls list. See `docs/phase12.md`.
 
 ### Deferred-items capture (scope creep safety net)
 
-When we decide “this is post‑MVP / Phase 14+”, we must **immediately** capture it in this doc so it doesn’t get lost.
+When we decide “this is post‑Demo / Phase 20”, we must **immediately** capture it in this doc so it doesn’t get lost.
 
-- Add a bullet under **Phase 14 — UX/readability polish** (or a later phase if more appropriate).
+- Add a bullet under **Phase 20 — Features wishlist** (or a later phase if more appropriate).
 - Prefix with `Deferred:` and keep it concrete (1 sentence, includes where it shows up).
 - If we end up implementing it earlier (e.g. Phase 09), delete/move the deferred bullet.
 
@@ -459,24 +460,30 @@ Done:
 - AI early-turn “doesn’t play dumb” heuristic: bank up to a small cash buffer first, avoid wasting Rent when opponent can’t pay, prefer playing Rent when opponent can pay, and prefer EndTurn over banking valuable actions when the legal move set is tiny.
 - AI: add `playSlyDeal` bias (like Rent) so when a target exists the AI prefers stealing over banking Sly.
 
+### Phase 12 ✅ - Title screen
 
-### Phase 12 — MVP ready
+- Add title screen / main menu - project name, controls list. See `docs/phase12.md`.
 
+### Phase 13 - Menu as main entry point
 - Replace dev-only `Y:Mode` hint/toggle with a proper dev entrypoint (e.g. hidden debug menu), hide debug buttons
-- scrolling in the banks shuffle stress scenario is not good
-- Add title screen / main menu - project name, controls list
 - Make a way to return to main menu
+
+### Phase 14 - How to play
 - Add a Rules / How-to-play screen (reachable from boot/title screen) so the game is self-explanatory without external docs
 
-### Phase 13 - Demo ready
+### Phase 16 — MVP ready
+- when starting a game/default scenario, the 5/7 cards on each side are already dealt. We should probably start with the 2x5 draw animation and display a toast with who is starting.
+
+
+### Phase 17 - Demo ready
 
 - Replace placeholder action icons with larger **~15×15** icons (implemented as a 2×2 sprite block with a colorkey padding row/col to yield an effective 15×15)
 - More exciting animated abstract background; fallback to tiled sprite patterns if per-frame generation is too expensive
 - Add mouse controls (TIC-80 `mouse()`) layered on top of controller UX
-- when starting a game/default scenario, the 5/7 cards on each side are already dealt. We should probably start with the 2x5 draw animation and display a toast with who is starting.
+- scrolling in the banks shuffle stress scenario is not good
+- Move cards from one set to another, costing a play
 
-
-### Phase 13b — Post‑Demo
+### Phase 18 — Post‑Demo
 
 - Seed UX for dev/playtesting:
   - seed **display** (show the current seed so bug reports are reproducible)
@@ -485,7 +492,7 @@ Done:
 - AI strategy picker
 - Music / sound effects (TIC-80 `music()` / `sfx()`)
 
-### Phase 13c - Content expansion
+### Phase 19 - Content expansion
 
 - Add more property colors/sets (new `MC.Color` entries + `MC.SET_RULES` + `CARD_DEFS`)
 - Expand deck composition (properties/money/actions) while keeping turn UX readable
@@ -502,7 +509,7 @@ Issues:
 - Debt: house first does not auto-focus house when another property is selected
 - Unify wording in various prompts and menus, humanize it.
 
-### Phase 14 — UX/readability polish
+### Phase 20 — Features wishlist
 
 - Optional vertical area labels explaining the different zones (hand/bank/properties/opponent areas)
 - Continue Inspect overlay polish as needed (still not “big cards”)
