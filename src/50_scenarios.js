@@ -62,7 +62,7 @@ MC.scenarios.applyScenario = function (state, scenarioId) {
 
 // Scenario registry (single source of truth).
 MC.scenarios.IDS = [
-  // Phase 09
+  // Phase 10
   "replaceWindow",
   "placeBasic",
   "wildBasic",
@@ -82,7 +82,7 @@ MC.scenarios.IDS = [
 
 // Optional metadata for debug UI / docs.
 MC.scenarios.INFO = {
-  replaceWindow: { title: "Replace-window", desc: "Phase 09: play into an overfill-complete set so the replace-window prompt is offered (move a Wild out of the just-played-into set)." },
+  replaceWindow: { title: "Replace-window", desc: "Phase 10: play into an overfill-complete set so the replace-window prompt is offered (move a Wild out of the just-played-into set)." },
   placeBasic: { title: "Place (basic)", desc: "Fixed property placement + Rent play-test (opponent has a small bank payable)." },
   wildBasic: { title: "Wild (basic)", desc: "Wild property placement + discard depth demo." },
   houseBasic: { title: "House (basic)", desc: "Build House on complete set only." },

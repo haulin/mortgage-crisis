@@ -1289,7 +1289,7 @@ MC.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
     return;
   }
 
-  // Phase 09b: if the only legal destination is Source/cancel, disallow entering targeting.
+  // Phase 11: if the only legal destination is Source/cancel, disallow entering targeting.
   if (MC.ui.cmdsWithoutSource(t.cmds).length === 0) {
     MC.anim.feedbackError(view, "no_actions", "No actions");
     t.active = false;
@@ -1992,7 +1992,7 @@ MC.ui.step = function (state, view, actions) {
         MC.ui.targetingEnter(state, view, "place", true, uidGrab, selGrab.loc);
         return null;
       } else if (defGrab && defGrab.kind === MC.CardKind.Action && defGrab.actionKind === MC.ActionKind.SlyDeal) {
-        // Phase 08b: if there are no Sly targets, fall back to Quick so Bank remains available.
+        // Phase 09: if there are no Sly targets, fall back to Quick so Bank remains available.
         var slyMoves = MC.moves.slyDealMovesForUid(state, uidGrab);
         if (slyMoves && slyMoves.length > 0) MC.ui.targetingEnter(state, view, "sly", true, uidGrab, selGrab.loc);
         else MC.ui.targetingEnter(state, view, "quick", true, uidGrab, selGrab.loc);

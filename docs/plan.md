@@ -23,17 +23,17 @@ Documentation convention (for future phases):
 - **Phase 06 ✅**: debt/payment prompt + recipient “faux-turn placement” for received properties (incl. Wild color choice), using prompt actor `prompt.p` (not `activeP`). See `docs/phase06.md`.
 - **Phase 07 ✅**: AI (random legal) + narrated pacing, plus Phase 07 UX/focus polish. See `docs/phase07.md`.
 - **Phase 08 ✅**: Actions + responses: Sly Deal targeting + Just Say No response windows (Sly prompt + Rent-in-payDebt), plus related UI/focus/policy knobs. See `docs/phase08.md`.
-- **Phase 08b ✅**: Low-risk UX tidy-ups: DebugText layout/wrapping, debug Next keeps cursor on Next, moveStress Sly target richness, and hold‑A Sly no-target fallback to Quick/Bank. See `docs/phase08b.md`.
-- **Phase 09 ✅**: Wild replace-window prompt + moveWild targeting (incl. Source-cancel consistency) + eligibility/AI/tests polish. See `docs/phase09.md`.
-- **Phase 09b ✅**: Quick wins: rename to Mortgage Crisis + `MC` namespace, HUD version string, AI prompt prefix (`AI:`), AI debt payment bias toward bank, and disallow Source-only actions.
+- **Phase 09 ✅**: Low-risk UX tidy-ups: DebugText layout/wrapping, debug Next keeps cursor on Next, moveStress Sly target richness, and hold‑A Sly no-target fallback to Quick/Bank. See `docs/phase09.md`.
+- **Phase 10 ✅**: Wild replace-window prompt + moveWild targeting (incl. Source-cancel consistency) + eligibility/AI/tests polish. See `docs/phase10.md`.
+- **Phase 11 ✅**: Quick wins: rename to Mortgage Crisis + `MC` namespace, HUD version string, AI prompt prefix (`AI:`), AI debt payment bias toward bank, Source-only disallow, and early-turn AI heuristics (Rent gating, early discipline, Sly bias). See `docs/phase11.md`.
 
 ### Deferred-items capture (scope creep safety net)
 
-When we decide “this is post‑MVP / Phase 12+”, we must **immediately** capture it in this doc so it doesn’t get lost.
+When we decide “this is post‑MVP / Phase 14+”, we must **immediately** capture it in this doc so it doesn’t get lost.
 
-- Add a bullet under **Phase 12 — UX/readability polish** (or a later phase if more appropriate).
+- Add a bullet under **Phase 14 — UX/readability polish** (or a later phase if more appropriate).
 - Prefix with `Deferred:` and keep it concrete (1 sentence, includes where it shows up).
-- If we end up implementing it earlier (e.g. Phase 08b), delete/move the deferred bullet.
+- If we end up implementing it earlier (e.g. Phase 09), delete/move the deferred bullet.
 
 ## Goals + Constraints
 
@@ -435,7 +435,7 @@ Done:
 - Implement Rent + JSN response window
 - Implement Sly Deal + JSN response window + legality (not from complete set)
 
-### Phase 08b ✅ — low-risk UX tidy-ups 
+### Phase 09 ✅ — low-risk UX tidy-ups 
 
 - DebugText: reclaim left margin pixels (start at x=0) + shorten `Scenario` label (`Scn`)
 - DebugText: wrap scenario descriptions so they never overflow the screen
@@ -443,22 +443,24 @@ Done:
 - `moveStress`: give opponent multiple stealable targets so Sly targeting cycles more meaningfully
 - Hold‑A on Sly with no targets: fall back to Quick targeting so Bank remains available
 
-### Phase 09 ✅ — Wild replace-window
+### Phase 10 ✅ — Wild replace-window
 
 - Detect replace-window eligibility after property plays
 - Offer optional prompt to move exactly 1 Wild if legal (source remains complete)
-- See `docs/phase09.md` for details.
+- See `docs/phase10.md` for details.
 
-### Phase 09b ✅ — Quick wins
+### Phase 11 ✅ — Quick wins
 
-- the project was renamed to Mortgage Crisis, so we should update all references
-- Add real versioning instead of "Phase 09" hardcoded text
-- I don't think I like "Opponent: " prefix for the AI prompts. It is not that important and it is too long. Probably use "AI: "
-- Improve default AI debt payment heuristic to prefer paying from bank before paying properties (when legal), to reduce surprise property transfers
-- When player is out of moves and they attempt to place a card, the only valid destination is source. They no longer get negative feedback about no action possible. If only source is a valid destination then action should be disallowed.
+- Rename the project to Mortgage Crisis (docs + cartridge metadata) and migrate the global namespace to `MC`.
+- Replace hardcoded phase HUD text with config-driven versioning (`MC.config.meta.version`, currently `v0.11`).
+- Shorten AI narration prefix from `Opponent:` to `AI:`.
+- Improve AI debt payment heuristic to prefer paying from bank before transferring properties (when legal), to reduce surprise property transfers.
+- When a card interaction would be Source-only (no actionable destination), disallow entering the action and show `No actions` feedback.
+- AI early-turn “doesn’t play dumb” heuristic: bank up to a small cash buffer first, avoid wasting Rent when opponent can’t pay, prefer playing Rent when opponent can pay, and prefer EndTurn over banking valuable actions when the legal move set is tiny.
+- AI: add `playSlyDeal` bias (like Rent) so when a target exists the AI prefers stealing over banking Sly.
 
 
-### Phase 10 — MVP ready
+### Phase 12 — MVP ready
 
 - Replace dev-only `Y:Mode` hint/toggle with a proper dev entrypoint (e.g. hidden debug menu), hide debug buttons
 - scrolling in the banks shuffle stress scenario is not good
@@ -466,7 +468,7 @@ Done:
 - Make a way to return to main menu
 - Add a Rules / How-to-play screen (reachable from boot/title screen) so the game is self-explanatory without external docs
 
-### Phase 11 - Demo ready
+### Phase 13 - Demo ready
 
 - Replace placeholder action icons with larger **~15×15** icons (implemented as a 2×2 sprite block with a colorkey padding row/col to yield an effective 15×15)
 - More exciting animated abstract background; fallback to tiled sprite patterns if per-frame generation is too expensive
@@ -474,7 +476,7 @@ Done:
 - when starting a game/default scenario, the 5/7 cards on each side are already dealt. We should probably start with the 2x5 draw animation and display a toast with who is starting.
 
 
-### Phase 11 — Post‑Demo
+### Phase 13b — Post‑Demo
 
 - Seed UX for dev/playtesting:
   - seed **display** (show the current seed so bug reports are reproducible)
@@ -483,7 +485,7 @@ Done:
 - AI strategy picker
 - Music / sound effects (TIC-80 `music()` / `sfx()`)
 
-### Phase 11b - Content expansion
+### Phase 13c - Content expansion
 
 - Add more property colors/sets (new `MC.Color` entries + `MC.SET_RULES` + `CARD_DEFS`)
 - Expand deck composition (properties/money/actions) while keeping turn UX readable
@@ -500,11 +502,12 @@ Issues:
 - Debt: house first does not auto-focus house when another property is selected
 - Unify wording in various prompts and menus, humanize it.
 
-### Phase 12 — UX/readability polish
+### Phase 14 — UX/readability polish
 
 - Optional vertical area labels explaining the different zones (hand/bank/properties/opponent areas)
 - Continue Inspect overlay polish as needed (still not “big cards”)
 - Reduce scenario list noise: merge `placeBasic` / `wildBasic` / `houseBasic` into a single “Basics” scenario (or otherwise consolidate) - also placeReceived and replace wild.
+- Deferred: AI: add a generic “action move value” heuristic (or shallow 1‑ply simulation) to favor moves that reduce opponent payables/progress (Rent/Sly etc.).
 - Deferred: Denote complete property sets in the UI (e.g. badge/outline/marker and/or Inspect text “Complete set”) so Sly Deal restrictions are obvious
 - Deferred: Optional rule/UX: when a House is received via debt payment, allow recipient to place it onto a completed set (instead of always banking it as money)
 - Deferred: When entering `placeReceived` with exactly 1 received property (notably from Sly Deal), auto-enter Place targeting for that card to skip the extra “select received card then A” step
@@ -525,7 +528,7 @@ Issues:
   - Reorder/sort hand, bank, and stacks for readability (purely cosmetic; no rules/commands)
   - Flip a Wild property’s preferred color **in the source** (e.g. via context menu) so you can “pre-set” it before targeting/placing
 
-### Phase 13 — Card art + palette polish
+### Phase 15 — Card art + palette polish
 
 - Money/action card faces: dithered / lighter background treatment (sprite pattern or fast overlay)
 - (Optional, later) implement true “big card” rendering for previews once icons exist for all card types (keeps big-card work dependent on art readiness)

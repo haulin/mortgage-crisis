@@ -5,9 +5,9 @@ MC.config = {
   seedBase: 1004
 };
 
-// Meta/version display (Phase 09b).
+// Meta/version display (Phase 11).
 MC.config.meta = {
-  version: "v0.9b"
+  version: "v0.11"
 };
 
 // Debug/dev knobs (Phase 03b+). Keep these centralized so we can disable later.
@@ -69,19 +69,32 @@ MC.config.ai = {
   // 1 means no bias (equivalent to uniform random).
   biasExistingSetK: 8,
 
-  // Phase 09b: soft bias toward paying debts from bank before transferring properties.
+  // Phase 11: soft bias toward paying debts from bank before transferring properties.
   // 1 means no bias (equivalent to uniform random).
   biasPayDebtFromBankK: 8,
+
+  // Phase 11: early-turn discipline.
+  // Simple goal: avoid immediately banking valuable actions when options are limited.
+  earlyBankBufferTarget: 3,
+  earlyEmptyHandKeepActionsMaxHand: 2,
+  biasEarlyBankMoneyK: 6,
+  biasEarlyEndTurnOverBankActionsK: 6,
+  biasEarlyPlayRentIfPayableK: 3,
+  biasEarlyPlaceWhenHoldingRentK: 2,
 
   // Weight multiplier for "play Rent" moves (bias asking for rent over banking Rent).
   // 1 means no bias (equivalent to uniform random).
   biasPlayRentK: 4,
 
+  // Phase 11: weight multiplier for "play Sly Deal" moves (bias stealing over banking Sly).
+  // 1 means no bias (equivalent to uniform random).
+  biasPlaySlyDealK: 8,
+
   // Phase 08: weight multiplier for "play Just Say No" response moves.
   // 1 means no bias (equivalent to uniform random).
   biasPlayJustSayNoK: 8,
 
-  // Phase 09: weight multiplier for "moveWild" replace-window moves (AI willingness).
+  // Phase 10: weight multiplier for "moveWild" replace-window moves (AI willingness).
   // 1 means no bias (equivalent to uniform random).
   biasMoveWildK: 8
 };

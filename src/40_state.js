@@ -65,7 +65,7 @@ MC.state.setPrompt = function (state, prompt) {
   }
 
   if (k === "replaceWindow") {
-    // Phase 09: Wild replace-window (optional reposition after property placement).
+    // Phase 10: Wild replace-window (optional reposition after property placement).
     // Keep payload minimal; validate shape via tests (avoid runtime asserts/fallbacks).
     var resume = prompt.resume;
     var resumeObj = null;

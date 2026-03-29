@@ -20,7 +20,7 @@ MC.ai.policies = {
   biasPayDebtFromBank: {
     id: "biasPayDebtFromBank",
     weight: function (state, move) {
-      // Phase 09b: prefer paying debts from bank to reduce surprise property transfers.
+      // Phase 11: prefer paying debts from bank to reduce surprise property transfers.
       // Tuning knob lives in config.
       var k = MC.config.ai.biasPayDebtFromBankK;
       if (!move || move.kind !== "payDebt") return 1;
@@ -31,14 +31,114 @@ MC.ai.policies = {
     }
   },
 
+  earlyTurnDiscipline: {
+    id: "earlyTurnDiscipline",
+    weight: function (state, move, moves) {
+      // Phase 11: simple “don’t play dumb early” heuristic.
+      // Keep this broad but low-spike: prefer banking real money to reach a small buffer,
+      // avoid wasting Rent when opponent can't pay, and avoid banking multiple valuable actions
+      // when there are no other ways to spend plays (unless we're about to empty hand for draw-5).
+      if (!state || !move) return 1;
+      if (state.prompt) return 1;
+
+      var p = MC.ai.actor(state);
+      var op = MC.rules.otherPlayer(p);
+      var hand = state.players[p].hand;
+      var handLen = hand.length;
+      var bankTotal = MC.util.bankValueTotal(state, p);
+      var opPayable = MC.state.hasAnyPayables(state, op);
+
+      var cfg = MC.config.ai;
+      var bufferTarget = cfg.earlyBankBufferTarget;
+      var keepActionsMaxHand = cfg.earlyEmptyHandKeepActionsMaxHand;
+
+      var hasNonBankNonEnd = false;
+      var hasBankMoneyHouse = false;
+      var holdsRent = false;
+
+      var i;
+      for (i = 0; i < handLen; i++) {
+        var uidH = hand[i];
+        var defH = MC.state.defByUid(state, uidH);
+        if (defH && defH.kind === MC.CardKind.Action && defH.actionKind === MC.ActionKind.Rent) holdsRent = true;
+      }
+
+      if (moves && moves.length) {
+        for (i = 0; i < moves.length; i++) {
+          var m = moves[i];
+          if (!m || !m.kind) continue;
+          var k = String(m.kind);
+          if (k !== "bank" && k !== "endTurn") hasNonBankNonEnd = true;
+          if (k === "bank" && m.card && m.card.uid) {
+            var defB = MC.state.defByUid(state, m.card.uid);
+            if (defB && (defB.kind === MC.CardKind.Money || defB.kind === MC.CardKind.House)) hasBankMoneyHouse = true;
+          }
+        }
+      }
+
+      var isBank = (move.kind === "bank");
+      var isEnd = (move.kind === "endTurn");
+      var isPlayProp = (move.kind === "playProp");
+      var isPlayRent = (move.kind === "playRent");
+
+      var def = null;
+      var isBankMoneyHouse = false;
+      var isBankAction = false;
+      if (isBank && move.card && move.card.uid) {
+        def = MC.state.defByUid(state, move.card.uid);
+        isBankMoneyHouse = !!(def && (def.kind === MC.CardKind.Money || def.kind === MC.CardKind.House));
+        isBankAction = !!(def && def.kind === MC.CardKind.Action);
+      }
+
+      // Cash buffer: prefer banking money/house until a small buffer is reached.
+      if (isBankMoneyHouse && bankTotal < bufferTarget) return cfg.biasEarlyBankMoneyK;
+
+      // Prefer playing Rent only when it will actually collect (opponent has payables).
+      if (isPlayRent && opPayable) return cfg.biasEarlyPlayRentIfPayableK;
+
+      // If we hold Rent, bias toward placing properties so Rent becomes meaningful.
+      if (holdsRent && isPlayProp) return cfg.biasEarlyPlaceWhenHoldingRentK;
+
+      // Tiny-move anti-dump: if the only spend-plays options are banking actions,
+      // prefer EndTurn over banking multiple valuable actions (unless hand is tiny).
+      var onlyBankActions = (!hasNonBankNonEnd) && (!hasBankMoneyHouse);
+      if (onlyBankActions && handLen > keepActionsMaxHand) {
+        if (isEnd) return cfg.biasEarlyEndTurnOverBankActionsK;
+        if (isBankAction) return 1;
+      }
+
+      return 1;
+    }
+  },
+
   biasPlayRent: {
     id: "biasPlayRent",
     weight: function (state, move) {
       // Soft bias: prefer asking for rent rather than banking the Rent card.
+      // Phase 11 tweak: avoid wasting Rent when the opponent has nothing payable.
       // Tuning knob lives in config.
       var k = MC.config.ai.biasPlayRentK;
-      if (move && move.kind === "playRent") return k;
-      return 1;
+      if (!move || move.kind !== "playRent") return 1;
+      if (!(k > 1)) k = 1;
+
+      // Determine actor from cmd card loc when possible (works for prompt actor too).
+      var loc = (move.card && move.card.loc) ? move.card.loc : null;
+      var p = (loc && loc.p != null) ? loc.p : MC.ai.actor(state);
+      var op = MC.rules.otherPlayer(p);
+      if (!MC.state.hasAnyPayables(state, op)) return 1;
+      return k;
+    }
+  },
+
+  biasPlaySlyDeal: {
+    id: "biasPlaySlyDeal",
+    weight: function (state, move) {
+      // Phase 11: prefer stealing a property rather than banking Sly Deal when a target exists.
+      // Tuning knob lives in config.
+      var k = MC.config.ai.biasPlaySlyDealK;
+      if (!move || move.kind !== "playSlyDeal") return 1;
+      if (!(k > 1)) k = 1;
+      return k;
     }
   },
 
@@ -56,7 +156,7 @@ MC.ai.policies = {
   biasMoveWild: {
     id: "biasMoveWild",
     weight: function (state, move) {
-      // Phase 09: simple heuristic for replace-window Wild repositioning.
+      // Phase 10: simple heuristic for replace-window Wild repositioning.
       // Prefer moves that complete a set, then maximize rent delta on existing sets.
       // Tuning knob lives in config.
       var k = MC.config.ai.biasMoveWildK;
@@ -125,7 +225,9 @@ MC.ai.composePolicies = function (id, policyIds) {
 MC.ai.policies.defaultHeuristic = MC.ai.composePolicies("defaultHeuristic", [
   "biasExistingSet",
   "biasPayDebtFromBank",
+  "earlyTurnDiscipline",
   "biasPlayRent",
+  "biasPlaySlyDeal",
   "biasPlayJustSayNo",
   "biasMoveWild"
 ]);

@@ -84,6 +84,6 @@ In **DebugText mode**, the left column includes a `Prompt:` stage line so you ca
 
 ## Notes / future hooks
 
-- The debt + placement pipeline is intentionally generic so Phase 07+ can reuse it for Rent/SlyDeal and later Phase 11 “pay/select/transfer” actions.
+- The debt + placement pipeline is intentionally generic so Phase 07+ can reuse it for Rent/SlyDeal and later Phase 13 “pay/select/transfer” actions.
 - UI for prompts where `prompt.p !== 0` (opponent acting) is intentionally deferred (AI/hotseat decisions later).
 

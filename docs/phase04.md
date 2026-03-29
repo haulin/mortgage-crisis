@@ -14,7 +14,7 @@ Phase 04 implements controller UX for these existing engine commands only:
 Deferred (future phases / later phases):
 - Rent / Sly Deal / Just Say No
 - debt/payment + received-property placement
-- wild replace-window (implemented later in Phase 09)
+- wild replace-window (implemented later in Phase 10)
 
 ## What Phase 04 implements
 

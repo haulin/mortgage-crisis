@@ -54,7 +54,7 @@ MC.rules.rentAmountForSet = function (state, p, setI) {
 };
 
 MC.rules.replaceWindowEligibleWildLocs = function (state, p, srcSetI, excludeUid) {
-  // Phase 09: replace-window is offered only when we can remove exactly 1 Wild from
+  // Phase 10: replace-window is offered only when we can remove exactly 1 Wild from
   // the just-played-into set while keeping that source set complete.
   if (!(p === 0 || p === 1)) return [];
   var sets = state.players[p] ? state.players[p].sets : null;
@@ -233,7 +233,7 @@ MC.engine.applyCommand = function (state, cmd) {
   }
 
   function tryBeginReplaceWindow(actorP, srcSetI, excludeUid, resume) {
-    // Phase 09: after placing a property into a set, optionally allow moving one Wild
+    // Phase 10: after placing a property into a set, optionally allow moving one Wild
     // out of that same set (excluding the just-played card), but only if the source
     // set remains complete after removal.
     if (state.winnerP !== MC.state.NO_WINNER) return false;
@@ -471,7 +471,7 @@ MC.engine.applyCommand = function (state, cmd) {
         return;
       }
 
-      // Phase 09: offer replace-window after each received placement (then resume).
+      // Phase 10: offer replace-window after each received placement (then resume).
       var resume = (prompt.uids.length > 0) ? { kind: "placeReceived", uids: prompt.uids.slice() } : null;
       var started = tryBeginReplaceWindow(p, setI, uid, resume);
       if (started) return;
@@ -639,7 +639,7 @@ MC.engine.applyCommand = function (state, cmd) {
       return;
     }
 
-    // Phase 09: offer replace-window after each property play into a set.
+    // Phase 10: offer replace-window after each property play into a set.
     tryBeginReplaceWindow(p, setI, uid, null);
   }
 

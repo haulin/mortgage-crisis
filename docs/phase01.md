@@ -69,7 +69,7 @@ This gives deterministic, memorable sequences and reproducibility by sharing `se
 
 #### Release/random seeding (deferred)
 
-We intentionally keep Phase 01 deterministic. Time-based seeding, seed display, and seed override are planned as part of the dev-boot work (see Phase 10 in `docs/plan.md`).
+We intentionally keep Phase 01 deterministic. Time-based seeding, seed display, and seed override are planned as part of the dev-boot work (see Phase 12 in `docs/plan.md`).
 
 ### 3) Shuffle helper
 
@@ -122,7 +122,7 @@ Implementation detail:
 
 ## Notes / future hooks
 
-- Later we can add seed display/override and time-based seeding once we actually start playtesting (planned Phase 10).
+- Later we can add seed display/override and time-based seeding once we actually start playtesting (planned Phase 12).
 
 ## Notes for Phase 02 (rules engine + state)
 

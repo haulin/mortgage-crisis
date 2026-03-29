@@ -84,7 +84,7 @@ When you receive properties as payment, you place them explicitly:
   - For Wild properties: **Up/Down** toggles the chosen color during targeting
 - **B** is not a general cancel during this prompt (you must place the received properties)
 
-### Wild replace-window (optional reposition prompt, Phase 09)
+### Wild replace-window (optional reposition prompt, Phase 10)
 
 After some property placements, the rules may offer an *optional* prompt to reposition a Wild:
 

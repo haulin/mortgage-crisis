@@ -185,7 +185,14 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   assert.ok(MC.config.ai.policyByP[1].length > 0);
   requirePosNum(MC.config.ai, "biasExistingSetK");
   requirePosNum(MC.config.ai, "biasPayDebtFromBankK");
+  requirePosNum(MC.config.ai, "earlyBankBufferTarget");
+  requirePosNum(MC.config.ai, "earlyEmptyHandKeepActionsMaxHand");
+  requirePosNum(MC.config.ai, "biasEarlyBankMoneyK");
+  requirePosNum(MC.config.ai, "biasEarlyEndTurnOverBankActionsK");
+  requirePosNum(MC.config.ai, "biasEarlyPlayRentIfPayableK");
+  requirePosNum(MC.config.ai, "biasEarlyPlaceWhenHoldingRentK");
   requirePosNum(MC.config.ai, "biasPlayRentK");
+  requirePosNum(MC.config.ai, "biasPlaySlyDealK");
   requirePosNum(MC.config.ai, "biasPlayJustSayNoK");
   requirePosNum(MC.config.ai, "biasMoveWildK");
 });
