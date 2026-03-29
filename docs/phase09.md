@@ -15,5 +15,5 @@ This follow-up phase is a grab-bag of small, low-risk improvements that make Pha
 ### Sly Deal playtest quality-of-life
 
 - `moveStress` scenario gives the opponent multiple stealable targets so Sly targeting cycles more meaningfully.
-- Hold‑A on Sly with **no targets** falls back to **quick targeting** (so you can still Bank the card quickly).
+- Hold‑A on Sly with **no targets** enters hold‑A **hold-chain** targeting starting at **Bank** (so you can still Bank the card quickly).
 

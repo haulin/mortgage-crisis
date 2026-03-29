@@ -264,6 +264,53 @@ test("ui: wild color toggles and updates cmd list", async () => {
   assert.ok(view.targeting.cmds.length >= 1, "expected at least newSet option for wild");
 });
 
+test("ui: hold-chain wild can toggle color while Source segment is active (no duplicate Source)", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.MC.state.newGame({ scenarioId: "moveStress", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+  ctx.MC.state.clearPrompt(s);
+
+  const wildUid = s.players[0].hand.find((u) => ctx.MC.state.defByUid(s, u).id === "wild_cb");
+  assert.ok(wildUid, "expected wild_cb in moveStress hand");
+  const wildI = s.players[0].hand.indexOf(wildUid);
+  assert.ok(wildI >= 0);
+
+  const view = ctx.MC.ui.newView();
+  view.cursor.row = ctx.MC.render.ROW_P_HAND;
+  view.cursor.i = wildI;
+
+  // Enter hold-chain targeting via hold-A grab.
+  ctx.MC.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
+  assert.equal(view.mode, "targeting");
+  assert.ok(view.targeting && view.targeting.chainActive, "expected hold-chain targeting");
+  assert.equal(view.targeting.kind, "place");
+
+  const def = ctx.MC.state.defByUid(s, wildUid);
+  assert.ok(ctx.MC.rules.isWildDef(def), "expected wild def");
+  const c0 = def.wildColors[0];
+  const c1 = def.wildColors[1];
+  assert.ok(view.targeting.wildColor === c0 || view.targeting.wildColor === c1);
+
+  // Cycle to Source segment.
+  const nPlace = view.targeting.cmds.length;
+  for (let step = 0; step < nPlace; step++) ctx.MC.ui.step(s, view, { nav: { right: true }, a: {}, b: {}, x: {} });
+  assert.equal(view.targeting.kind, "source");
+  assert.ok(view.targeting.cmds && view.targeting.cmds.length === 1);
+  assert.equal(view.targeting.cmds[0].kind, "source");
+
+  // While Source segment is active, U/D should still toggle wild color (updates Place segment).
+  const prev = view.targeting.wildColor;
+  ctx.MC.ui.step(s, view, { nav: { down: true }, a: {}, b: {}, x: {} });
+  assert.notEqual(view.targeting.wildColor, prev);
+  assert.equal(view.targeting.kind, "source");
+
+  // Cycle back to Place and ensure Place cmds do not include a Source cmd (Source is its own segment).
+  ctx.MC.ui.step(s, view, { nav: { left: true }, a: {}, b: {}, x: {} });
+  assert.equal(view.targeting.kind, "place");
+  assert.equal(view.targeting.cmds.some((c) => c && c.kind === "source"), false);
+});
+
 test("ui: browse directional nav - Up from End picks opponent table if present", async () => {
   const ctx = await loadSrcIntoVm();
 
@@ -494,11 +541,12 @@ test("ui: hold-A targeting includes a Source destination (release-A cancels)", a
   ctx.MC.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
   assert.equal(view.mode, "targeting");
   assert.equal(view.targeting.hold, true);
-  assert.ok(view.targeting.cmds.length >= 2, "expected at least one dest + source");
-  assert.equal(view.targeting.cmds.at(-1).kind, "source", "expected source as last destination");
+  assert.ok(view.targeting.chainActive, "expected hold-chain targeting");
 
-  // Select source and release A.
-  view.targeting.cmdI = view.targeting.cmds.length - 1;
+  // Cycle to Source segment and release A.
+  ctx.MC.ui.step(s, view, { nav: { right: true }, a: {}, b: {}, x: {} });
+  ctx.MC.ui.step(s, view, { nav: { right: true }, a: {}, b: {}, x: {} });
+  assert.equal(view.targeting.kind, "source");
   const intent = ctx.MC.ui.step(s, view, { nav: {}, a: { released: true }, b: {}, x: {} });
   assert.equal(intent, null);
   assert.equal(view.mode, "browse");
@@ -1104,7 +1152,55 @@ test("ui: sly card menu shows Sly Deal when a legal target exists", async () => 
   assert.ok(view.menu.items.some((it) => it && it.id === "source"), "expected Cancel menu item");
 });
 
-test("ui: hold-A on Sly Deal enters sly targeting and cursor cycles targets then source", async () => {
+test("ui: menu Sly Deal with one target previews destination and auto-applies on select", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.MC.state.newGame({ seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+  ctx.MC.state.clearPrompt(s);
+
+  // Give P0 a Sly Deal in hand.
+  const slyUid = s.deck.find((u) => ctx.MC.state.defByUid(s, u).id === "sly_deal");
+  assert.ok(slyUid, "expected sly_deal uid");
+  s.deck = s.deck.filter((u) => u !== slyUid);
+  s.players[0].hand.push(slyUid);
+
+  // Give opponent exactly one eligible property target.
+  const propUid = s.deck.find((u) => ctx.MC.state.defByUid(s, u).id === "prop_orange");
+  assert.ok(propUid, "expected prop_orange uid");
+  s.deck = s.deck.filter((u) => u !== propUid);
+  const set0 = ctx.MC.state.newEmptySet();
+  set0.props.push([propUid, ctx.MC.Color.Orange]);
+  s.players[1].sets = [set0];
+
+  const view = ctx.MC.ui.newView();
+  view.cursor.row = ctx.MC.render.ROW_P_HAND;
+  view.cursor.i = s.players[0].hand.indexOf(slyUid);
+
+  // Open menu.
+  ctx.MC.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(view.mode, "menu");
+
+  const slyI = view.menu.items.findIndex((it) => it && it.id === "sly");
+  assert.ok(slyI >= 0, "expected Sly Deal menu item");
+  view.menu.i = slyI;
+
+  // Hover Sly: label should include destination, source should be ghosted, and the (single) target should be highlighted.
+  assert.ok(String(view.menu.items[slyI].label || "").includes("->"), "expected single-target Sly Deal label to include destination");
+  const c0 = ctx.MC.ui.computeRowModels(s, view);
+  assert.ok(c0.meta && c0.meta.hideSrc, "expected menu hover preview to ghost source card");
+  assert.ok(c0.meta && c0.meta.focus, "expected focus preview on the single target");
+  assert.equal(c0.meta.focus.kind, "preview");
+  assert.equal(c0.meta.focus.uid, propUid);
+  assert.equal(c0.meta.focus.row, ctx.MC.render.ROW_OP_TABLE);
+
+  // Confirm Sly: should auto-apply immediately.
+  const intent = ctx.MC.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.ok(intent && intent.kind === "applyCmd", "expected applyCmd intent");
+  assert.ok(intent.cmd && intent.cmd.kind === "playSlyDeal", "expected playSlyDeal cmd");
+});
+
+test("ui: hold-A on Sly Deal enters hold-chain: sly targets -> bank -> source", async () => {
   const ctx = await loadSrcIntoVm();
   const s = ctx.MC.state.newGame({ seedU32: 1 });
   s.activeP = 0;
@@ -1140,6 +1236,7 @@ test("ui: hold-A on Sly Deal enters sly targeting and cursor cycles targets then
   assert.ok(view.targeting && view.targeting.active);
   assert.equal(view.targeting.kind, "sly");
   assert.equal(view.targeting.hold, true);
+  assert.ok(view.targeting.chainActive, "expected hold-chain targeting");
 
   // Tick once: cursor should jump to the leftmost target (setI=1).
   ctx.MC.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
@@ -1157,8 +1254,15 @@ test("ui: hold-A on Sly Deal enters sly targeting and cursor cycles targets then
   assert.equal(c.selected.loc.p, 1);
   assert.equal(c.selected.loc.setI, 0);
 
-  // Right: cycle to source (Sly card reappears and is selected).
+  // Right: cycle past last target -> bank segment.
   ctx.MC.ui.step(s, view, { nav: { right: true }, a: {}, b: {}, x: {} });
+  assert.equal(view.targeting.kind, "bank");
+  assert.equal(view.targeting.cmds[view.targeting.cmdI].kind, "bank");
+
+  // Right: cycle to source segment (Sly card reappears and is selected).
+  ctx.MC.ui.step(s, view, { nav: { right: true }, a: {}, b: {}, x: {} });
+  assert.equal(view.targeting.kind, "source");
+  assert.equal(view.targeting.cmds[view.targeting.cmdI].kind, "source");
   c = ctx.MC.ui.computeRowModels(s, view);
   assert.ok(c.selected && c.selected.loc);
   assert.equal(c.selected.loc.zone, "hand");
@@ -1166,7 +1270,75 @@ test("ui: hold-A on Sly Deal enters sly targeting and cursor cycles targets then
   assert.equal(!!(c.meta && c.meta.hideSrc), false, "expected source card not to be hidden when Source is selected");
 });
 
-test("ui: hold-A on Sly Deal with no targets falls back to quick targeting (Bank)", async () => {
+test("ui: sly hold-chain left-cycle is symmetric (source->bank->lastTarget->...)", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.MC.state.newGame({ seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+  ctx.MC.state.clearPrompt(s);
+
+  // Give P0 a Sly Deal in hand.
+  const slyUid = s.deck.find((u) => ctx.MC.state.defByUid(s, u).id === "sly_deal");
+  assert.ok(slyUid, "expected sly_deal in deck");
+  s.deck = s.deck.filter((u) => u !== slyUid);
+  s.players[0].hand.push(slyUid);
+
+  // Give opponent two separate 1-card sets so we have two targets.
+  const u0 = s.deck.find((u) => ctx.MC.state.defByUid(s, u).id === "prop_orange");
+  assert.ok(u0);
+  s.deck = s.deck.filter((u) => u !== u0);
+  const u1 = s.deck.find((u) => ctx.MC.state.defByUid(s, u).id === "prop_magenta");
+  assert.ok(u1);
+  s.deck = s.deck.filter((u) => u !== u1);
+  const set0 = ctx.MC.state.newEmptySet();
+  set0.props.push([u0, ctx.MC.Color.Orange]); // setI=0 (rightmost)
+  const set1 = ctx.MC.state.newEmptySet();
+  set1.props.push([u1, ctx.MC.Color.Magenta]); // setI=1 (leftmost)
+  s.players[1].sets = [set0, set1];
+
+  const view = ctx.MC.ui.newView();
+  view.cursor.row = ctx.MC.render.ROW_P_HAND;
+  view.cursor.i = s.players[0].hand.indexOf(slyUid);
+
+  // Enter targeting via hold-A.
+  ctx.MC.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
+  assert.equal(view.mode, "targeting");
+  assert.ok(view.targeting && view.targeting.active);
+  assert.equal(view.targeting.kind, "sly");
+  assert.ok(view.targeting.chainActive);
+
+  // Tick once so cursor sync lands on default target (leftmost, setI=1).
+  ctx.MC.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  let c = ctx.MC.ui.computeRowModels(s, view);
+  assert.ok(c.selected && c.selected.loc);
+  assert.equal(c.selected.loc.zone, "setProps");
+  assert.equal(c.selected.loc.p, 1);
+  assert.equal(c.selected.loc.setI, 1);
+
+  // Left from first target should go to Source, then Bank, then last target (setI=0), then back to setI=1.
+  ctx.MC.ui.step(s, view, { nav: { left: true }, a: {}, b: {}, x: {} });
+  assert.equal(view.targeting.kind, "source");
+
+  ctx.MC.ui.step(s, view, { nav: { left: true }, a: {}, b: {}, x: {} });
+  assert.equal(view.targeting.kind, "bank");
+
+  ctx.MC.ui.step(s, view, { nav: { left: true }, a: {}, b: {}, x: {} });
+  assert.equal(view.targeting.kind, "sly");
+  c = ctx.MC.ui.computeRowModels(s, view);
+  assert.ok(c.selected && c.selected.loc);
+  assert.equal(c.selected.loc.zone, "setProps");
+  assert.equal(c.selected.loc.p, 1);
+  assert.equal(c.selected.loc.setI, 0);
+
+  ctx.MC.ui.step(s, view, { nav: { left: true }, a: {}, b: {}, x: {} });
+  c = ctx.MC.ui.computeRowModels(s, view);
+  assert.ok(c.selected && c.selected.loc);
+  assert.equal(c.selected.loc.zone, "setProps");
+  assert.equal(c.selected.loc.p, 1);
+  assert.equal(c.selected.loc.setI, 1);
+});
+
+test("ui: hold-A on Sly Deal with no targets falls back to bank segment (Bank)", async () => {
   const ctx = await loadSrcIntoVm();
   const s = ctx.MC.state.newGame({ seedU32: 1 });
   s.activeP = 0;
@@ -1189,10 +1361,10 @@ test("ui: hold-A on Sly Deal with no targets falls back to quick targeting (Bank
   ctx.MC.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
   assert.equal(view.mode, "targeting");
   assert.ok(view.targeting && view.targeting.active);
-  assert.equal(view.targeting.kind, "quick");
+  assert.equal(view.targeting.kind, "bank");
   assert.equal(view.targeting.hold, true);
   assert.ok(view.targeting.cmds && view.targeting.cmds.length > 0);
-  assert.ok(view.targeting.cmds.some((c) => c && c.kind === "bank"), "expected Bank option in quick cmds");
+  assert.ok(view.targeting.cmds.some((c) => c && c.kind === "bank"), "expected Bank cmd");
 
   // Release A should confirm the default option (bank).
   const intent = ctx.MC.ui.step(s, view, { nav: {}, a: { released: true }, b: {}, x: {} });
@@ -1223,7 +1395,7 @@ test("ui: menu hover Rent previews default target set", async () => {
 
   const c = ctx.MC.ui.computeRowModels(s, view);
   assert.ok(c.meta && c.meta.focus, "expected focus preview while hovering Rent in menu mode");
-  assert.equal(c.meta.focus.forCmdKind, "rent");
+  assert.equal(!!c.meta.focus.focusSrcGhost, true, "expected Rent preview to mark focusSrcGhost (preview card differs from source)");
   assert.equal(c.meta.focus.row, ctx.MC.render.ROW_P_TABLE);
   assert.equal(c.meta.focus.stackKey, "set:p0:set0");
   assert.ok(c.meta && c.meta.hideSrc, "expected Rent preview to ghost source (no double-highlight in hand)");
@@ -1285,7 +1457,7 @@ test("ui: respondAction prompt shows target ghost outline only when cursor is aw
   assert.ok(ghosts.length > 0, "expected a ghost overlay while cursor is away from target");
 });
 
-test("ui: menu hover Rent (multi-target) previews the same default target as quick targeting", async () => {
+test("ui: menu hover Rent (multi-target) does not imply a default target while hovering", async () => {
   const ctx = await loadSrcIntoVm();
   const s = ctx.MC.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
@@ -1798,7 +1970,7 @@ test("ui: empty-hand invalid action can nudge back to End (error-triggered)", as
   assert.equal(view.ux.pendingFocusErrorCode, "");
 });
 
-test("ui: hold-A on rent card enters quick targeting and defaults to playRent", async () => {
+test("ui: hold-A on rent card enters hold-chain: rent targets -> bank -> source (defaults to playRent)", async () => {
   const ctx = await loadSrcIntoVm();
   const s = ctx.MC.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
@@ -1817,12 +1989,13 @@ test("ui: hold-A on rent card enters quick targeting and defaults to playRent", 
 
   assert.equal(view.mode, "targeting");
   assert.ok(view.targeting && view.targeting.active);
-  assert.equal(view.targeting.kind, "quick");
+  assert.equal(view.targeting.kind, "rent");
+  assert.ok(view.targeting.chainActive);
   assert.ok(view.targeting.cmds && view.targeting.cmds.length > 0);
   assert.equal(view.targeting.cmds[0].kind, "playRent");
 });
 
-test("ui: hold-A quick targeting on rent card can cycle to bank option", async () => {
+test("ui: hold-A rent hold-chain can cycle to bank segment", async () => {
   const ctx = await loadSrcIntoVm();
   const s = ctx.MC.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   s.activeP = 0;
@@ -1838,22 +2011,21 @@ test("ui: hold-A quick targeting on rent card can cycle to bank option", async (
 
   ctx.MC.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
   assert.equal(view.mode, "targeting");
-  assert.equal(view.targeting.kind, "quick");
+  assert.equal(view.targeting.kind, "rent");
 
-  const bankI = view.targeting.cmds.findIndex((c) => c && c.kind === "bank");
-  assert.ok(bankI >= 0, "expected bank option in quick cmds");
-
-  // Cycle right until we reach bank.
-  for (let step = 0; step < bankI; step++) {
+  // Cycle right to bank segment.
+  // The chain is rent cmds (>=1), then bank segment.
+  for (let step = 0; step < view.targeting.cmds.length; step++) {
     ctx.MC.ui.step(s, view, { nav: { right: true }, a: {}, b: {}, x: {} });
   }
+  assert.equal(view.targeting.kind, "bank");
 
   const sel = view.targeting.cmds[view.targeting.cmdI];
   assert.ok(sel);
   assert.equal(sel.kind, "bank");
 });
 
-test("ui: hold-A on House enters quick targeting and defaults to playHouse when Build is legal", async () => {
+test("ui: hold-A on House enters hold-chain: build targets -> bank -> source (defaults to playHouse)", async () => {
   const ctx = await loadSrcIntoVm();
   const s = ctx.MC.state.newGame({ scenarioId: "houseBasic", seedU32: 1 });
   s.activeP = 0;
@@ -1870,7 +2042,8 @@ test("ui: hold-A on House enters quick targeting and defaults to playHouse when 
 
   ctx.MC.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
   assert.equal(view.mode, "targeting");
-  assert.equal(view.targeting.kind, "quick");
+  assert.equal(view.targeting.kind, "build");
+  assert.ok(view.targeting.chainActive);
   assert.ok(view.targeting.cmds && view.targeting.cmds.length > 0);
   assert.equal(view.targeting.cmds[0].kind, "playHouse");
 });

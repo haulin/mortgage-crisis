@@ -127,6 +127,19 @@ MC.moves.locAllowsSource = function (loc) {
   return (z === "hand") || (z === "recvProps");
 };
 
+MC.moves.cmdsWithoutSource = function (cmds) {
+  if (!cmds || cmds.length === 0) return [];
+  var out = [];
+  var i;
+  for (i = 0; i < cmds.length; i++) {
+    var c = cmds[i];
+    if (!c || !c.kind) continue;
+    if (c.kind === "source") continue;
+    out.push(c);
+  }
+  return out;
+};
+
 // Build the list of cmds for a targeting mode.
 // Returns { cmds, wildColor } or null (unknown kind).
 MC.moves.cmdsForTargeting = function (state, kind, uid, loc) {

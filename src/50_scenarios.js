@@ -56,7 +56,10 @@ MC.scenarios.applyScenario = function (state, scenarioId) {
   fn(state);
 
   MC.scenarios.fillDeckFromPool(state);
-  // Keep deck deterministic for scenarios; callers can shuffle if desired.
+  // Scenario deck policy: shuffle the remaining deck with the scenario seed so scenarios
+  // feel like "real" games while still being reproducible per seed.
+  // (Hands/sets/discard are scenario-curated; only the remaining deck is randomized.)
+  MC.shuffle.inPlaceWithStateRng(state, state.deck);
   return state;
 };
 
@@ -91,8 +94,8 @@ MC.scenarios.INFO = {
   debtHouseFirst: { title: "Debt: house-first", desc: "Debt prompt where House must be paid before set properties (includes a JSN in hand to test action-sourced payDebt response gating)." },
   placeReceived: { title: "Place received", desc: "Faux-turn placement buffer (includes Wild color choice)." },
   moveStress: { title: "Move stress", desc: "Many partial sets + 9-card hand (props + wilds + rent-any + house) to maximize legalMoves fanout for smoke testing + AI policy tuning." },
-  slyJSN: { title: "Sly+JSN", desc: "RespondAction prompt for Sly Deal (Allow vs Just Say No)." },
-  payDebtShuffleDeal: { title: "PayDebt→shuffle+deal", desc: "Repro helper: start in a rent-sourced payDebt prompt with empty hand + bank payment, then opponent is forced to endTurn and your next startTurn triggers deck reshuffle + staged deal animation." },
+  slyJSN: { title: "Sly+JSN+SlySingle", desc: "RespondAction prompt for Sly Deal (Allow vs Just Say No). Also includes a single-target Sly situation in parallel." },
+  payDebtShuffleDeal: { title: "PayDebt shuffle deal", desc: "Repro helper: start in a rent-sourced payDebt prompt with empty hand + bank payment, then opponent is forced to endTurn and your next startTurn triggers deck reshuffle + staged deal animation." },
 };
 
 MC.scenarios._applyById = {
@@ -350,6 +353,14 @@ MC.scenarios._applyById = {
     // Opponent played Sly Deal; the action card is already discarded.
     var slyUid = MC.state.takeUid(state, "sly_deal");
     state.discard.push(slyUid);
+
+    // Also include a single-target Sly situation in parallel (for debugging menu behavior after the prompt):
+    // P0 has a Sly Deal in hand, and P1 has exactly one eligible property on the table.
+    state.players[0].hand.push(MC.state.takeUid(state, "sly_deal"));
+    var setM = MC.state.newEmptySet();
+    var uidM = MC.state.takeUid(state, "prop_magenta");
+    MC.scenarios.setAddFixedProp(setM, uidM, MC.Color.Magenta);
+    state.players[1].sets.push(setM);
 
     MC.state.setPrompt(state, {
       kind: "respondAction",

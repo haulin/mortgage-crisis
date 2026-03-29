@@ -709,7 +709,7 @@ test("render: shuffle masking shows discard empty while deck shuffles", async ()
   assert.ok(sprDisc0After, "expected discard count to show 0 after shuffle");
 });
 
-test("render: bank targeting draws preview in bank stack", async () => {
+test("render: bank hold-chain draws preview in bank stack", async () => {
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
@@ -740,10 +740,11 @@ test("render: bank targeting draws preview in bank stack", async () => {
   view.cursor.row = ctx.MC.render.ROW_P_HAND;
   view.cursor.i = 0;
 
-  // Enter bank targeting via hold-A grab.
+  // Enter bank hold-chain via hold-A grab.
   ctx.MC.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
   assert.equal(view.mode, "targeting");
   assert.equal(view.targeting.kind, "bank");
+  assert.ok(view.targeting.chainActive);
 
   drawFrame(ctx, s, view);
 
@@ -777,7 +778,7 @@ test("render: bank targeting draws preview in bank stack", async () => {
   assert.ok(ghostSource, `expected green ghost outline at Source (${xSource},${yFace})`);
 });
 
-test("render: bank targeting shows green ghost for bank when Source is selected", async () => {
+test("render: bank hold-chain shows green ghost for bank when Source segment is selected", async () => {
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
@@ -801,9 +802,11 @@ test("render: bank targeting shows green ghost for bank when Source is selected"
   view.cursor.i = 0;
   ctx.MC.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
   assert.equal(view.mode, "targeting");
+  assert.ok(view.targeting.chainActive);
 
-  // Select Source destination (last), so bank becomes non-selected and should be ghosted.
-  view.targeting.cmdI = view.targeting.cmds.length - 1;
+  // Cycle to Source segment, so bank becomes non-selected and should be ghosted.
+  ctx.MC.ui.step(s, view, { nav: { right: true }, a: {}, b: {}, x: {} });
+  assert.equal(view.targeting.kind, "source");
   drawFrame(ctx, s, view);
 
   const L = ctx.MC.config.render.layout;
@@ -821,7 +824,7 @@ test("render: bank targeting shows green ghost for bank when Source is selected"
   assert.ok(ghostBank, `expected green ghost outline at Bank (${bankRightX},${yFace}) when Source selected`);
 });
 
-test("render: quick targeting bank ghost shifts existing bank stack left", async () => {
+test("render: rent hold-chain shows bank ghost and shifts existing bank stack left", async () => {
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
@@ -860,14 +863,15 @@ test("render: quick targeting bank ghost shifts existing bank stack left", async
   view.cursor.row = ctx.MC.render.ROW_P_HAND;
   view.cursor.i = 0;
 
-  // Enter quick targeting via hold-A grab on the Rent card.
+  // Enter rent hold-chain targeting via hold-A grab on the Rent card.
   ctx.MC.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
   assert.equal(view.mode, "targeting");
-  assert.equal(view.targeting.kind, "quick");
+  assert.equal(view.targeting.kind, "rent");
+  assert.ok(view.targeting.chainActive);
 
-  // Default quick targeting for Rent prefers playRent, so bank should be non-selected and ghosted.
+  // Default rent targeting prefers playRent, so bank should be non-selected and ghosted.
   const cmdSel = view.targeting.cmds[view.targeting.cmdI];
-  assert.ok(cmdSel && cmdSel.kind === "playRent", "expected quick targeting default selection to be playRent");
+  assert.ok(cmdSel && cmdSel.kind === "playRent", "expected rent targeting default selection to be playRent");
 
   drawFrame(ctx, s, view);
 
@@ -884,19 +888,73 @@ test("render: quick targeting bank ghost shifts existing bank stack left", async
       c.args[3] === L.faceH &&
       c.args[4] === ctx.MC.Pal.Green
   );
-  assert.ok(ghostBank, `expected green ghost outline at Bank (${bankRightX},${yFace}) during quick targeting`);
+  assert.ok(ghostBank, `expected green ghost outline at Bank (${bankRightX},${yFace}) during rent hold-chain`);
 
   // Existing bank card border rect should be shifted left by one stride while the bank ghost is shown.
   const shiftedX = bankRightX - L.stackStrideX;
   const existingBorderShifted = rec.calls.find(
     (c) => c.kind === "rect" && c.args[0] === shiftedX && c.args[1] === yFace && c.args[2] === L.faceW && c.args[3] === L.faceH
   );
-  assert.ok(existingBorderShifted, `expected existing bank card border rect at (${shiftedX},${yFace}) during quick targeting`);
+  assert.ok(existingBorderShifted, `expected existing bank card border rect at (${shiftedX},${yFace}) during rent hold-chain`);
 
   const existingBorderUnshifted = rec.calls.find(
     (c) => c.kind === "rect" && c.args[0] === bankRightX && c.args[1] === yFace && c.args[2] === L.faceW && c.args[3] === L.faceH
   );
-  assert.equal(!!existingBorderUnshifted, false, `expected existing bank card border rect not at (${bankRightX},${yFace}) during quick targeting`);
+  assert.equal(!!existingBorderUnshifted, false, `expected existing bank card border rect not at (${bankRightX},${yFace}) during rent hold-chain`);
+});
+
+test("render: sly hold-chain shows bank ghost while cursor targets opponent cards", async () => {
+  const rec = makeRecorder();
+  const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
+
+  const s = ctx.MC.state.newGame({ seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+  ctx.MC.state.clearPrompt(s);
+
+  // Give P0 a Sly Deal in hand.
+  const slyUid = s.deck.find((u) => ctx.MC.state.defByUid(s, u).id === "sly_deal");
+  assert.ok(slyUid, "expected sly_deal uid");
+  s.deck = s.deck.filter((u) => u !== slyUid);
+  s.players[0].hand.push(slyUid);
+
+  // Give opponent a 1-card incomplete set so Sly has a legal target.
+  const propUid = s.deck.find((u) => ctx.MC.state.defByUid(s, u).id === "prop_orange");
+  assert.ok(propUid, "expected prop_orange uid");
+  s.deck = s.deck.filter((u) => u !== propUid);
+  const set = ctx.MC.state.newEmptySet();
+  set.props.push([propUid, ctx.MC.Color.Orange]);
+  s.players[1].sets = [set];
+
+  const view = newView(ctx);
+  view.cursor.row = ctx.MC.render.ROW_P_HAND;
+  view.cursor.i = s.players[0].hand.indexOf(slyUid);
+
+  // Enter hold-chain targeting via hold-A grab.
+  ctx.MC.ui.step(s, view, { nav: {}, a: { grabStart: true }, b: {}, x: {} });
+  assert.equal(view.mode, "targeting");
+  assert.equal(view.targeting.kind, "sly");
+  assert.ok(view.targeting.chainActive);
+
+  // Tick once so cursor-mode sync jumps to a target.
+  ctx.MC.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+
+  drawFrame(ctx, s, view);
+
+  const L = ctx.MC.config.render.layout;
+  const bankRightX = L.screenW - L.rowPadX - L.faceW;
+  const yFace = L.rowY[ctx.MC.render.ROW_P_HAND] + L.faceInsetY;
+
+  const ghostBank = rec.calls.find(
+    (c) =>
+      c.kind === "rectb" &&
+      c.args[0] === bankRightX &&
+      c.args[1] === yFace &&
+      c.args[2] === L.faceW &&
+      c.args[3] === L.faceH &&
+      c.args[4] === ctx.MC.Pal.Green
+  );
+  assert.ok(ghostBank, `expected green ghost outline at Bank (${bankRightX},${yFace}) during sly hold-chain`);
 });
 
 test("render: targeting draws ghost outlines and preview overlay", async () => {

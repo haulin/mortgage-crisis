@@ -33,7 +33,7 @@ MC.debug = {};
 MC.config = {
   screenW: 240,
   screenH: 136,
-  seedBase: 1004
+  seedBase: 1005
 };
 
 // Meta/version display (Phase 11).
@@ -2181,7 +2181,10 @@ MC.scenarios.applyScenario = function (state, scenarioId) {
   fn(state);
 
   MC.scenarios.fillDeckFromPool(state);
-  // Keep deck deterministic for scenarios; callers can shuffle if desired.
+  // Scenario deck policy: shuffle the remaining deck with the scenario seed so scenarios
+  // feel like "real" games while still being reproducible per seed.
+  // (Hands/sets/discard are scenario-curated; only the remaining deck is randomized.)
+  MC.shuffle.inPlaceWithStateRng(state, state.deck);
   return state;
 };
 
@@ -2216,8 +2219,8 @@ MC.scenarios.INFO = {
   debtHouseFirst: { title: "Debt: house-first", desc: "Debt prompt where House must be paid before set properties (includes a JSN in hand to test action-sourced payDebt response gating)." },
   placeReceived: { title: "Place received", desc: "Faux-turn placement buffer (includes Wild color choice)." },
   moveStress: { title: "Move stress", desc: "Many partial sets + 9-card hand (props + wilds + rent-any + house) to maximize legalMoves fanout for smoke testing + AI policy tuning." },
-  slyJSN: { title: "Sly+JSN", desc: "RespondAction prompt for Sly Deal (Allow vs Just Say No)." },
-  payDebtShuffleDeal: { title: "PayDebt→shuffle+deal", desc: "Repro helper: start in a rent-sourced payDebt prompt with empty hand + bank payment, then opponent is forced to endTurn and your next startTurn triggers deck reshuffle + staged deal animation." },
+  slyJSN: { title: "Sly+JSN+SlySingle", desc: "RespondAction prompt for Sly Deal (Allow vs Just Say No). Also includes a single-target Sly situation in parallel." },
+  payDebtShuffleDeal: { title: "PayDebt shuffle deal", desc: "Repro helper: start in a rent-sourced payDebt prompt with empty hand + bank payment, then opponent is forced to endTurn and your next startTurn triggers deck reshuffle + staged deal animation." },
 };
 
 MC.scenarios._applyById = {
@@ -2476,6 +2479,14 @@ MC.scenarios._applyById = {
     var slyUid = MC.state.takeUid(state, "sly_deal");
     state.discard.push(slyUid);
 
+    // Also include a single-target Sly situation in parallel (for debugging menu behavior after the prompt):
+    // P0 has a Sly Deal in hand, and P1 has exactly one eligible property on the table.
+    state.players[0].hand.push(MC.state.takeUid(state, "sly_deal"));
+    var setM = MC.state.newEmptySet();
+    var uidM = MC.state.takeUid(state, "prop_magenta");
+    MC.scenarios.setAddFixedProp(setM, uidM, MC.Color.Magenta);
+    state.players[1].sets.push(setM);
+
     MC.state.setPrompt(state, {
       kind: "respondAction",
       p: 0,
@@ -2653,6 +2664,19 @@ MC.moves.locAllowsSource = function (loc) {
   if (!loc || !loc.zone) return false;
   var z = String(loc.zone);
   return (z === "hand") || (z === "recvProps");
+};
+
+MC.moves.cmdsWithoutSource = function (cmds) {
+  if (!cmds || cmds.length === 0) return [];
+  var out = [];
+  var i;
+  for (i = 0; i < cmds.length; i++) {
+    var c = cmds[i];
+    if (!c || !c.kind) continue;
+    if (c.kind === "source") continue;
+    out.push(c);
+  }
+  return out;
 };
 
 // Build the list of cmds for a targeting mode.
@@ -3042,6 +3066,26 @@ MC.cmd.getProfile = function (kind) {
 // Menu-capable cmd kinds (card menu items, ordered).
 MC.cmd.menuKinds = ["place", "build", "rent", "sly", "bank"];
 
+// Hold-A (grab) targeting: choose an ordered list of targeting kinds for a card.
+// The chain builder filters out segments with no real (non-Source) cmds, so it's safe to
+// include candidate kinds that may be illegal in the current state.
+MC.cmd.holdChainKindsForDef = function (def) {
+  if (!def || def.kind == null) return null;
+
+  if (def.kind === MC.CardKind.Property) return ["place"];
+  if (def.kind === MC.CardKind.Money) return ["bank"];
+  if (def.kind === MC.CardKind.House) return ["build", "bank"];
+
+  if (def.kind === MC.CardKind.Action) {
+    if (def.actionKind === MC.ActionKind.SlyDeal) return ["sly", "bank"];
+    if (def.actionKind === MC.ActionKind.Rent) return ["rent", "bank"];
+    // Default for action cards that don't have a targeting mode (e.g. JSN): bank only.
+    return ["bank"];
+  }
+
+  return null;
+};
+
 MC.cmd.titleForCmdKind = function (cmd) {
   if (!cmd || !cmd.kind) return "Target";
   var k = String(cmd.kind);
@@ -3116,10 +3160,67 @@ MC.cmd.destLinePlaceLike = function (state, targeting, cmd) {
   return out || "(no destination)";
 };
 
+MC.cmd.previewForCmd = function (state, cmd, card) {
+  if (!cmd || !cmd.kind) return null;
+  var k = String(cmd.kind);
+
+  var uid = (card && card.uid) ? card.uid : 0;
+  var def = (card && card.def) ? card.def : null;
+  var wildColor = (card && card.wildColor != null) ? card.wildColor : MC.state.NO_COLOR;
+
+  // Default: preview the source card itself.
+  var out = { uid: uid, color: null, focusSrcGhost: false, forCmdKind: k };
+
+  // Special-case: rent previews the top card of the selected set (not the rent action card).
+  if (k === "playRent") {
+    var pR = cmd.card.loc.p;
+    var setR = state.players[pR].sets[cmd.setI];
+    var topUid = setR && setR.houseUid ? setR.houseUid : ((setR.props && setR.props.length) ? setR.props[setR.props.length - 1][0] : 0);
+    var topColor = null;
+    if (setR && !setR.houseUid && setR.props && setR.props.length) topColor = setR.props[setR.props.length - 1][1];
+    out.uid = topUid;
+    out.color = topColor;
+    out.focusSrcGhost = true;
+    return out;
+  }
+
+  // Wild-color tinting.
+  if (def && MC.rules.isWildDef(def)) {
+    if (k === "source") out.color = wildColor;
+    else if (cmd.color != null) out.color = cmd.color;
+    else out.color = wildColor;
+  }
+
+  return out;
+};
+
+MC.cmd.buildHoldChain = function (state, uid, loc, kinds) {
+  var out = { segs: [], wildColor: MC.state.NO_COLOR };
+  var chainWildColor = MC.state.NO_COLOR;
+
+  var iK;
+  for (iK = 0; iK < kinds.length; iK++) {
+    var kind = kinds[iK];
+    var r = MC.moves.cmdsForTargeting(state, kind, uid, loc);
+    if (chainWildColor === MC.state.NO_COLOR && r.wildColor != null && r.wildColor !== MC.state.NO_COLOR) chainWildColor = r.wildColor;
+    var realCmds = MC.moves.cmdsWithoutSource(r.cmds);
+    if (!realCmds || realCmds.length === 0) continue;
+    out.segs.push({ kind: String(kind), cmds: realCmds, cmdI: 0 });
+  }
+
+  // Source/cancel segment (universal).
+  if (out.segs.length > 0 && MC.moves.locAllowsSource(loc)) out.segs.push({ kind: "source", cmds: [{ kind: "source" }], cmdI: 0 });
+
+  out.wildColor = chainWildColor;
+  return out;
+};
+
 MC.cmdProfiles.place = {
   id: "place",
   title: "Place",
   helpLR: "L/R: Dest",
+  menuLabel: function (state, cmds) { return MC.fmt.menuLabelForCmds("Place", state, cmds); },
+  menuHoverPreview: true,
   includeSource: function (loc) {
     return MC.moves.locAllowsSource(loc);
   },
@@ -3129,7 +3230,8 @@ MC.cmdProfiles.place = {
   cmdsForWildColor: function (state, uid, def, wildColor) {
     return MC.moves.placeCmdsForUid(state, uid, def, wildColor);
   },
-  destLine: MC.cmd.destLinePlaceLike
+  destLine: MC.cmd.destLinePlaceLike,
+  ui: { mode: "preview" }
 };
 
 MC.cmdProfiles.moveWild = {
@@ -3176,39 +3278,55 @@ MC.cmdProfiles.bank = {
   id: "bank",
   title: "Bank",
   helpLR: "L/R: Dest",
+  menuLabel: function (state, cmds) { return MC.fmt.menuLabelForCmds("Bank", state, cmds); },
+  menuHoverPreview: true,
   includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
   cmdsForUid: function (state, uid) { return MC.moves.bankCmdsForUid(state, uid); },
-  destLine: MC.cmd.destLineForCmd
+  destLine: MC.cmd.destLineForCmd,
+  ui: { mode: "preview" }
 };
 
 MC.cmdProfiles.build = {
   id: "build",
   title: "Build",
   helpLR: "L/R: Dest",
+  menuLabel: function (state, cmds) { return MC.fmt.menuLabelForCmds("Build", state, cmds); },
+  menuHoverPreview: true,
   includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
   cmdsForUid: function (state, uid) { return MC.moves.buildCmdsForUid(state, uid); },
-  destLine: MC.cmd.destLineForCmd
+  destLine: MC.cmd.destLineForCmd,
+  ui: { mode: "preview" }
 };
 
 MC.cmdProfiles.rent = {
   id: "rent",
   title: "Rent",
   helpLR: "L/R: Set",
+  menuLabel: function (state, cmds) { return MC.fmt.menuLabelForRentMoves(state, cmds); },
+  menuHoverPreview: true,
   includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
   cmdsForUid: function (state, uid, loc) {
     var cmds = MC.moves.rentMovesForUid(state, uid);
     MC.moves.sortRentMovesByAmount(state, loc ? loc.p : 0, cmds);
     return cmds;
   },
-  destLine: MC.cmd.destLineForCmd
+  destLine: MC.cmd.destLineForCmd,
+  ui: { mode: "preview" }
 };
 
 MC.cmdProfiles.sly = {
   id: "sly",
   title: "Sly Deal",
   helpLR: "L/R: Target",
+  menuLabel: function (state, cmds) { return MC.fmt.menuLabelForCmds("Sly Deal", state, cmds); },
+  menuHoverPreview: true,
   includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
-  cmdsForUid: function (state, uid) { return MC.moves.slyDealMovesForUid(state, uid); },
+  cmdsForUid: function (state, uid, loc) {
+    if (!loc || !loc.zone) return [];
+    var z = String(loc.zone);
+    if (z !== "hand") return [];
+    return MC.moves.slyDealMovesForUid(state, uid);
+  },
   destLine: MC.cmd.destLineForCmd,
   ui: {
     mode: "cursor",
@@ -3250,24 +3368,6 @@ MC.cmdProfiles.sly = {
       return api - bpi;
     }
   }
-};
-
-MC.cmdProfiles.quick = {
-  id: "quick",
-  title: function (targeting, cmdSel) {
-    if (!cmdSel || !cmdSel.kind) return "Action";
-    return MC.cmd.titleForCmdKind(cmdSel);
-  },
-  helpLR: "L/R: Option",
-  includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
-  cmdsForUid: function (state, uid, loc) {
-    var rentCmds = MC.moves.rentMovesForUid(state, uid);
-    MC.moves.sortRentMovesByAmount(state, loc ? loc.p : 0, rentCmds);
-    var buildCmds = MC.moves.buildCmdsForUid(state, uid);
-    var bankCmds = MC.moves.bankCmdsForUid(state, uid);
-    return rentCmds.concat(buildCmds).concat(bankCmds);
-  },
-  destLine: MC.cmd.destLineForCmd
 };
 
 // ---- src/55_fmt.js ----
@@ -3359,6 +3459,18 @@ MC.fmt.inspectDescForDef = function (def, selColor) {
 };
 
 MC.fmt.destLabelForCmd = function (state, cmd) {
+  if (cmd && cmd.kind === "playSlyDeal" && cmd.target && cmd.target.loc) {
+    var tl = cmd.target.loc;
+    var colT = MC.state.NO_COLOR;
+    if (tl && tl.zone === "setProps") {
+      var setT = state.players[tl.p].sets[tl.setI];
+      if (setT && setT.props) {
+        var propT = setT.props[tl.i];
+        if (propT) colT = propT[1];
+      }
+    }
+    return (colT !== MC.state.NO_COLOR) ? MC.fmt.colorName(colT) : "";
+  }
   var d = MC.moves.destForCmd(cmd);
   if (!d) return "";
   if (d.kind === "newSet") return "New Set";
@@ -3573,9 +3685,9 @@ MC.layout.playerForRow = function (row) {
     var items = stackItems.slice();
     items.sort(function (a, b) { return a.depth - b.depth; });
 
-    function drawGhostAt(xFace, yFace) {
+    function drawGhostAt(xFace, yFace, col) {
       var shadowCol = MC.Pal.Black;
-      var col = MC.Pal.Green;
+      if (col == null) col = MC.Pal.Green;
       rectbSafe(xFace - 1, yFace - 1, R.cfg.faceW, R.cfg.faceH, shadowCol);
       rectbSafe(xFace, yFace, R.cfg.faceW, R.cfg.faceH, col);
     }
@@ -3588,7 +3700,7 @@ MC.layout.playerForRow = function (row) {
         var xFace = it.x - camX;
         var yFace = it.y;
         if (it.kind === "ghost") {
-          drawGhostAt(xFace, yFace);
+          drawGhostAt(xFace, yFace, it.pal);
           continue;
         }
         if (it.kind === "preview") {
@@ -4620,7 +4732,15 @@ MC.ui.newView = function () {
       wildColor: MC.state.NO_COLOR,
       // list of concrete engine commands (subset of MC.engine.legalMoves)
       cmds: [],
-      cmdI: 0
+      cmdI: 0,
+
+      // Hold-A chain (Phase 09+): compose multiple targeting kinds (e.g. Sly→Bank→Source)
+      // so cursor-mode targeting doesn't have to impersonate preview-mode destinations.
+      chainActive: false,
+      chainSegs: [],
+      chainI: 0,
+      // Cursor location to snap back to when entering non-cursor segments (bank/source).
+      srcCursor: { row: 4, i: 0 }
     },
 
     // Inspect (hold X with delay)
@@ -4817,19 +4937,6 @@ MC.ui.wrapI = function (i, n) {
   return i;
 };
 
-MC.ui.cmdsWithoutSource = function (cmds) {
-  if (!cmds || cmds.length === 0) return [];
-  var out = [];
-  var i;
-  for (i = 0; i < cmds.length; i++) {
-    var c = cmds[i];
-    if (!c || !c.kind) continue;
-    if (c.kind === "source") continue;
-    out.push(c);
-  }
-  return out;
-};
-
 // Pick the first item matching a predicate from the given row order.
 // Returns { row, i, item } or null.
 MC.ui.findBestCursorTarget = function (models, rowOrder, predicate) {
@@ -5024,14 +5131,23 @@ MC.ui.layoutHint = function (state, view) {
   // Targeting mode: reserve for all legal destinations.
   if (view.mode === "targeting" && view.targeting && view.targeting.active && view.targeting.cmds) {
     var needs = {};
-    var cmds = view.targeting.cmds;
-    var i;
-    for (i = 0; i < cmds.length; i++) {
-      var c = cmds[i];
-      var d = MC.moves.destForCmd(c);
-      if (!d) continue;
-      if (d.kind === "bankEnd") hint.bankReserve = true;
-      if (d.kind === "setEnd") needs[d.setI] = true;
+    var t = view.targeting;
+
+    // Hold-chain: reserve for the union of destinations across all segments (so bank can be
+    // reserved/ghosted even while a cursor-mode segment is active).
+    var segs = (t.chainActive && t.chainSegs && t.chainSegs.length) ? t.chainSegs : [{ cmds: t.cmds }];
+    var si;
+    for (si = 0; si < segs.length; si++) {
+      var seg = segs[si];
+      if (!seg || !seg.cmds) continue;
+      var j;
+      for (j = 0; j < seg.cmds.length; j++) {
+        var cS = seg.cmds[j];
+        var dS = MC.moves.destForCmd(cS);
+        if (!dS) continue;
+        if (dS.kind === "bankEnd") hint.bankReserve = true;
+        if (dS.kind === "setEnd") needs[dS.setI] = true;
+      }
     }
     hint.needsExtraSlotBySetI = needs;
     return hint;
@@ -5050,11 +5166,10 @@ MC.ui.layoutHint = function (state, view) {
     var kindM = String(it.id || "");
     var profM = MC.cmd.getProfile(kindM);
     if (!profM) return hint;
-    if (kindM === "sly") return hint; // No implied default destination while hovering Sly (cursor-mode targeting).
-
+    if (!profM.menuHoverPreview) return hint;
     var rM = MC.moves.cmdsForTargeting(state, kindM, uid, src.loc || null);
     if (!rM || !rM.cmds) return hint;
-    var cmdsM = MC.ui.cmdsWithoutSource(rM.cmds);
+    var cmdsM = MC.moves.cmdsWithoutSource(rM.cmds);
 
     // Only preview when unambiguous (exactly 1 legal cmd). Multi-target actions show "..." and should not
     // imply a default destination highlight while browsing the menu.
@@ -5512,12 +5627,13 @@ MC.ui.computeRowModels = function (state, view) {
     pushOverlay(slot.row, { kind: "ghost", x: slot.x, y: slot.y, stackKey: slot.stackKey, depth: slot.depth });
   }
 
-  function setFocus(slot, uid, color, forCmdKind) {
+  function setFocus(slot, uid, color, forCmdKind, focusSrcGhost) {
     if (!slot) return;
     meta.focus = {
       kind: "preview",
       row: slot.row,
       forCmdKind: forCmdKind,
+      focusSrcGhost: !!focusSrcGhost,
       uid: uid,
       color: color,
       x: slot.x,
@@ -5532,42 +5648,17 @@ MC.ui.computeRowModels = function (state, view) {
 
   function previewForCmd(cmd, srcSlot, card) {
     if (!cmd || !cmd.kind) return null;
-    var k = String(cmd.kind);
-    var uid = (card && card.uid) ? card.uid : 0;
-    var def = (card && card.def) ? card.def : null;
-    var wildColor = (card && card.wildColor != null) ? card.wildColor : null;
-
-    // Special-case: rent previews the top card of the selected set (not the action card).
-    if (k === "playRent") {
-      var slotR = slotForCmd(cmd, srcSlot);
-      if (!slotR) return null;
-      var sets = state.players[0].sets;
-      var setR = sets[cmd.setI];
-      var stRR = tableStack(cmd.setI);
-      if (!setR || !stRR || stRR.nReal <= 0) return null;
-      var topUid = setR.houseUid ? setR.houseUid : ((setR.props && setR.props.length) ? setR.props[setR.props.length - 1][0] : 0);
-      var topColor = null;
-      if (!setR.houseUid && setR.props && setR.props.length) topColor = setR.props[setR.props.length - 1][1];
-      return { slot: slotR, uid: topUid, color: topColor, forCmdKind: "rent" };
-    }
-
     var slot = slotForCmd(cmd, srcSlot);
     if (!slot) return null;
-
-    var col = null;
-    if (def && MC.rules.isWildDef(def)) {
-      if (k === "source") col = wildColor;
-      else if (cmd.color != null) col = cmd.color;
-      else col = wildColor;
-    }
-
-    return { slot: slot, uid: uid, color: col, forCmdKind: k };
+    var prev = MC.cmd.previewForCmd(state, cmd, card);
+    if (!prev) return null;
+    return { slot: slot, uid: prev.uid, color: prev.color, forCmdKind: prev.forCmdKind, focusSrcGhost: prev.focusSrcGhost };
   }
 
   function setFocusForCmd(cmd, srcSlot, card) {
     var prev = previewForCmd(cmd, srcSlot, card);
     if (!prev) return;
-    setFocus(prev.slot, prev.uid, prev.color, prev.forCmdKind);
+    setFocus(prev.slot, prev.uid, prev.color, prev.forCmdKind, prev.focusSrcGhost);
   }
 
   // Targeting overlays: ghosts + preview-in-stack for the selected destination.
@@ -5627,6 +5718,31 @@ MC.ui.computeRowModels = function (state, view) {
       ? { row: srcRow, x: srcX, y: srcY, stackKey: "overlay:src:row" + srcRow, depth: 0 }
       : null;
 
+    // Hold-chain: ghost non-selected segment destinations so the player can see the full cycle
+    // (e.g. Sly targets while Bank segment exists, or Rent sets while Bank segment exists).
+    if (t.chainActive && t.chainSegs && t.chainSegs.length) {
+      var sgi;
+      for (sgi = 0; sgi < t.chainSegs.length; sgi++) {
+        var segG = t.chainSegs[sgi];
+        if (!segG || !segG.kind || !segG.cmds) continue;
+        var kindG = String(segG.kind);
+        if (kindG === String(t.kind || "")) continue;
+        if (kindG === "source") continue;
+
+        var profG = MC.cmd.getProfile(kindG);
+        var uiG = (profG && profG.ui) ? profG.ui : null;
+        var modeG = (uiG && uiG.mode) ? String(uiG.mode) : "preview";
+        if (modeG === "cursor") continue; // cursor-mode cross-ghosting handled separately (optional)
+
+        var ciG;
+        for (ciG = 0; ciG < segG.cmds.length; ciG++) {
+          var cmdG = segG.cmds[ciG];
+          if (!cmdG || !cmdG.kind) continue;
+          pushGhost(slotForCmd(cmdG, srcSlot));
+        }
+      }
+    }
+
     if (isCursorMode) {
       // Cursor-moving targeting: no preview card (avoid “two cursors” look). Cursor moves to the target instead.
       // Source slot is still represented by a ghost when the real source card is hidden.
@@ -5679,7 +5795,7 @@ MC.ui.computeRowModels = function (state, view) {
         srcY != null &&
         srcRow != null &&
         meta.focus &&
-        (meta.focus.uid === t.card.uid || meta.focus.forCmdKind === "rent") &&
+        (meta.focus.uid === t.card.uid || meta.focus.focusSrcGhost) &&
         !hasSourceCmd
       ) {
         pushOverlay(srcRow, { kind: "ghost", x: srcX, y: srcY, stackKey: "overlay:src:row" + srcRow, depth: 0 });
@@ -5693,13 +5809,42 @@ MC.ui.computeRowModels = function (state, view) {
     var uidM = (srcM && srcM.uid) ? srcM.uid : 0;
     var cm = (hint && hint.menuHoverCmd) ? hint.menuHoverCmd : null;
     if (uidM && cm) {
-      var defM = MC.state.defByUid(state, uidM);
-      setFocusForCmd(cm, null, { uid: uidM, def: defM, wildColor: (defM && MC.rules.isWildDef(defM)) ? cm.color : null });
+      if (cm.kind === "playSlyDeal" && cm.target && cm.target.loc) {
+        // Cursor-mode menu hover preview: highlight the (single) target and ghost the source card.
+        var itT = findItemByUidLoc(cm.target.uid, cm.target.loc);
+        // Reuse preview overlay to get the standard yellow highlight (no new overlay kinds).
+        if (itT) {
+          var slotT = { row: itT.row, x: itT.x, y: itT.y, stackKey: itT.stackKey, depth: (itT.depth != null ? itT.depth + 100 : 100) };
+          setFocus(slotT, cm.target.uid, null, "playSlyDeal", false);
+        }
+
+        if (srcM.uid && srcM.loc && (srcM.loc.zone === "hand" || srcM.loc.zone === "recvProps")) {
+          meta.hideSrc = { uid: srcM.uid, loc: srcM.loc };
+          var rowHandS = MC.render.ROW_P_HAND;
+          var rmHandS = models[rowHandS];
+          if (rmHandS && rmHandS.items) {
+            var hiS;
+            for (hiS = 0; hiS < rmHandS.items.length; hiS++) {
+              var itHS = rmHandS.items[hiS];
+              if (!itHS || itHS.kind !== "hand" || !itHS.loc) continue;
+              if (itHS.uid !== uidM) continue;
+              if (itHS.loc.p !== srcM.loc.p) continue;
+              if (String(itHS.loc.zone) !== String(srcM.loc.zone)) continue;
+              if (itHS.loc.i !== srcM.loc.i) continue;
+              models[rowHandS].overlayItems.push({ kind: "ghost", x: itHS.x, y: itHS.y, stackKey: "overlay:menuSrc:row" + rowHandS, depth: 0 });
+              break;
+            }
+          }
+        }
+      } else {
+        var defM = MC.state.defByUid(state, uidM);
+        setFocusForCmd(cm, null, { uid: uidM, def: defM, wildColor: (defM && MC.rules.isWildDef(defM)) ? cm.color : null });
+      }
     }
 
     // When menu hover produces a preview of the same uid (or Rent preview where the preview card differs),
     // ghost the source slot so it doesn't look duplicated.
-    if (meta.focus && uidM && srcM && srcM.loc && (meta.focus.uid === uidM || meta.focus.forCmdKind === "rent")) {
+    if (meta.focus && uidM && srcM && srcM.loc && (meta.focus.uid === uidM || meta.focus.focusSrcGhost)) {
       if (srcM.uid && srcM.loc && (srcM.loc.zone === "hand" || srcM.loc.zone === "recvProps")) {
         meta.hideSrc = { uid: srcM.uid, loc: srcM.loc };
       }
@@ -5826,18 +5971,10 @@ MC.ui.menuOpenForSelection = function (state, view, sel) {
 
     var r = MC.moves.cmdsForTargeting(state, kind, uid, sel.loc || null);
     if (!r || !r.cmds) continue;
-    var realCmds = MC.ui.cmdsWithoutSource(r.cmds);
+    var realCmds = MC.moves.cmdsWithoutSource(r.cmds);
     if (!realCmds || realCmds.length === 0) continue; // actionable-only
 
-    var label = "";
-    if (kind === "rent") label = MC.fmt.menuLabelForRentMoves(state, realCmds);
-    else if (kind === "sly") label = "Sly Deal...";
-    else {
-      var baseLabel = "";
-      if (prof.title) baseLabel = (typeof prof.title === "function") ? String(prof.title(null, realCmds[0] || null)) : String(prof.title);
-      if (!baseLabel) baseLabel = "Action";
-      label = MC.fmt.menuLabelForCmds(baseLabel, state, realCmds);
-    }
+    var label = prof.menuLabel(state, realCmds);
     view.menu.items.push({ id: kind, label: label });
   }
 
@@ -5858,6 +5995,10 @@ MC.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
   t.hold = !!hold;
   t.cmds = [];
   t.cmdI = 0;
+  t.chainActive = false;
+  t.chainSegs = [];
+  t.chainI = 0;
+  t.srcCursor = { row: view.cursor ? view.cursor.row : 4, i: view.cursor ? view.cursor.i : 0 };
 
   var def = MC.state.defByUid(state, uid);
   t.card = { uid: uid, loc: loc || null, def: def || null };
@@ -5881,7 +6022,7 @@ MC.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
   }
 
   // Phase 11: if the only legal destination is Source/cancel, disallow entering targeting.
-  if (MC.ui.cmdsWithoutSource(t.cmds).length === 0) {
+  if (MC.moves.cmdsWithoutSource(t.cmds).length === 0) {
     MC.anim.feedbackError(view, "no_actions", "No actions");
     t.active = false;
     view.mode = "browse";
@@ -5891,11 +6032,50 @@ MC.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
   view.mode = "targeting";
 };
 
+MC.ui.targetingEnterHoldChain = function (state, view, kinds, uid, loc) {
+  if (!view || !view.targeting) return;
+  var t = view.targeting;
+
+  t.active = true;
+  t._profileSorted = false;
+  t._profileSyncCmdI = -1;
+  t.hold = true;
+  t.cmds = [];
+  t.cmdI = 0;
+  t.wildColor = MC.state.NO_COLOR;
+
+  t.chainActive = true;
+  t.chainSegs = [];
+  t.chainI = 0;
+  t.srcCursor = { row: view.cursor ? view.cursor.row : 4, i: view.cursor ? view.cursor.i : 0 };
+
+  var def = MC.state.defByUid(state, uid);
+  t.card = { uid: uid, loc: loc || null, def: def || null };
+
+  var chain = MC.cmd.buildHoldChain(state, uid, t.card ? t.card.loc : null, kinds);
+  if (chain && chain.segs) t.chainSegs = chain.segs;
+
+  // Phase 11: disallow entering a Source-only targeting flow.
+  if (!t.chainSegs || t.chainSegs.length === 0) {
+    MC.anim.feedbackError(view, "no_actions", "No actions");
+    t.active = false;
+    view.mode = "browse";
+    return;
+  }
+
+  // Apply first segment (default).
+  var seg0 = t.chainSegs[0];
+  t.chainI = 0;
+  t.kind = seg0.kind;
+  t.cmds = seg0.cmds;
+  t.cmdI = 0;
+  t.wildColor = (chain && chain.wildColor != null) ? chain.wildColor : MC.state.NO_COLOR;
+  view.mode = "targeting";
+};
+
 MC.ui.targetingRetargetWild = function (state, view, dir) {
   if (!view || !view.targeting || !view.targeting.active) return;
   var t = view.targeting;
-  var prof = MC.cmd.getProfile(t.kind);
-  if (!prof || !prof.cmdsForWildColor) return;
   if (!t.card || !t.card.def || !MC.rules.isWildDef(t.card.def)) return;
 
   var def = t.card.def;
@@ -5905,32 +6085,78 @@ MC.ui.targetingRetargetWild = function (state, view, dir) {
   var nextColor = (prevColor === c0) ? c1 : c0;
   if (dir < 0) nextColor = (prevColor === c1) ? c0 : c1;
 
+  var uid = t.card.uid;
+  var loc = t.card ? t.card.loc : null;
+
+  function pickSelI(cmds, keepNewSet, keepSetI, keepSource) {
+    var selI = 0;
+    var i;
+    if (keepNewSet) {
+      for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].dest && cmds[i].dest.newSet) { selI = i; break; }
+    } else if (keepSetI != null) {
+      for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].dest && cmds[i].dest.setI === keepSetI) { selI = i; break; }
+    } else if (keepSource) {
+      for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].kind === "source") { selI = i; break; }
+    }
+    return selI;
+  }
+
+  t.wildColor = nextColor;
+
+  // Hold-chain: retarget the appropriate segment (even when the active segment is Source),
+  // and never inject Source into segment cmd lists (Source is a dedicated segment).
+  if (t.chainActive && t.chainSegs && t.chainSegs.length) {
+    var segI = MC.ui.clampI(t.chainI, t.chainSegs.length);
+    var seg = t.chainSegs[segI];
+    var profSeg = seg ? MC.cmd.getProfile(seg.kind) : null;
+    if (!profSeg || !profSeg.cmdsForWildColor) {
+      var si;
+      for (si = 0; si < t.chainSegs.length; si++) {
+        var cand = t.chainSegs[si];
+        var profC = cand ? MC.cmd.getProfile(cand.kind) : null;
+        if (profC && profC.cmdsForWildColor) { segI = si; seg = cand; profSeg = profC; break; }
+      }
+    }
+    if (!seg || !profSeg || !profSeg.cmdsForWildColor) return;
+
+    var prevCmdS = (seg.cmds && seg.cmds.length) ? seg.cmds[MC.ui.clampI(seg.cmdI, seg.cmds.length)] : null;
+    var keepNewSetS = !!(prevCmdS && prevCmdS.dest && prevCmdS.dest.newSet);
+    var keepSetIS = (prevCmdS && prevCmdS.dest && prevCmdS.dest.setI != null) ? prevCmdS.dest.setI : null;
+
+    var cmdsS = profSeg.cmdsForWildColor(state, uid, def, nextColor, loc);
+    var realCmdsS = MC.moves.cmdsWithoutSource(cmdsS);
+    seg.cmds = realCmdsS;
+    seg.cmdI = pickSelI(seg.cmds, keepNewSetS, keepSetIS, false);
+
+    // If we retargeted the currently active segment, update the active targeting view too.
+    if (segI === MC.ui.clampI(t.chainI, t.chainSegs.length)) {
+      t.cmds = seg.cmds;
+      t.cmdI = seg.cmdI;
+      t._profileSorted = false;
+      t._profileSyncCmdI = -1;
+    }
+
+    return;
+  }
+
+  // Non-chain targeting: retarget the current kind/profile (may include Source in cmds list).
+  var prof = MC.cmd.getProfile(t.kind);
+  if (!prof || !prof.cmdsForWildColor) return;
   var prevCmd = (t.cmds && t.cmds.length) ? t.cmds[MC.ui.clampI(t.cmdI, t.cmds.length)] : null;
   var keepNewSet = !!(prevCmd && prevCmd.dest && prevCmd.dest.newSet);
   var keepSetI = (prevCmd && prevCmd.dest && prevCmd.dest.setI != null) ? prevCmd.dest.setI : null;
   var keepSource = !!(prevCmd && prevCmd.kind === "source");
 
-  var uid = t.card.uid;
-  var cmds = prof.cmdsForWildColor(state, uid, def, nextColor, t.card ? t.card.loc : null);
-  var include = prof.includeSource ? prof.includeSource(t.card ? t.card.loc : null) : false;
+  var cmds = prof.cmdsForWildColor(state, uid, def, nextColor, loc);
+  var include = prof.includeSource ? prof.includeSource(loc) : false;
   if (include) cmds.push({ kind: "source" });
 
-  t.wildColor = nextColor;
   t.cmds = cmds;
   t._profileSorted = false;
   t._profileSyncCmdI = -1;
+  t.cmdI = pickSelI(cmds, keepNewSet, keepSetI, keepSource);
 
-  // Preserve selection if possible.
-  var selI = 0;
-  var i;
-  if (keepNewSet) {
-    for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].dest && cmds[i].dest.newSet) { selI = i; break; }
-  } else if (keepSetI != null) {
-    for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].dest && cmds[i].dest.setI === keepSetI) { selI = i; break; }
-  } else if (keepSource) {
-    for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].kind === "source") { selI = i; break; }
-  }
-  t.cmdI = selI;
+  // Note: no hold-chain persistence here because chain retargeting is handled above.
 };
 
 MC.ui.step = function (state, view, actions) {
@@ -6114,23 +6340,19 @@ MC.ui.step = function (state, view, actions) {
       if (it.id === "source") return null;
       if (!src.loc || src.loc.p !== 0) return null;
       var uid = src.uid;
-      var srcZone = String(src.loc.zone || "");
 
       // Cmd-profile-driven menu execution.
       var kind = String(it.id || "");
       var prof = MC.cmd.getProfile(kind);
       if (!prof) return null;
 
-      // Sly is hand-only in the current rules/UI; keep this hard guard to avoid entering a mode that can't act.
-      if (kind === "sly" && srcZone !== "hand") return null;
-
       var r = MC.moves.cmdsForTargeting(state, kind, uid, src.loc || null);
       if (!r || !r.cmds) return null;
-      var realCmds = MC.ui.cmdsWithoutSource(r.cmds);
+      var realCmds = MC.moves.cmdsWithoutSource(r.cmds);
       if (!realCmds || realCmds.length === 0) return null;
 
-      // Auto-apply when unambiguous, except Sly which always targets.
-      if (realCmds.length === 1 && kind !== "sly") {
+      // Auto-apply when unambiguous.
+      if (realCmds.length === 1) {
         focusSnapshot();
         return { kind: "applyCmd", cmd: realCmds[0] };
       }
@@ -6171,24 +6393,33 @@ MC.ui.step = function (state, view, actions) {
     }
 
     // Optional: profile-driven screen-space sorting and cursor-moving targeting.
-    var prof = MC.cmd.getProfile(t.kind);
-    var ui = (prof && prof.ui) ? prof.ui : null;
-    var ctxT = { state: state, view: view, computed: computed };
+    // IMPORTANT: `t.kind` can change mid-frame via hold-chain segment switching, so always
+    // resolve the current profile/UI dynamically inside helpers (avoid capturing stale `ui`).
+    function curUi() {
+      var prof = MC.cmd.getProfile(t.kind);
+      return (prof && prof.ui) ? prof.ui : null;
+    }
 
     function profileEnsureSortedOnce() {
+      var ui = curUi();
       if (!ui || !ui.screenXForCmd) return;
       if (!t.cmds || t.cmds.length === 0) return;
       if (t._profileSorted) return;
 
       var prev = t.cmds[MC.ui.clampI(t.cmdI, t.cmds.length)];
       var keepSource = !!(prev && prev.kind === "source");
-      var keepNewSet = !!(prev && prev.dest && prev.dest.newSet);
-      var keepSetI = (prev && prev.dest && prev.dest.setI != null) ? prev.dest.setI : null;
+      // Preserve selection across sort only when we're not at the default index 0.
+      // This avoids letting pre-sort engine order influence the default selection on first entry.
+      var preserveNonDefault = (t.cmdI !== 0);
+      var keepNewSet = preserveNonDefault && !!(prev && prev.dest && prev.dest.newSet);
+      var keepSetI = preserveNonDefault && (prev && prev.dest && prev.dest.setI != null) ? prev.dest.setI : null;
+      var keepTargetUid = preserveNonDefault && (prev && prev.target && prev.target.uid) ? prev.target.uid : 0;
+      var keepTargetLoc = preserveNonDefault && (prev && prev.target && prev.target.loc) ? prev.target.loc : null;
 
       var cmds = sortCmdsByScreenX(
         t.cmds,
         ui.sortRank || null,
-        function (c) { return ui.screenXForCmd(ctxT, c); },
+        function (c) { return ui.screenXForCmd({ state: state, view: view, computed: computed }, c); },
         ui.tieCmp || null
       );
       t.cmds = cmds;
@@ -6202,19 +6433,41 @@ MC.ui.step = function (state, view, actions) {
         for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].dest && cmds[i].dest.newSet) { selI = i; break; }
       } else if (keepSetI != null) {
         for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].dest && cmds[i].dest.setI === keepSetI) { selI = i; break; }
+      } else if (keepTargetUid && keepTargetLoc) {
+        for (i = 0; i < cmds.length; i++) {
+          var c = cmds[i];
+          if (!c || !c.kind) continue;
+          if (!c.target || c.target.uid !== keepTargetUid || !c.target.loc) continue;
+          var al = c.target.loc;
+          var bl = keepTargetLoc;
+          if (al.p !== bl.p) continue;
+          if (String(al.zone || "") !== String(bl.zone || "")) continue;
+          if ((al.setI != null) && (bl.setI != null) && al.setI !== bl.setI) continue;
+          if ((al.i != null) && (bl.i != null) && al.i !== bl.i) continue;
+          selI = i;
+          break;
+        }
       }
       t.cmdI = selI;
       t._profileSorted = true;
+
+      // If this targeting is part of a hold-chain, persist the sorted cmd order in the active segment
+      // so segment switching doesn't keep reintroducing an unsorted order.
+      if (t.chainActive && t.chainSegs && t.chainSegs.length) {
+        var seg = t.chainSegs[MC.ui.clampI(t.chainI, t.chainSegs.length)];
+        if (seg) { seg.cmds = t.cmds; seg.cmdI = t.cmdI; }
+      }
     }
 
     function profileSyncCursor() {
+      var ui = curUi();
       if (!ui || ui.mode !== "cursor" || !ui.findItemForCmd) return false;
       if (!t.cmds || t.cmds.length === 0) return false;
       var cmdI = MC.ui.clampI(t.cmdI, t.cmds.length);
       t.cmdI = cmdI;
       if (t._profileSyncCmdI === cmdI) return false;
       var cmdSel = t.cmds[cmdI];
-      var pick = ui.findItemForCmd(ctxT, cmdSel);
+      var pick = ui.findItemForCmd({ state: state, view: view, computed: computed }, cmdSel);
       if (pick) MC.ui.cursorMoveTo(view, pick);
       t._profileSyncCmdI = cmdI;
       return true;
@@ -6225,8 +6478,58 @@ MC.ui.step = function (state, view, actions) {
     // Cycle destinations
     var nCmds = t.cmds ? t.cmds.length : 0;
     if (nCmds > 0) {
-      if (actions.nav && actions.nav.left) t.cmdI = MC.ui.wrapI(t.cmdI - 1, nCmds);
-      if (actions.nav && actions.nav.right) t.cmdI = MC.ui.wrapI(t.cmdI + 1, nCmds);
+      function kindIsCursorMode(kind) {
+        var profK = MC.cmd.getProfile(kind);
+        var uiK = (profK && profK.ui) ? profK.ui : null;
+        return !!(uiK && String(uiK.mode || "") === "cursor");
+      }
+
+      function chainApplySeg(nextSegI, dirSeg) {
+        if (!t.chainActive || !t.chainSegs || t.chainSegs.length === 0) return false;
+
+        // Persist current cmdI into current segment.
+        var curSeg = t.chainSegs[MC.ui.clampI(t.chainI, t.chainSegs.length)];
+        if (curSeg) curSeg.cmdI = t.cmdI;
+
+        nextSegI = MC.ui.wrapI(nextSegI, t.chainSegs.length);
+        var seg = t.chainSegs[nextSegI];
+        if (!seg || !seg.cmds || seg.cmds.length === 0) return false;
+
+        t.chainI = nextSegI;
+        t.kind = String(seg.kind || "");
+        t.cmds = seg.cmds;
+        // Directional segment entry: land on start/end (keeps a stable global cycle).
+        t.cmdI = (dirSeg < 0) ? (seg.cmds.length - 1) : 0;
+        seg.cmdI = t.cmdI;
+        t._profileSorted = false;
+        t._profileSyncCmdI = -1;
+
+        // Entering non-cursor segments should snap cursor back to the source selection,
+        // to avoid leaving a stale highlight on a previous cursor-mode target.
+        if (!kindIsCursorMode(t.kind) && t.srcCursor) {
+          view.cursor.row = t.srcCursor.row;
+          view.cursor.i = t.srcCursor.i;
+        }
+
+        return true;
+      }
+
+      if (actions.nav && actions.nav.left) {
+        if (t.chainActive && t.chainSegs && t.chainSegs.length) {
+          if (t.cmdI > 0) t.cmdI -= 1;
+          else chainApplySeg(t.chainI - 1, -1);
+        } else {
+          t.cmdI = MC.ui.wrapI(t.cmdI - 1, nCmds);
+        }
+      }
+      if (actions.nav && actions.nav.right) {
+        if (t.chainActive && t.chainSegs && t.chainSegs.length) {
+          if (t.cmdI < (nCmds - 1)) t.cmdI += 1;
+          else chainApplySeg(t.chainI + 1, 1);
+        } else {
+          t.cmdI = MC.ui.wrapI(t.cmdI + 1, nCmds);
+        }
+      }
     }
 
     // Wild color toggle (Up/Down)
@@ -6579,20 +6882,9 @@ MC.ui.step = function (state, view, actions) {
     if (selGrab && selGrab.loc && selGrab.loc.zone === "hand" && selGrab.loc.p === 0) {
       var uidGrab = selGrab.uid;
       var defGrab = MC.state.defByUid(state, uidGrab);
-      if (defGrab && defGrab.kind === MC.CardKind.Property) {
-        MC.ui.targetingEnter(state, view, "place", true, uidGrab, selGrab.loc);
-        return null;
-      } else if (defGrab && defGrab.kind === MC.CardKind.Action && defGrab.actionKind === MC.ActionKind.SlyDeal) {
-        // Phase 09: if there are no Sly targets, fall back to Quick so Bank remains available.
-        var slyMoves = MC.moves.slyDealMovesForUid(state, uidGrab);
-        if (slyMoves && slyMoves.length > 0) MC.ui.targetingEnter(state, view, "sly", true, uidGrab, selGrab.loc);
-        else MC.ui.targetingEnter(state, view, "quick", true, uidGrab, selGrab.loc);
-        return null;
-      } else if (defGrab && (defGrab.kind === MC.CardKind.House || (defGrab.kind === MC.CardKind.Action && defGrab.actionKind === MC.ActionKind.Rent))) {
-        MC.ui.targetingEnter(state, view, "quick", true, uidGrab, selGrab.loc);
-        return null;
-      } else if (defGrab && MC.rules.isBankableDef(defGrab)) {
-        MC.ui.targetingEnter(state, view, "bank", true, uidGrab, selGrab.loc);
+      var kinds = MC.cmd.holdChainKindsForDef(defGrab);
+      if (kinds) {
+        MC.ui.targetingEnterHoldChain(state, view, kinds, uidGrab, selGrab.loc);
         return null;
       }
       MC.anim.feedbackError(view, "hold_noop", "Can't do that");

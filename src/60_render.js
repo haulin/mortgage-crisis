@@ -117,9 +117,9 @@
     var items = stackItems.slice();
     items.sort(function (a, b) { return a.depth - b.depth; });
 
-    function drawGhostAt(xFace, yFace) {
+    function drawGhostAt(xFace, yFace, col) {
       var shadowCol = MC.Pal.Black;
-      var col = MC.Pal.Green;
+      if (col == null) col = MC.Pal.Green;
       rectbSafe(xFace - 1, yFace - 1, R.cfg.faceW, R.cfg.faceH, shadowCol);
       rectbSafe(xFace, yFace, R.cfg.faceW, R.cfg.faceH, col);
     }
@@ -132,7 +132,7 @@
         var xFace = it.x - camX;
         var yFace = it.y;
         if (it.kind === "ghost") {
-          drawGhostAt(xFace, yFace);
+          drawGhostAt(xFace, yFace, it.pal);
           continue;
         }
         if (it.kind === "preview") {

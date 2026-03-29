@@ -2,7 +2,7 @@
 MC.config = {
   screenW: 240,
   screenH: 136,
-  seedBase: 1004
+  seedBase: 1005
 };
 
 // Meta/version display (Phase 11).

@@ -86,6 +86,18 @@ MC.fmt.inspectDescForDef = function (def, selColor) {
 };
 
 MC.fmt.destLabelForCmd = function (state, cmd) {
+  if (cmd && cmd.kind === "playSlyDeal" && cmd.target && cmd.target.loc) {
+    var tl = cmd.target.loc;
+    var colT = MC.state.NO_COLOR;
+    if (tl && tl.zone === "setProps") {
+      var setT = state.players[tl.p].sets[tl.setI];
+      if (setT && setT.props) {
+        var propT = setT.props[tl.i];
+        if (propT) colT = propT[1];
+      }
+    }
+    return (colT !== MC.state.NO_COLOR) ? MC.fmt.colorName(colT) : "";
+  }
   var d = MC.moves.destForCmd(cmd);
   if (!d) return "";
   if (d.kind === "newSet") return "New Set";

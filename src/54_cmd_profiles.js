@@ -9,6 +9,26 @@ MC.cmd.getProfile = function (kind) {
 // Menu-capable cmd kinds (card menu items, ordered).
 MC.cmd.menuKinds = ["place", "build", "rent", "sly", "bank"];
 
+// Hold-A (grab) targeting: choose an ordered list of targeting kinds for a card.
+// The chain builder filters out segments with no real (non-Source) cmds, so it's safe to
+// include candidate kinds that may be illegal in the current state.
+MC.cmd.holdChainKindsForDef = function (def) {
+  if (!def || def.kind == null) return null;
+
+  if (def.kind === MC.CardKind.Property) return ["place"];
+  if (def.kind === MC.CardKind.Money) return ["bank"];
+  if (def.kind === MC.CardKind.House) return ["build", "bank"];
+
+  if (def.kind === MC.CardKind.Action) {
+    if (def.actionKind === MC.ActionKind.SlyDeal) return ["sly", "bank"];
+    if (def.actionKind === MC.ActionKind.Rent) return ["rent", "bank"];
+    // Default for action cards that don't have a targeting mode (e.g. JSN): bank only.
+    return ["bank"];
+  }
+
+  return null;
+};
+
 MC.cmd.titleForCmdKind = function (cmd) {
   if (!cmd || !cmd.kind) return "Target";
   var k = String(cmd.kind);
@@ -83,10 +103,67 @@ MC.cmd.destLinePlaceLike = function (state, targeting, cmd) {
   return out || "(no destination)";
 };
 
+MC.cmd.previewForCmd = function (state, cmd, card) {
+  if (!cmd || !cmd.kind) return null;
+  var k = String(cmd.kind);
+
+  var uid = (card && card.uid) ? card.uid : 0;
+  var def = (card && card.def) ? card.def : null;
+  var wildColor = (card && card.wildColor != null) ? card.wildColor : MC.state.NO_COLOR;
+
+  // Default: preview the source card itself.
+  var out = { uid: uid, color: null, focusSrcGhost: false, forCmdKind: k };
+
+  // Special-case: rent previews the top card of the selected set (not the rent action card).
+  if (k === "playRent") {
+    var pR = cmd.card.loc.p;
+    var setR = state.players[pR].sets[cmd.setI];
+    var topUid = setR && setR.houseUid ? setR.houseUid : ((setR.props && setR.props.length) ? setR.props[setR.props.length - 1][0] : 0);
+    var topColor = null;
+    if (setR && !setR.houseUid && setR.props && setR.props.length) topColor = setR.props[setR.props.length - 1][1];
+    out.uid = topUid;
+    out.color = topColor;
+    out.focusSrcGhost = true;
+    return out;
+  }
+
+  // Wild-color tinting.
+  if (def && MC.rules.isWildDef(def)) {
+    if (k === "source") out.color = wildColor;
+    else if (cmd.color != null) out.color = cmd.color;
+    else out.color = wildColor;
+  }
+
+  return out;
+};
+
+MC.cmd.buildHoldChain = function (state, uid, loc, kinds) {
+  var out = { segs: [], wildColor: MC.state.NO_COLOR };
+  var chainWildColor = MC.state.NO_COLOR;
+
+  var iK;
+  for (iK = 0; iK < kinds.length; iK++) {
+    var kind = kinds[iK];
+    var r = MC.moves.cmdsForTargeting(state, kind, uid, loc);
+    if (chainWildColor === MC.state.NO_COLOR && r.wildColor != null && r.wildColor !== MC.state.NO_COLOR) chainWildColor = r.wildColor;
+    var realCmds = MC.moves.cmdsWithoutSource(r.cmds);
+    if (!realCmds || realCmds.length === 0) continue;
+    out.segs.push({ kind: String(kind), cmds: realCmds, cmdI: 0 });
+  }
+
+  // Source/cancel segment (universal).
+  if (out.segs.length > 0 && MC.moves.locAllowsSource(loc)) out.segs.push({ kind: "source", cmds: [{ kind: "source" }], cmdI: 0 });
+
+  out.wildColor = chainWildColor;
+  return out;
+};
+
 MC.cmdProfiles.place = {
   id: "place",
   title: "Place",
   helpLR: "L/R: Dest",
+  menuLabel: function (state, cmds) { return MC.fmt.menuLabelForCmds("Place", state, cmds); },
+  menuHoverPreview: true,
   includeSource: function (loc) {
     return MC.moves.locAllowsSource(loc);
   },
@@ -96,7 +173,8 @@ MC.cmdProfiles.place = {
   cmdsForWildColor: function (state, uid, def, wildColor) {
     return MC.moves.placeCmdsForUid(state, uid, def, wildColor);
   },
-  destLine: MC.cmd.destLinePlaceLike
+  destLine: MC.cmd.destLinePlaceLike,
+  ui: { mode: "preview" }
 };
 
 MC.cmdProfiles.moveWild = {
@@ -143,39 +221,55 @@ MC.cmdProfiles.bank = {
   id: "bank",
   title: "Bank",
   helpLR: "L/R: Dest",
+  menuLabel: function (state, cmds) { return MC.fmt.menuLabelForCmds("Bank", state, cmds); },
+  menuHoverPreview: true,
   includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
   cmdsForUid: function (state, uid) { return MC.moves.bankCmdsForUid(state, uid); },
-  destLine: MC.cmd.destLineForCmd
+  destLine: MC.cmd.destLineForCmd,
+  ui: { mode: "preview" }
 };
 
 MC.cmdProfiles.build = {
   id: "build",
   title: "Build",
   helpLR: "L/R: Dest",
+  menuLabel: function (state, cmds) { return MC.fmt.menuLabelForCmds("Build", state, cmds); },
+  menuHoverPreview: true,
   includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
   cmdsForUid: function (state, uid) { return MC.moves.buildCmdsForUid(state, uid); },
-  destLine: MC.cmd.destLineForCmd
+  destLine: MC.cmd.destLineForCmd,
+  ui: { mode: "preview" }
 };
 
 MC.cmdProfiles.rent = {
   id: "rent",
   title: "Rent",
   helpLR: "L/R: Set",
+  menuLabel: function (state, cmds) { return MC.fmt.menuLabelForRentMoves(state, cmds); },
+  menuHoverPreview: true,
   includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
   cmdsForUid: function (state, uid, loc) {
     var cmds = MC.moves.rentMovesForUid(state, uid);
     MC.moves.sortRentMovesByAmount(state, loc ? loc.p : 0, cmds);
     return cmds;
   },
-  destLine: MC.cmd.destLineForCmd
+  destLine: MC.cmd.destLineForCmd,
+  ui: { mode: "preview" }
 };
 
 MC.cmdProfiles.sly = {
   id: "sly",
   title: "Sly Deal",
   helpLR: "L/R: Target",
+  menuLabel: function (state, cmds) { return MC.fmt.menuLabelForCmds("Sly Deal", state, cmds); },
+  menuHoverPreview: true,
   includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
-  cmdsForUid: function (state, uid) { return MC.moves.slyDealMovesForUid(state, uid); },
+  cmdsForUid: function (state, uid, loc) {
+    if (!loc || !loc.zone) return [];
+    var z = String(loc.zone);
+    if (z !== "hand") return [];
+    return MC.moves.slyDealMovesForUid(state, uid);
+  },
   destLine: MC.cmd.destLineForCmd,
   ui: {
     mode: "cursor",
@@ -218,22 +312,3 @@ MC.cmdProfiles.sly = {
     }
   }
 };
-
-MC.cmdProfiles.quick = {
-  id: "quick",
-  title: function (targeting, cmdSel) {
-    if (!cmdSel || !cmdSel.kind) return "Action";
-    return MC.cmd.titleForCmdKind(cmdSel);
-  },
-  helpLR: "L/R: Option",
-  includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
-  cmdsForUid: function (state, uid, loc) {
-    var rentCmds = MC.moves.rentMovesForUid(state, uid);
-    MC.moves.sortRentMovesByAmount(state, loc ? loc.p : 0, rentCmds);
-    var buildCmds = MC.moves.buildCmdsForUid(state, uid);
-    var bankCmds = MC.moves.bankCmdsForUid(state, uid);
-    return rentCmds.concat(buildCmds).concat(bankCmds);
-  },
-  destLine: MC.cmd.destLineForCmd
-};
-

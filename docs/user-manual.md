@@ -123,7 +123,9 @@ After confirming:
 Sly Deal steals an opponent property that is **not** part of a complete set.
 
 - Enter from hand via:
-  - **tap A** → menu → `Sly Deal...`
+  - **tap A** → menu:
+    - `Sly Deal...` when there are multiple legal targets (enters targeting)
+    - `Sly Deal → <Color>` when there is exactly one legal target (auto-applies on select)
   - **hold A** → immediate Sly targeting (when legal targets exist)
 - While in Sly targeting:
   - **Left/Right** cycles targets ordered by screen-space X (left→right)
@@ -159,10 +161,11 @@ Notes:
 
 ### Single-destination shortcuts
 
-If **Place**, **Build**, or **Rent** has exactly **one** legal destination, the UI may:
+If **Place**, **Build**, **Rent**, or **Sly Deal** has exactly **one** legal destination/target, the UI may:
 
 - show a more specific label (e.g. **“Place → New Set”**), and
-- auto-apply the action without making you go through targeting.
+- auto-apply immediately when you select it from the menu.
+  - For **Sly Deal**, hovering `Sly Deal → <Color>` also previews the steal by ghosting the Sly card in hand and showing a yellow-highlight preview on the target property.
 
 ## Targeting (destination selection)
 
@@ -170,26 +173,27 @@ Targeting appears when an action needs a destination selection (e.g. placing a p
 
 There are two ways to enter targeting:
 
-- **From the menu**: tap A on Place/Build/Rent/Sly Deal to enter targeting; confirm with **tap A**.
+- **From the menu**: tap A on Place/Build/Rent/Sly Deal to enter targeting (when there are multiple destinations/targets); confirm with **tap A**.
 - **From a hold**: hold A on a hand card to enter targeting; confirm with **release A**.
 
 While targeting:
 
-- **Left/Right**: cycle destinations (or **options** when using hold‑A quick targeting)
+- **Left/Right**: cycle destinations/options
 - **Up/Down**: toggle Wild color (when targeting a Wild placement or Wild move)
 - **B**: cancel targeting and return to browse
 
-### Hold‑A “quick targeting” (action cycling)
+### Hold‑A hold-chain targeting (action cycling)
 
-When you **hold A** on certain hand cards (currently **Rent** and **House**), the UI enters a quick targeting mode:
+When you **hold A** on many hand cards, the UI enters a hold‑A targeting flow that can be a **chain of segments** (a “hold-chain”):
 
-- **Left/Right** cycles a flat list of options, such as: **Rent**, **Build**, **Bank**, **Source**
-- Default choice prefers **Rent (highest amount)** when available
+- Each segment corresponds to a targeting kind (e.g. `rent`, `build`, `bank`, `sly`, `source`)
+- **Left/Right** cycles within the current segment; cycling past the end moves to the next segment
+- Default choice prefers the “primary action” segment when it exists (e.g. **Rent** prefers the highest amount target)
 - Confirm by **releasing A**
 
 Note:
 
-- If you hold‑A on a Sly Deal card when there are **no legal Sly targets**, the UI falls back to **quick targeting** so you can still Bank the card quickly.
+- If you hold‑A on a Sly Deal card when there are **no legal Sly targets**, the hold-chain starts at **Bank** so you can still Bank the card quickly.
 
 ### Source destination (cancel-by-dropping-back)
 
@@ -264,7 +268,7 @@ The DebugText screen has a **right column** showing a compact UI snapshot (captu
 - **`Menu:<i>/<n> <id>`** (only when `UI:menu`)
   - hovered menu index / count, and menu item id (e.g. `place`, `build`, `rent`, `sly`, `bank`)
 - **`Tgt:<kind> <cmdI>/<n>`** (only when `UI:targeting`)
-  - `kind`: `place` | `moveWild` | `build` | `bank` | `rent` | `sly` | `quick`
+  - `kind`: `place` | `moveWild` | `build` | `bank` | `rent` | `sly` | `source`
   - `cmdI/n`: selected destination index + total destinations
 - **`Prompt:<kind>`** (only when `UI:prompt`)
   - one of: `discardDown` | `payDebt` | `placeReceived` | `replaceWindow` | `respondAction`

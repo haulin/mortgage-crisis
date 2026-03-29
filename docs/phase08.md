@@ -10,7 +10,9 @@ This phase adds the first “response windows” to MVP1:
 ### Sly Deal (targeting + resolution)
 
 - Sly Deal can be played from hand via:
-  - tap‑A menu entry (`Sly Deal...`)
+  - tap‑A menu entry:
+    - `Sly Deal...` when multiple targets exist (enters targeting)
+    - `Sly Deal → <Color>` when exactly one target exists (auto-applies on select)
   - hold‑A immediate targeting
 - Target selection uses the existing targeting mode, but with **cursor-moving targeting**:
   - L/R cycles Sly targets ordered by **screen‑space X** (left→right)
@@ -24,7 +26,7 @@ This phase adds the first “response windows” to MVP1:
 
 08b follow-up UX:
 
-- If there are **no** legal Sly targets, hold‑A on Sly falls back to **quick targeting** so Bank remains available.
+- If there are **no** legal Sly targets, hold‑A on Sly enters hold‑A **hold-chain** targeting starting at **Bank** (so Bank remains available).
 
 ### Just Say No (single-layer)
 
@@ -64,5 +66,5 @@ This phase adds the first “response windows” to MVP1:
 
 - Updated `debtHouseFirst` to include action-sourced debt metadata + JSN for testing `payDebt(JSN)` gating.
 - Updated `moveStress` so Sly has legal targets.
-- Added `slyJSN` scenario to start directly in a `respondAction` prompt.
+- Added `slyJSN` scenario to start directly in a `respondAction` prompt. (It also includes a separate single-target Sly-in-hand setup for menu-hover/auto-apply repro after the prompt.)
 
