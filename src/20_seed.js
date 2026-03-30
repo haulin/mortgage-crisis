@@ -1,5 +1,13 @@
-// MC.seed: seed policy for deterministic runs (dev-friendly, reproducible).
+// MC.seed: seed policy for dev + release-ish runs.
+// - Dev tools ON: deterministic per seedBase (reproducible debugging).
+// - Dev tools OFF: time-based per-second seed so New Game isn't identical.
 MC.seed.computeSeedU32 = function () {
-  return MC.rng.u32NonZero(MC.config.seedBase);
+  var seedBase = MC.config.seedBase;
+  var toolsOn = !!(MC.debug && MC.debug.toolsOn);
+  if (toolsOn) return MC.rng.u32NonZero(seedBase);
+
+  // TIC-80: `tstamp()` is available and per-second resolution is sufficient here.
+  var t = Math.floor(tstamp());
+  return MC.rng.u32NonZero(seedBase + t);
 };
 

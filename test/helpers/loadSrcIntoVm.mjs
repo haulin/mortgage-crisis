@@ -34,6 +34,8 @@ export async function loadSrcIntoVm({ extraGlobals } = {}) {
     spr: () => {},
     btn: () => 0,
     btnp: () => 0,
+    // Seed policy stubs (TIC-80 provides these; tests keep them deterministic).
+    tstamp: () => 0,
 
     // Useful for debugging tests.
     console,

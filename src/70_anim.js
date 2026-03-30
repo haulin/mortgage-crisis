@@ -159,7 +159,7 @@ MC.anim.feedbackError = function (view, code, msg) {
 
   if (attempts >= 2 && msg) {
     // Toast UI lives in MC.ui; this just triggers it as part of the feedback FX.
-    MC.ui.toastPush(view, { id: "err:" + code, kind: "error", text: msg, frames: 90 });
+    MC.ui.toastPush(view, { id: "err:" + code, kind: "error", text: msg, frames: MC.config.ui.toast.errorFrames });
   }
 };
 

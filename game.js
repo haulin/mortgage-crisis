@@ -27,6 +27,7 @@ MC.rng = {};
 MC.seed = {};
 MC.scenarios = {};
 MC.debug = {};
+MC.debug.toolsOn = false;
 MC.title = {};
 
 // ---- src/05_config.js ----
@@ -39,7 +40,7 @@ MC.config = {
 
 // Meta/version display (Phase 11).
 MC.config.meta = {
-  version: "v0.12"
+  version: "MVP v0.13"
 };
 
 // Debug/dev knobs (Phase 03b+). Keep these centralized so we can disable later.
@@ -85,6 +86,12 @@ MC.config.ui = {
   // Phase 07: AI pacing (frames at 60fps).
   aiStepDelayFrames: 60,
   aiNarrateToastFrames: 60,
+
+  // Toast timings (frames at 60fps). Central inventory for future time-scale work.
+  toast: {
+    infoFrames: 90,
+    errorFrames: 90
+  },
 
   // Phase 08: Sly Deal targeting presentation.
   // If true: show ghost outlines for non-selected Sly targets while targeting.
@@ -431,9 +438,17 @@ MC.rng.nextIntInState = function (state, n) {
 };
 
 // ---- src/20_seed.js ----
-// MC.seed: seed policy for deterministic runs (dev-friendly, reproducible).
+// MC.seed: seed policy for dev + release-ish runs.
+// - Dev tools ON: deterministic per seedBase (reproducible debugging).
+// - Dev tools OFF: time-based per-second seed so New Game isn't identical.
 MC.seed.computeSeedU32 = function () {
-  return MC.rng.u32NonZero(MC.config.seedBase);
+  var seedBase = MC.config.seedBase;
+  var toolsOn = !!(MC.debug && MC.debug.toolsOn);
+  if (toolsOn) return MC.rng.u32NonZero(seedBase);
+
+  // TIC-80: `tstamp()` is available and per-second resolution is sufficient here.
+  var t = Math.floor(tstamp());
+  return MC.rng.u32NonZero(seedBase + t);
 };
 
 // ---- src/25_controls.js ----
@@ -4009,7 +4024,7 @@ MC.layout.playerForRow = function (row) {
     rectSafe(0, y0, 239, y1 - y0 + 1, cfg.colCenterPanel);
     rectbSafe(0, y0, 239, y1 - y0 + 1, cfg.colCenterPanelBorder);
 
-    var dbgEnabled = !!MC.config.debug.enabled;
+    var dbgEnabled = !!(MC.config.debug.enabled && MC.debug.toolsOn);
     var hlCol = (opts.highlightCol != null) ? opts.highlightCol : cfg.colHighlight;
 
     // Header: removed (Phase 04). Plays indicator is drawn in screen-space.
@@ -4093,10 +4108,7 @@ MC.layout.playerForRow = function (row) {
           // Flat UI button: dark fill + white text; selected uses highlight fill + black text.
           // Note: debug gating and overlay hiding is handled in MC.ui.computeRowModels.
 
-          var enabled = true;
-          if (it.id === "endTurn") {
-            enabled = (s.activeP === 0) && (s.players[0].hand.length <= MC.state.HAND_MAX);
-          }
+          var enabled = !it.disabled;
 
           var isSel = !!(selectedItem && selectedItem === it);
           var recommend = false;
@@ -4110,8 +4122,9 @@ MC.layout.playerForRow = function (row) {
           rectSafe(it.x, it.y, it.w, it.h, bg);
           rectbSafe(it.x, it.y, it.w, it.h, border);
 
-          // Vertically center 6px font in 10px button: y+2.
-          printSafe(String(it.label || it.id || ""), it.x + 2, it.y + 2, colText);
+          // Vertically center 6px font in button height.
+          var labelY = it.y + Math.floor((it.h - 6) / 2);
+          printSafe(String(it.label || it.id || ""), it.x + 2, labelY, colText);
         }
       }
     }
@@ -4185,6 +4198,7 @@ MC.layout.playerForRow = function (row) {
           printSafe(title, xTitle, yTitle, cfg.colText);
           var help = "";
           if (sel.id === "endTurn") help = "End your turn.\nIf hand > 7, discard down.";
+          else if (sel.id === "mainMenu") help = "Return to the title\nscreen.";
           else if (sel.id === "step") help = "Debug: step 1 random\nlegal move.";
           else if (sel.id === "reset") help = "Debug: reset current\nscenario.";
           else if (sel.id === "nextScenario") help = "Debug: switch to next\nscenario.";
@@ -4307,7 +4321,7 @@ MC.layout.playerForRow = function (row) {
   function drawModeHintNearButtons(view, computed) {
     var cfg = R.cfg;
     if (cfg.hudLineEnabled === false) return;
-    var dbgEnabled = !!MC.config.debug.enabled;
+    var dbgEnabled = !!(MC.config.debug.enabled && MC.debug.toolsOn);
     if (!dbgEnabled) return;
     // Prompts don't overlap this hint, so keep it visible in prompt mode too.
     if (!view || (view.mode !== "browse" && view.mode !== "prompt") || view.inspectActive) return;
@@ -4330,13 +4344,15 @@ MC.layout.playerForRow = function (row) {
     }
     if (!hasDebugBtn || minBtnX == null || maxBtnY == null) return;
 
+    // If debug buttons extend below the center row band (e.g. due to extra buttons),
+    // keep the hint anchored inside the center row so it doesn't overlap gameplay rows.
+    var yMaxCenter = rowY1(R.ROW_CENTER) + 1;
+    if (maxBtnY > yMaxCenter) maxBtnY = yMaxCenter;
+
     // Place left of the strip, aligned to its bottom.
     var x = minBtnX - 52;
     if (x < cfg.rowPadX) x = cfg.rowPadX;
     var y = maxBtnY - 7; // 6px font + 1
-    var yPhase = y - 7;
-    if (yPhase < 0) yPhase = 0;
-    printSafe(MC.config.meta.version, x, yPhase, cfg.hudLineCol);
     printSafe("Y:Mode", x, y, cfg.hudLineCol);
   }
 
@@ -4378,6 +4394,8 @@ MC.layout.playerForRow = function (row) {
       if (kind === "ai") bgCol = cfg.colToastBgAi;
       rectSafe(x0, y0, boxW, boxH, bgCol);
       rectbSafe(x0, y0, boxW, boxH, cfg.colCenterPanelBorder);
+      // 1px shadow line under the bottom border so the box doesn't blend into bright elements behind it.
+      if ((y0 + boxH) < cfg.screenH) rectSafe(x0, y0 + boxH, boxW, 1, cfg.colShadow);
 
       var textX = x0 + padX + iconW;
       if (isError) {
@@ -4392,6 +4410,9 @@ MC.layout.playerForRow = function (row) {
       if (yCursor > cfg.screenH - 8) break;
     }
   }
+
+  // Expose toast renderer so non-game modes (e.g. Title) can reuse it.
+  R.drawToasts = drawToasts;
 
   function drawTopLeftStatus(debug, selectedItem) {
     var cfg = R.cfg;
@@ -4898,7 +4919,7 @@ MC.ui.syncPromptToast = function (state, view) {
   } else if (pr.kind === "placeReceived") {
     txt = "Place received properties: " + pr.uids.length;
   } else if (pr.kind === "replaceWindow") {
-    txt = "Move a Wild? A: move  B: skip";
+    txt = "Move a Wild? A:move B:skip";
   } else if (pr.kind === "respondAction") {
     // Phase 08: Sly Deal response prompt.
     var col = MC.state.NO_COLOR;
@@ -5509,18 +5530,21 @@ MC.ui.buildRowItems = function (state, view, row, hint) {
     out.items.push({ kind: "deck", row: 2, x: x0, y: top, w: C.faceW, h: C.faceH });
     out.items.push({ kind: "discard", row: 2, x: x0 + C.faceW + gapX, y: top, w: C.faceW, h: C.faceH });
 
-    var dbgEnabled = !!MC.config.debug.enabled;
+    var dbgEnabled = !!(MC.config.debug.enabled && MC.debug.toolsOn);
 
     // Hide buttons while an overlay is active (menu/targeting).
     // Inspect should keep buttons visible/selectable so they can be inspected too.
     var overlayActive = !!(view && (view.mode === "menu" || view.mode === "targeting"));
     if (!overlayActive) {
-      // Right-side vertical strip: 4*10px = 40px tall, fits inside center row.
+      // Right-side vertical strip.
+      //
+      // Original layout (Phase 04 era): End/Step/Reset/Next were 10px tall with 1px gaps
+      // and filled the full center row. Phase 13 adds Menu below End; in dev mode this
+      // intentionally spills below the center row band (acceptable dev-only overlap).
       var stripW = C.centerBtnStripW;
       var stripH = 10;
       var stripX = C.screenW - C.centerBtnStripPadRight - stripW;
-      // Bottom-align within the center row band.
-      var stripY0 = (C.rowY[2] + C.rowH[2] - 43);
+      var stripY0 = C.rowY[2];
 
       function pushBtn(id, label, y, disabled) {
         out.items.push({ kind: "btn", id: id, label: label, disabled: !!disabled, row: 2, x: stripX, y: y, w: stripW, h: stripH });
@@ -5529,12 +5553,13 @@ MC.ui.buildRowItems = function (state, view, row, hint) {
       // End is always available on your turn; if hand > HAND_MAX the engine enters a discard-down prompt.
       var endDisabled = (state.winnerP !== MC.state.NO_WINNER) || (state.activeP !== 0);
       pushBtn("endTurn", "End", stripY0, endDisabled);
+      pushBtn("mainMenu", "Menu", stripY0 + 11, false);
       if (dbgEnabled) {
         // Game over: Step would attempt to mutate state via debugStep and can throw.
         // Keep Reset/Next available for recovery.
-        pushBtn("step", "Step", stripY0 + 11, (state.winnerP !== MC.state.NO_WINNER));
-        pushBtn("reset", "Reset", stripY0 + 22, false);
-        pushBtn("nextScenario", "Next", stripY0 + 33, false);
+        pushBtn("step", "Step", stripY0 + 22, (state.winnerP !== MC.state.NO_WINNER));
+        pushBtn("reset", "Reset", stripY0 + 33, false);
+        pushBtn("nextScenario", "Next", stripY0 + 44, false);
       }
     }
 
@@ -6728,6 +6753,16 @@ MC.ui.step = function (state, view, actions) {
     // Refresh selection anchor during prompt ticks so selection preservation doesn't fight user navigation.
     MC.ui.focus.snapshot(state, view, computed);
 
+    // Global prompt escape: allow returning to the title screen via the center Menu button.
+    if (actions.a && actions.a.tap) {
+      var selPromptBtn = currentSelection();
+      if (selPromptBtn && selPromptBtn.kind === "btn" && selPromptBtn.id === "mainMenu") {
+        setAutoFocusPauseForCenterBtn("mainMenu");
+        focusSnapshot();
+        return { kind: "mainMenu" };
+      }
+    }
+
     if (prompt.kind === "payDebt") {
       if (actions.b && actions.b.pressed) {
         MC.anim.feedbackError(view, "prompt_forced", "Must pay");
@@ -6772,7 +6807,7 @@ MC.ui.step = function (state, view, actions) {
                 if (itH.loc.setI !== setI) continue;
                 view.cursor.row = MC.render.ROW_P_TABLE;
                 view.cursor.i = ii;
-                MC.ui.toastPush(view, { id: "debt:houseFirst", kind: "info", text: "House must be paid first", frames: 45 });
+                MC.ui.toastPush(view, { id: "err:house_pay_first", kind: "error", text: "House must be paid first", frames: MC.config.ui.toast.errorFrames });
                 MC.anim.feedbackError(view, "house_pay_first", "");
                 return null;
               }
@@ -6961,7 +6996,7 @@ MC.ui.step = function (state, view, actions) {
 
     // Game over: only allow Reset/Next debug buttons; everything else is a no-op with feedback blink.
     if (gameOver) {
-      var allowBtn = !!(sel.row === 2 && sel.kind === "btn" && (sel.id === "reset" || sel.id === "nextScenario"));
+      var allowBtn = !!(sel.row === 2 && sel.kind === "btn" && (sel.id === "mainMenu" || sel.id === "reset" || sel.id === "nextScenario"));
       if (!allowBtn) {
         MC.anim.feedbackError(view, "game_over", "");
         return null;
@@ -6996,6 +7031,7 @@ MC.ui.step = function (state, view, actions) {
         return null;
       }
 
+      if (sel.id === "mainMenu") { setAutoFocusPauseForCenterBtn("mainMenu"); focusSnapshot(); return { kind: "mainMenu" }; }
       if (sel.id === "endTurn") { setAutoFocusPauseForCenterBtn("endTurn"); focusSnapshot(); return { kind: "applyCmd", cmd: { kind: "endTurn" } }; }
       if (sel.id === "step") { setAutoFocusPauseForCenterBtn("step"); focusSnapshot(); return { kind: "debug", action: "step" }; }
       if (sel.id === "reset") { setAutoFocusPauseForCenterBtn("reset"); focusSnapshot(); return { kind: "debug", action: "reset" }; }
@@ -7195,15 +7231,23 @@ MC.ui.focus.rules = [
   },
   {
     id: "OnGameOverEntered_Reset",
-    enabled: function (ctx) { return !!(MC.config && MC.config.debug && MC.config.debug.enabled); },
+    enabled: function () { return !!(MC.config.debug.enabled && MC.debug.toolsOn); },
     when: function (ctx) { return (ctx.view.ux.lastWinnerP === MC.state.NO_WINNER && ctx.state.winnerP !== MC.state.NO_WINNER); },
     pick: function (ctx) {
       return MC.ui.focus._pickCenterBtn(ctx.computed, "reset");
     }
   },
   {
+    id: "OnGameOverEntered_Menu",
+    enabled: function () { return true; },
+    when: function (ctx) { return (ctx.view.ux.lastWinnerP === MC.state.NO_WINNER && ctx.state.winnerP !== MC.state.NO_WINNER); },
+    pick: function (ctx) {
+      return MC.ui.focus._pickCenterBtn(ctx.computed, "mainMenu");
+    }
+  },
+  {
     id: "OnInvalidActionGameOver_Reset",
-    enabled: function (ctx) { return !!(MC.config && MC.config.debug && MC.config.debug.enabled); },
+    enabled: function () { return !!(MC.config.debug.enabled && MC.debug.toolsOn); },
     when: function (ctx) {
       if (ctx.state.winnerP === MC.state.NO_WINNER) return false;
       if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
@@ -7212,6 +7256,19 @@ MC.ui.focus.rules = [
     pick: function (ctx) {
       ctx.view.ux.pendingFocusErrorCode = "";
       return MC.ui.focus._pickCenterBtn(ctx.computed, "reset");
+    }
+  },
+  {
+    id: "OnInvalidActionGameOver_Menu",
+    enabled: function () { return true; },
+    when: function (ctx) {
+      if (ctx.state.winnerP === MC.state.NO_WINNER) return false;
+      if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
+      return (ctx.view.ux.pendingFocusErrorCode === "game_over");
+    },
+    pick: function (ctx) {
+      ctx.view.ux.pendingFocusErrorCode = "";
+      return MC.ui.focus._pickCenterBtn(ctx.computed, "mainMenu");
     }
   },
   {
@@ -7582,7 +7639,7 @@ MC.anim.feedbackError = function (view, code, msg) {
 
   if (attempts >= 2 && msg) {
     // Toast UI lives in MC.ui; this just triggers it as part of the feedback FX.
-    MC.ui.toastPush(view, { id: "err:" + code, kind: "error", text: msg, frames: 90 });
+    MC.ui.toastPush(view, { id: "err:" + code, kind: "error", text: msg, frames: MC.config.ui.toast.errorFrames });
   }
 };
 
@@ -7758,7 +7815,9 @@ MC.anim.present = function (state, view, computed) {
   var T = MC.title;
 
   // Local state (kept minimal for now).
-  T.st = { frame: 0 };
+  T.st = { frame: 0, menuI: 0, confirm: null };
+  T.ctrl = MC.controls.newState();
+  T.toastView = { toasts: [] };
 
   function anyPressed(raw) {
     if (!raw || !raw.pressed) return false;
@@ -7824,8 +7883,133 @@ MC.anim.present = function (state, view, computed) {
     row("Inspect", "X", "A");
   }
 
-  T.tick = function () {
-    var cfg = MC.config;
+  function wrapI(i, n) {
+    if (n <= 0) return 0;
+    i = i % n;
+    if (i < 0) i += n;
+    return i;
+  }
+
+  var CONFIRM_OVERWRITE_NEW_GAME = "overwriteNewGame";
+
+  function titleToastId(text) {
+    return "title:" + String(text || "");
+  }
+
+  function titleToastFrames(cfg, kind) {
+    return (kind === "error") ? cfg.ui.toast.errorFrames : cfg.ui.toast.infoFrames;
+  }
+
+  function titleClearToasts(toastView) {
+    toastView.toasts = [];
+  }
+
+  function titlePushToast(toastView, cfg, kind, text) {
+    text = String(text || "");
+    MC.ui.toastPush(toastView, { id: titleToastId(text), kind: kind, text: text, frames: titleToastFrames(cfg, kind) });
+  }
+
+  function titlePushPrompt(toastView, text) {
+    text = String(text || "");
+    MC.ui.toastPush(toastView, { id: titleToastId(text), kind: "prompt", text: text, persistent: true });
+  }
+
+  function titleBuildMenuItems(hasSession, devAvail, toolsOn) {
+    var menuItems = [
+      { id: "startNewGame", text: "New Game", enabled: true },
+      { id: "continueGame", text: "Continue", enabled: hasSession },
+      { id: "howToPlay", text: "How to Play", enabled: false }
+    ];
+    if (devAvail) {
+      menuItems.push({ id: "toggleDev", text: (toolsOn ? "Dev: ON" : "Dev: OFF"), enabled: true });
+    }
+    return menuItems;
+  }
+
+  function titleEnterConfirmOverwrite(st, toastView) {
+    st.confirm = CONFIRM_OVERWRITE_NEW_GAME;
+    titleClearToasts(toastView);
+    titlePushPrompt(toastView, "Overwrite current game?\nA:Confirm  B:Cancel");
+  }
+
+  function titleConfirmActive(st) {
+    return String(st.confirm || "") === CONFIRM_OVERWRITE_NEW_GAME;
+  }
+
+  function titleStep(st, cfg, actions, toastView, menuItems, hasSession) {
+    var intent = null;
+    var nItems = menuItems.length;
+    st.menuI = wrapI(st.menuI, nItems);
+
+    // Confirm state: ignore nav and interpret A/B as confirm/cancel.
+    if (titleConfirmActive(st)) {
+      if (actions.b && actions.b.pressed) {
+        st.confirm = null;
+        titleClearToasts(toastView);
+      } else if (actions.a && actions.a.tap) {
+        st.confirm = null;
+        titleClearToasts(toastView);
+        intent = { kind: "startNewGame" };
+      }
+      return intent;
+    }
+
+    // Menu navigation.
+    if (actions.nav && actions.nav.up) st.menuI = wrapI(st.menuI - 1, nItems);
+    if (actions.nav && actions.nav.down) st.menuI = wrapI(st.menuI + 1, nItems);
+
+    // Activate selection.
+    if (actions.a && actions.a.tap) {
+      var itSel = menuItems[st.menuI];
+      if (itSel && itSel.enabled) {
+        if (itSel.id === "startNewGame") {
+          if (hasSession) {
+            titleEnterConfirmOverwrite(st, toastView);
+          } else {
+            titleClearToasts(toastView);
+            intent = { kind: "startNewGame" };
+          }
+        }
+        else if (itSel.id === "continueGame") {
+          titleClearToasts(toastView);
+          intent = { kind: "continueGame" };
+        }
+        else if (itSel.id === "toggleDev") {
+          MC.debug.toolsOn = !MC.debug.toolsOn;
+          titlePushToast(toastView, cfg, "info", MC.debug.toolsOn ? "Dev tools enabled" : "Dev tools disabled");
+        }
+      } else if (itSel) {
+        // Disabled feedback (toast).
+        var msg = "Not available";
+        if (itSel.id === "continueGame") msg = "No game to continue";
+        else if (itSel.id === "howToPlay") msg = "How to Play: coming soon";
+        titlePushToast(toastView, cfg, "error", msg);
+      }
+    }
+
+    return intent;
+  }
+
+  function drawMenuItem(tc, Pal, leftW, menuW, mxA, mxT, my0, dy, gap, i, text, selected, enabled) {
+    var y0 = my0 + i * (dy + gap);
+    var padY = tc.menuItemBoxPadY;
+    var xBox = leftW + 2;
+    var wBox = menuW - 8;
+    var hBox = dy - 2;
+    // IMPORTANT: title renders in vbank(1) with transparency index = 15,
+    // so avoid using palette index 15 for UI borders (it becomes see-through).
+    // Use a consistent inactive border and only "light up" enabled selections.
+    var colB = selected && enabled ? Pal.White : Pal.Grey;
+    var colT = enabled ? (selected ? Pal.White : Pal.LightGrey) : Pal.Grey;
+    if (tc.menuItemBoxes) {
+      rect(xBox, y0 - padY, wBox, hBox + padY, Pal.Black);
+      rectb(xBox, y0 - padY, wBox, hBox + padY, colB);
+    }
+    if (selected) printShadow(">", mxA, y0, enabled ? Pal.White : Pal.Grey, { shadowCol: Pal.Black });
+    printShadow(text, mxT, y0, colT, { shadowCol: Pal.Black });
+  }
+
+  function drawTitle(cfg, st, menuItems, toastView) {
     var tc = cfg.title;
     var Pal = MC.Pal;
 
@@ -7839,12 +8023,16 @@ MC.anim.present = function (state, view, computed) {
     // vbank(1) overlays vbank(0); OVR transparency index lives at 0x03FF8 on vbank(1).
     var hasVbank = (typeof vbank === "function");
     if (hasVbank) {
+      // Clear the base bank too, so any transparent pixels in the overlay
+      // can't reveal stale game frames underneath.
+      vbank(0);
+      cls(Pal.DarkBlue);
+
       vbank(1);
       if (typeof poke === "function") poke(0x03FF8, 15);
     }
     cls(Pal.DarkBlue);
     drawTiledBg(tc, W, H);
-
 
     // Logo (placeholder text).
     var logoScale = tc.logoScale;
@@ -7855,7 +8043,7 @@ MC.anim.present = function (state, view, computed) {
 
     // Subtitle.
     if (tc.subtitleText) {
-      rect(tc.subtitleX - 1, tc.subtitleY - 1, 12*8-1, 8, Pal.DarkBlue);
+      rect(tc.subtitleX - 1, tc.subtitleY - 1, 12 * 8 - 1, 8, Pal.DarkBlue);
       printShadow(String(tc.subtitleText), tc.subtitleX, tc.subtitleY, Pal.LightGrey, { small: true, shadowCol: Pal.Black });
     }
 
@@ -7878,39 +8066,49 @@ MC.anim.present = function (state, view, computed) {
     var gap = tc.menuItemGapY;
     if (gap == null) gap = 0;
 
-    function drawMenuItem(i, text, selected) {
-      var y0 = my0 + i * (dy + gap);
-      var padY = tc.menuItemBoxPadY;
-      var xBox = leftW + 2;
-      var wBox = menuW - 8;
-      var hBox = dy - 2;
-      var colB = selected ? Pal.White : Pal.Grey;
-      if (tc.menuItemBoxes) {
-        rect(xBox, y0 - padY, wBox, hBox + padY, Pal.Black);
-        rectb(xBox, y0 - padY, wBox, hBox + padY, colB);
-      }
-      if (selected) printShadow(">", mxA, y0, Pal.White, { shadowCol: Pal.Black });
-      printShadow(text, mxT, y0, selected ? Pal.White : Pal.LightGrey, { shadowCol: Pal.Black });
+    var mi;
+    for (mi = 0; mi < menuItems.length; mi++) {
+      var it = menuItems[mi];
+      drawMenuItem(tc, Pal, leftW, menuW, mxA, mxT, my0, dy, gap, mi, it.text, (mi === st.menuI), !!it.enabled);
     }
 
-    drawMenuItem(0, "New Game", true);
-    drawMenuItem(1, "Continue", false);
-    drawMenuItem(2, "How to Play", false);
-
-    // "Press any" hint (bottom-right).
-    var blinkP = tc.pressAnyBlinkPeriodFrames;
-    var show = true;
-    if (blinkP && blinkP > 0) {
-      show = (T.st.frame % blinkP) < (blinkP / 2);
-    }
-    if (show) {
-      printShadow("Press any button", leftW + 5, H - 15, Pal.White, { small: true, shadowCol: Pal.Black });
+    // Version (Phase 13: moved from in-game HUD to title screen).
+    var ver = String(cfg.meta.version || "");
+    if (ver) {
+      var xVer = W + 3 - ver.length * 4;
+      if (xVer < 0) xVer = 0;
+      var yVer = H - 7;
+      if (yVer < 0) yVer = 0;
+      printShadow(ver, xVer, yVer, Pal.LightGrey, { small: true });
     }
 
-    T.st.frame += 1;
+    // Toasts (reuse in-game toast UI).
+    MC.render.drawToasts(toastView);
 
     // Always restore bank 0 so other modes render normally.
     if (hasVbank) vbank(0);
+  }
+
+  T.tick = function (raw) {
+    var cfg = MC.config;
+    if (!raw) raw = MC.controls.pollGlobals();
+    var actions = MC.controls.actions(T.ctrl, raw, cfg.controls);
+
+    // Toast feedback (reuse main UI toast state/timing).
+    // Title owns its own toast view so messages don't leak into gameplay.
+    var toastView = T.toastView;
+    MC.ui.toastsTick(toastView);
+
+    var hasSession = !!(MC.debug && MC.debug.state != null);
+    var devAvail = !!(cfg.debug && cfg.debug.enabled);
+    var menuItems = titleBuildMenuItems(hasSession, devAvail, !!MC.debug.toolsOn);
+
+    var intent = titleStep(T.st, cfg, actions, toastView, menuItems, hasSession);
+    drawTitle(cfg, T.st, menuItems, toastView);
+
+    T.st.frame += 1;
+
+    return intent;
   };
 })();
 
@@ -7930,7 +8128,8 @@ MC.debug.lastUiIntentSummary = "";
 
 MC.debug.reset = function (opts) {
   var d = MC.debug;
-  var prevPaused = !!d.view.ux.autoFocusPausedByDebug;
+  var keepPrevPause = !(opts && opts.keepPrevAutoFocusPause === false);
+  var prevPaused = keepPrevPause ? !!d.view.ux.autoFocusPausedByDebug : false;
   var shouldPause = !!(opts && opts.pauseAutoFocus) || prevPaused;
   var seedU32 = MC.seed.computeSeedU32();
   var scenarioId = d.scenarios[d.scenarioI];
@@ -7948,6 +8147,12 @@ MC.debug.reset = function (opts) {
   d.lastRaw = null;
   d.lastUiActions = null;
   d.lastUiIntentSummary = "";
+};
+
+MC.debug.startNewGame = function () {
+  var d = MC.debug;
+  d.scenarioI = 0;
+  MC.debug.reset({ keepPrevAutoFocusPause: false });
 };
 
 MC.debug.nextScenario = function () {
@@ -8223,30 +8428,51 @@ MC.debug.tickTextMode = function () {
 // Main modes:
 // 0=DebugText, 1=Render, 2=Title
 MC.mainTick = function () {
-  // Title mode: boot-first, any press continues to DebugText harness.
+  var dbgEnabled = !!(MC.config.debug.enabled && MC.debug.toolsOn);
+
+  function clearTitleOverlay() {
+    // Clear vbank(1) overlay so it doesn't persist into DebugText/Render.
+    if (typeof vbank === "function") {
+      vbank(1);
+      if (typeof poke === "function") poke(0x03FF8, 15);
+      cls(15);
+      vbank(0);
+    }
+  }
+
+  // Title mode: main entry point (Phase 13).
   if (MC._mainMode === 2) {
     var rawT = MC.controls.pollGlobals();
-    if (MC.title && typeof MC.title.anyPressed === "function" && MC.title.anyPressed(rawT)) {
-      // Clear vbank(1) overlay so it doesn't persist into DebugText/Render.
-      if (typeof vbank === "function") {
-        vbank(1);
-        if (typeof poke === "function") poke(0x03FF8, 15);
-        cls(15);
-        vbank(0);
+    var intentT = null;
+    if (MC.title && typeof MC.title.tick === "function") intentT = MC.title.tick(rawT);
+
+    if (intentT && intentT.kind) {
+      if (intentT.kind === "startNewGame") {
+        clearTitleOverlay();
+        if (MC.debug && typeof MC.debug.startNewGame === "function") MC.debug.startNewGame();
+        MC._mainMode = 1;
+        return;
       }
-      MC._mainMode = 0;
-      return;
+
+      if (intentT.kind === "continueGame") {
+        if (MC.debug && MC.debug.state != null) {
+          clearTitleOverlay();
+          MC._mainMode = 1;
+          return;
+        }
+      }
     }
-    if (MC.title && typeof MC.title.tick === "function") MC.title.tick();
+
     return;
   }
 
-  // Modes: 0=DebugText, 1=Render. Y toggles DebugText ↔ Render.
-  if ((MC._mainMode === 0 || MC._mainMode === 1) && typeof btnp === "function" && btnp(7)) {
+  // Modes: 0=DebugText, 1=Render. Y toggles DebugText ↔ Render (dev-only).
+  if (dbgEnabled && (MC._mainMode === 0 || MC._mainMode === 1) && typeof btnp === "function" && btnp(7)) {
     MC._mainMode = MC._mainMode ? 0 : 1;
   }
 
   if (MC._mainMode === 0) {
+    if (!dbgEnabled) { MC._mainMode = 1; return; }
     if (MC.debug.state == null) MC.debug.reset(null);
     MC.debug.tickTextMode();
     return;
@@ -8254,7 +8480,7 @@ MC.mainTick = function () {
 
   // Render mode
   var d = MC.debug;
-  if (d.state == null) MC.debug.reset(null);
+  if (d.state == null) { MC._mainMode = 2; return; }
 
   {
     function summarizeUiIntent(intent) {
@@ -8277,6 +8503,11 @@ MC.mainTick = function () {
     var intent = MC.ui.step(d.state, d.view, actions);
     d.lastUiIntentSummary = summarizeUiIntent(intent);
 
+    if (intent && intent.kind === "mainMenu") {
+      MC._mainMode = 2;
+      return;
+    }
+
     if (actor === 0 && intent && intent.kind === "applyCmd" && intent.cmd) {
       try {
         var res = MC.engine.applyCommand(d.state, intent.cmd);
@@ -8290,7 +8521,7 @@ MC.mainTick = function () {
         var msg = MC.fmt.errorMessage(code);
         MC.anim.feedbackError(d.view, code, msg);
       }
-    } else if ((actor === 0 || gameOver) && intent && intent.kind === "debug") {
+    } else if ((actor === 0 || gameOver) && dbgEnabled && intent && intent.kind === "debug") {
       if (intent.action === "step") {
         MC.debug.step();
         MC.anim.onEvents(d.state, d.view, d.lastEvents);

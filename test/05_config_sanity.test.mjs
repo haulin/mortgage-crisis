@@ -149,6 +149,7 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   assert.equal(typeof MC.config.ui, "object", "expected MC.config.ui");
   assert.equal(typeof MC.config.title, "object", "expected MC.config.title");
   assert.equal(typeof MC.config.ai, "object", "expected MC.config.ai");
+  assert.equal(typeof MC.config.ui.toast, "object", "expected MC.config.ui.toast");
 
   const requirePosNum = (obj, key) => {
     assert.equal(typeof obj[key], "number", `expected ${key} to be a number`);
@@ -178,6 +179,10 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   requirePosNum(MC.config.ui, "shuffleToastFrames");
   requirePosNum(MC.config.ui, "aiStepDelayFrames");
   requirePosNum(MC.config.ui, "aiNarrateToastFrames");
+
+  // Toast timings (frames).
+  requirePosNum(MC.config.ui.toast, "infoFrames");
+  requirePosNum(MC.config.ui.toast, "errorFrames");
 
   // Phase 08 UI knobs.
   assert.equal(typeof MC.config.ui.slyShowTargetGhosts, "boolean", "expected slyShowTargetGhosts boolean");

@@ -2,23 +2,25 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { loadSrcIntoVm } from "./helpers/loadSrcIntoVm.mjs";
 
-test("title: draws and any press enters DebugText", async () => {
+test("title: draws and selecting New Game enters Render", async () => {
   const printed = [];
 
-  let anyPressed = false;
+  let frame = 0;
   const ctx = await loadSrcIntoVm({
     extraGlobals: {
       // Capture print calls for a basic smoke check.
       print: (s) => {
         printed.push(String(s));
       },
-      // Simulate a single pressed pulse when we want it.
-      btnp: (i) => {
-        if (!anyPressed) return false;
-        // Press A (4) for the transition check.
-        return i === 4;
+      // Simulate an A tap (press then release).
+      btn: (i) => {
+        if (i !== 4) return false;
+        return frame === 1;
       },
-      btn: () => 0
+      btnp: (i) => {
+        if (i !== 4) return false;
+        return frame === 1;
+      }
     }
   });
 
@@ -30,9 +32,206 @@ test("title: draws and any press enters DebugText", async () => {
   assert.ok(printed.some((s) => s.includes("MORTGAGE")), "expected title to print MORTGAGE");
   assert.ok(printed.some((s) => s.includes("New Game")), "expected title to print New Game");
 
-  // Next tick: with a pressed pulse, should switch to DebugText (mode 0).
-  anyPressed = true;
+  // Two-tick A tap: press then release should select New Game and enter Render (mode 1).
+  frame = 1;
   ctx.MC.mainTick();
-  assert.equal(ctx.MC._mainMode, 0);
+  frame = 2;
+  ctx.MC.mainTick();
+  assert.equal(ctx.MC._mainMode, 1);
+});
+
+test("title: selecting disabled Continue shows an error toast", async () => {
+  let frame = 0;
+  const ctx = await loadSrcIntoVm({
+    extraGlobals: {
+      btn: (i) => {
+        // Hold Down on frame 1.
+        if (i === 1) return frame === 1;
+        // Hold A only on frame 3.
+        if (i === 4) return frame === 3;
+        return false;
+      },
+      btnp: (i) => {
+        // Frame 1: press Down to select Continue.
+        if (frame === 1 && i === 1) return true;
+        // Frame 3: A press pulse (tap completes on release at frame 4).
+        if (frame === 3 && i === 4) return true;
+        return false;
+      }
+    }
+  });
+
+  // Boot should start in Title mode.
+  assert.equal(ctx.MC._mainMode, 2);
+
+  // Frame 0: draw.
+  frame = 0;
+  ctx.MC.mainTick();
+
+  // Frame 1: Down (select Continue).
+  frame = 1;
+  ctx.MC.mainTick();
+
+  // Frame 2: idle.
+  frame = 2;
+  ctx.MC.mainTick();
+
+  // Frame 3: press A.
+  frame = 3;
+  ctx.MC.mainTick();
+
+  // Frame 4: release A (tap resolves here).
+  frame = 4;
+  ctx.MC.mainTick();
+
+  const tv = ctx.MC.title.toastView;
+  assert.ok(tv && Array.isArray(tv.toasts), "expected title.toastView.toasts");
+  assert.ok(tv.toasts.length >= 1, "expected at least one toast");
+  assert.equal(tv.toasts[0].kind, "error");
+  assert.ok(String(tv.toasts[0].text || "").includes("No game to continue"));
+  assert.equal(tv.toasts[0].frames, ctx.MC.config.ui.toast.errorFrames);
+});
+
+test("title: toasts stack by message text (dedupe identical)", async () => {
+  let frame = 0;
+  const ctx = await loadSrcIntoVm({
+    extraGlobals: {
+      btn: (i) => {
+        // Down on frames 1 and 5.
+        if (i === 1) return frame === 1 || frame === 5;
+        // Up on frame 9.
+        if (i === 0) return frame === 9;
+        // A press on frames 3, 7, 11 (release happens on the following frames).
+        if (i === 4) return frame === 3 || frame === 7 || frame === 11;
+        return false;
+      },
+      btnp: (i) => {
+        // Press pulses for Down/Up.
+        if (i === 1 && (frame === 1 || frame === 5)) return true;
+        if (i === 0 && frame === 9) return true;
+        // A press pulse.
+        if (i === 4 && (frame === 3 || frame === 7 || frame === 11)) return true;
+        return false;
+      }
+    }
+  });
+
+  assert.equal(ctx.MC._mainMode, 2);
+
+  // Frame 0: draw.
+  frame = 0; ctx.MC.mainTick();
+  // Frame 1: Down -> Continue.
+  frame = 1; ctx.MC.mainTick();
+  // Frame 2: idle.
+  frame = 2; ctx.MC.mainTick();
+  // Frame 3/4: A tap on disabled Continue -> toast "No game to continue".
+  frame = 3; ctx.MC.mainTick();
+  frame = 4; ctx.MC.mainTick();
+
+  // Frame 5: Down -> How to Play.
+  frame = 5; ctx.MC.mainTick();
+  // Frame 6: idle.
+  frame = 6; ctx.MC.mainTick();
+  // Frame 7/8: A tap on disabled How to Play -> toast "How to Play: coming soon".
+  frame = 7; ctx.MC.mainTick();
+  frame = 8; ctx.MC.mainTick();
+
+  const tv = ctx.MC.title.toastView;
+  assert.ok(tv && Array.isArray(tv.toasts), "expected title.toastView.toasts");
+  assert.equal(tv.toasts.length, 2, "expected two stacked toasts");
+  assert.ok(tv.toasts.some((t) => String(t.text || "").includes("No game to continue")));
+  assert.ok(tv.toasts.some((t) => String(t.text || "").includes("How to Play: coming soon")));
+
+  // Repeat the Continue error: should dedupe by message text id (not add a third toast).
+  // Frame 9: Up -> Continue.
+  frame = 9; ctx.MC.mainTick();
+  // Frame 10: idle.
+  frame = 10; ctx.MC.mainTick();
+  // Frame 11/12: A tap on disabled Continue again.
+  frame = 11; ctx.MC.mainTick();
+  frame = 12; ctx.MC.mainTick();
+
+  assert.equal(tv.toasts.length, 2, "expected identical toast to dedupe (still 2)");
+});
+
+test("title: New Game prompts overwrite confirm when session exists (B cancels)", async () => {
+  let frame = 0;
+  const ctx = await loadSrcIntoVm({
+    extraGlobals: {
+      btn: (i) => {
+        // A down only on frame 1 (release at frame 2 triggers tap).
+        if (i === 4) return frame === 1;
+        return false;
+      },
+      btnp: (i) => {
+        // A press pulse on frame 1.
+        if (i === 4 && frame === 1) return true;
+        // B press cancels on frame 3.
+        if (i === 5 && frame === 3) return true;
+        return false;
+      }
+    }
+  });
+
+  // Create an in-memory session without leaving Title mode.
+  ctx.MC.debug.startNewGame();
+  const prevState = ctx.MC.debug.state;
+  assert.ok(prevState, "expected debug.state session");
+
+  // Frame 0: draw.
+  frame = 0; ctx.MC.mainTick();
+  // Frame 1/2: A tap on New Game should enter confirm (not start immediately).
+  frame = 1; ctx.MC.mainTick();
+  frame = 2; ctx.MC.mainTick();
+
+  assert.equal(ctx.MC._mainMode, 2, "expected to remain in Title mode");
+  assert.equal(ctx.MC.debug.state, prevState, "expected session to remain until confirmed");
+  const tv = ctx.MC.title.toastView;
+  assert.ok(tv && Array.isArray(tv.toasts), "expected title.toastView.toasts");
+  assert.ok(tv.toasts.length >= 1, "expected confirm toast");
+  assert.ok(tv.toasts.some((t) => t && t.persistent), "expected persistent confirm toast");
+  assert.ok(tv.toasts.some((t) => String(t.text || "").includes("Overwrite current game?")));
+
+  // Frame 3: B cancels and returns to the menu (toast cleared).
+  frame = 3; ctx.MC.mainTick();
+  assert.equal(ctx.MC._mainMode, 2, "expected to remain in Title mode after cancel");
+  assert.equal(ctx.MC.debug.state, prevState, "expected session to remain after cancel");
+  assert.equal(tv.toasts.length, 0, "expected confirm toast cleared on cancel");
+});
+
+test("title: New Game overwrite confirm starts new game on A", async () => {
+  let frame = 0;
+  const ctx = await loadSrcIntoVm({
+    extraGlobals: {
+      btn: (i) => {
+        // Two A taps: press on frames 1 and 3, release on 2 and 4.
+        if (i === 4) return frame === 1 || frame === 3;
+        return false;
+      },
+      btnp: (i) => {
+        // A press pulses.
+        if (i === 4 && (frame === 1 || frame === 3)) return true;
+        return false;
+      }
+    }
+  });
+
+  ctx.MC.debug.startNewGame();
+  const prevState = ctx.MC.debug.state;
+  assert.ok(prevState, "expected debug.state session");
+
+  // Frame 0: draw.
+  frame = 0; ctx.MC.mainTick();
+  // Frame 1/2: enter confirm.
+  frame = 1; ctx.MC.mainTick();
+  frame = 2; ctx.MC.mainTick();
+  assert.equal(ctx.MC._mainMode, 2);
+  assert.equal(ctx.MC.debug.state, prevState);
+
+  // Frame 3/4: confirm overwrite (A tap) should start a new game and enter Render.
+  frame = 3; ctx.MC.mainTick();
+  frame = 4; ctx.MC.mainTick();
+  assert.equal(ctx.MC._mainMode, 1, "expected to enter Render after confirming");
+  assert.notEqual(ctx.MC.debug.state, prevState, "expected session to be replaced after confirming");
 });
 

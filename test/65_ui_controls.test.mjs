@@ -392,10 +392,14 @@ test("ui: browse directional nav - global axis-wrap fallback triggers when no Up
   s.players[1].sets = [];
 
   const view = ctx.MC.ui.newView();
-  view.cursor.row = ctx.MC.render.ROW_CENTER;
-  view.cursor.i = 2; // End
-
+  // Start from End (top-most center button), so Up has no candidates.
   const c0 = ctx.MC.ui.computeRowModels(s, view);
+  const rmC0 = c0.models[ctx.MC.render.ROW_CENTER];
+  const endI = rmC0.items.findIndex((it) => it && it.kind === "btn" && it.id === "endTurn");
+  assert.ok(endI >= 0, "expected endTurn button");
+  view.cursor.row = ctx.MC.render.ROW_CENTER;
+  view.cursor.i = endI;
+
   ctx.MC.ui.updateCameras(s, view, c0);
 
   ctx.MC.ui.step(s, view, { nav: { up: true }, a: {}, b: {}, x: {} });
@@ -651,7 +655,7 @@ test("ui: winCheck scenario is navigable (cursor relocates off empty hand)", asy
   assert.notEqual(c.selected.row, ctx.MC.render.ROW_P_HAND);
 });
 
-test("ui: pressing disabled End (opponent turn) gives feedback + moves to Step", async () => {
+test("ui: pressing disabled End (opponent turn) gives feedback + moves to Menu", async () => {
   const ctx = await loadSrcIntoVm();
 
   const s = ctx.MC.state.newGame({ seedU32: 1 });
@@ -671,7 +675,7 @@ test("ui: pressing disabled End (opponent turn) gives feedback + moves to Step",
   const c = ctx.MC.ui.computeRowModels(s, view);
   assert.equal(c.selected.row, ctx.MC.render.ROW_CENTER);
   assert.equal(c.selected.kind, "btn");
-  assert.equal(c.selected.id, "step");
+  assert.equal(c.selected.id, "mainMenu");
 });
 
 test("ui: bank targeting produces a preview in the bank stack row", async () => {
@@ -1027,6 +1031,7 @@ test("ui: placeReceived prompt - A on End is disallowed and snaps back to receiv
 test("ui: placeReceived prompt - A on Step is allowed (debug action)", async () => {
   const ctx = await loadSrcIntoVm();
   ctx.MC.config.debug.enabled = true;
+  ctx.MC.debug.toolsOn = true;
   const s = ctx.MC.state.newGame({ scenarioId: "placeReceived", seedU32: 1 });
   const view = ctx.MC.ui.newView();
 
@@ -1082,6 +1087,7 @@ test("ui: payDebt prompt - A on housed setProp redirects to setHouse; second A e
 test("ui: payDebt prompt - Step button returns debug intent and debugStep pays debt", async () => {
   const ctx = await loadSrcIntoVm();
   ctx.MC.config.debug.enabled = true;
+  ctx.MC.debug.toolsOn = true;
   const s = ctx.MC.state.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
   const view = ctx.MC.ui.newView();
 
@@ -1539,6 +1545,7 @@ test("ui: game over blocks card tap-A actions (no menu/targeting; blink only)", 
 test("ui: game over transition auto-focuses Reset button (debug enabled)", async () => {
   const ctx = await loadSrcIntoVm();
   ctx.MC.config.debug.enabled = true;
+  ctx.MC.debug.toolsOn = true;
 
   const s = ctx.MC.state.newGame({ seedU32: 1 });
   s.winnerP = ctx.MC.state.NO_WINNER;
@@ -1765,6 +1772,7 @@ test("ui: payDebt prompt navigation does not snap back to bank next tick (select
 test("ui: pause autofocus after NextScenario prevents End snap", async () => {
   const ctx = await loadSrcIntoVm();
   ctx.MC.config.debug.enabled = true;
+  ctx.MC.debug.toolsOn = true;
   const s = ctx.MC.state.newGame({ seedU32: 1 });
   s.activeP = 0;
   s.playsLeft = 3;
@@ -1798,6 +1806,7 @@ test("ui: pause autofocus after NextScenario prevents End snap", async () => {
 test("ui: debug pause latch survives long opponent delay and clears on first non-debug input", async () => {
   const ctx = await loadSrcIntoVm();
   ctx.MC.config.debug.enabled = true;
+  ctx.MC.debug.toolsOn = true;
 
   const s = ctx.MC.state.newGame({ seedU32: 1 });
   s.activeP = 0;
@@ -1864,6 +1873,8 @@ test("debug: Next/Reset preserve autofocus pause latch across debugReset", async
 
 test("debug: game over does not freeze controls when actor!=0 (Reset still works)", async () => {
   const ctx = await loadSrcIntoVm();
+  ctx.MC.config.debug.enabled = true;
+  ctx.MC.debug.toolsOn = true;
 
   // Enter Render mode deterministically.
   ctx.MC._mainMode = 1;
@@ -1904,6 +1915,7 @@ test("debug: game over does not freeze controls when actor!=0 (Reset still works
 test("ui: deck-empty style empty-hand nudges End once on turn start, but does not keep snapping while browsing", async () => {
   const ctx = await loadSrcIntoVm();
   ctx.MC.config.debug.enabled = true;
+  ctx.MC.debug.toolsOn = true;
 
   const s = ctx.MC.state.newGame({ seedU32: 1 });
   // Simulate: player turn just started, but no hand cards.
@@ -1940,6 +1952,7 @@ test("ui: deck-empty style empty-hand nudges End once on turn start, but does no
 test("ui: empty-hand invalid action can nudge back to End (error-triggered)", async () => {
   const ctx = await loadSrcIntoVm();
   ctx.MC.config.debug.enabled = true;
+  ctx.MC.debug.toolsOn = true;
 
   const s = ctx.MC.state.newGame({ seedU32: 1 });
   s.activeP = 0;

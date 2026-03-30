@@ -27,6 +27,7 @@ Documentation convention (for future phases):
 - **Phase 10 ✅**: Wild replace-window prompt + moveWild targeting (incl. Source-cancel consistency) + eligibility/AI/tests polish. See `docs/phase10.md`.
 - **Phase 11 ✅**: Quick wins: rename to Mortgage Crisis + `MC` namespace, HUD version string, AI prompt prefix (`AI:`), AI debt payment bias toward bank, Source-only disallow, and early-turn AI heuristics (Rent gating, early discipline, Sly bias). See `docs/phase11.md`.
 - **Phase 12 ✅**: Title screen (boot-first) with static menu + controls list. See `docs/phase12.md`.
+- **Phase 13 ✅**: Title menu becomes the main entry point (interactive menu + return-to-menu), with dev tools gated behind `Dev: ON/OFF`. See `docs/phase13.md`.
 
 ### Deferred-items capture (scope creep safety net)
 
@@ -453,7 +454,7 @@ Done:
 ### Phase 11 ✅ — Quick wins
 
 - Rename the project to Mortgage Crisis (docs + cartridge metadata) and migrate the global namespace to `MC`.
-- Replace hardcoded phase HUD text with config-driven versioning (`MC.config.meta.version`, currently `v0.11`).
+- Replace hardcoded phase HUD text with config-driven versioning (`MC.config.meta.version`, currently `v0.13`).
 - Shorten AI narration prefix from `Opponent:` to `AI:`.
 - Improve AI debt payment heuristic to prefer paying from bank before transferring properties (when legal), to reduce surprise property transfers.
 - When a card interaction would be Source-only (no actionable destination), disallow entering the action and show `No actions` feedback.
@@ -464,12 +465,15 @@ Done:
 
 - Add title screen / main menu - project name, controls list. See `docs/phase12.md`.
 
-### Phase 13 - Menu as main entry point
-- Replace dev-only `Y:Mode` hint/toggle with a proper dev entrypoint (e.g. hidden debug menu), hide debug buttons
+### Phase 13 ✅ - Menu as main entry point
+
+- Replace dev-only `Y:Mode` hint/toggle with a proper dev entrypoint, hide debug buttons (dev toggle)
 - Make menu buttons interactive
 - Make a way to return to main menu
 - Make a way to still use debug buttons (enable/disable)
 - Move version from game to title screen
+- With debug:off starting a default scenario should get a new seed each time new game is started
+- See `docs/phase13.md`.
 
 ### Phase 14 - How to play
 - Add a Rules / How-to-play screen (reachable from boot/title screen) so the game is self-explanatory without external docs
@@ -517,6 +521,7 @@ Issues:
 - Optional vertical area labels explaining the different zones (hand/bank/properties/opponent areas)
 - Continue Inspect overlay polish as needed (still not “big cards”)
 - Reduce scenario list noise: merge `placeBasic` / `wildBasic` / `houseBasic` into a single “Basics” scenario (or otherwise consolidate) - also placeReceived and replace wild.
+- Deferred: Add a toast/animation time-scale multiplier (slow/medium/fast) to slow down toasts and UI animations.
 - Deferred: Refactor `MC.ui.computeRowModels` overlay/preview logic into smaller helpers (reduce “policy knot” + improve readability)
 - Deferred: Split `MC.ui.step` mode handling (browse/menu/targeting/prompt) into smaller per-mode helpers (reduce nesting + make input rules easier to audit)
 - Deferred: Consolidate UI slot/stack geometry helpers (destination→slot + stack locators) to reduce duplication and keep ghost/reservation rules consistent

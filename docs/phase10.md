@@ -39,7 +39,7 @@ Notes:
 
 Prompt mode:
 
-- Toast: **“Move a Wild? A: move  B: skip”**
+- Toast: **“Move a Wild? A:move B:skip”**
 - Cursor auto-focuses an eligible Wild in the source set.
 - **A** enters targeting to select destination and Wild color.
 - **B** skips the prompt.

@@ -399,7 +399,7 @@
     rectSafe(0, y0, 239, y1 - y0 + 1, cfg.colCenterPanel);
     rectbSafe(0, y0, 239, y1 - y0 + 1, cfg.colCenterPanelBorder);
 
-    var dbgEnabled = !!MC.config.debug.enabled;
+    var dbgEnabled = !!(MC.config.debug.enabled && MC.debug.toolsOn);
     var hlCol = (opts.highlightCol != null) ? opts.highlightCol : cfg.colHighlight;
 
     // Header: removed (Phase 04). Plays indicator is drawn in screen-space.
@@ -483,10 +483,7 @@
           // Flat UI button: dark fill + white text; selected uses highlight fill + black text.
           // Note: debug gating and overlay hiding is handled in MC.ui.computeRowModels.
 
-          var enabled = true;
-          if (it.id === "endTurn") {
-            enabled = (s.activeP === 0) && (s.players[0].hand.length <= MC.state.HAND_MAX);
-          }
+          var enabled = !it.disabled;
 
           var isSel = !!(selectedItem && selectedItem === it);
           var recommend = false;
@@ -500,8 +497,9 @@
           rectSafe(it.x, it.y, it.w, it.h, bg);
           rectbSafe(it.x, it.y, it.w, it.h, border);
 
-          // Vertically center 6px font in 10px button: y+2.
-          printSafe(String(it.label || it.id || ""), it.x + 2, it.y + 2, colText);
+          // Vertically center 6px font in button height.
+          var labelY = it.y + Math.floor((it.h - 6) / 2);
+          printSafe(String(it.label || it.id || ""), it.x + 2, labelY, colText);
         }
       }
     }
@@ -575,6 +573,7 @@
           printSafe(title, xTitle, yTitle, cfg.colText);
           var help = "";
           if (sel.id === "endTurn") help = "End your turn.\nIf hand > 7, discard down.";
+          else if (sel.id === "mainMenu") help = "Return to the title\nscreen.";
           else if (sel.id === "step") help = "Debug: step 1 random\nlegal move.";
           else if (sel.id === "reset") help = "Debug: reset current\nscenario.";
           else if (sel.id === "nextScenario") help = "Debug: switch to next\nscenario.";
@@ -697,7 +696,7 @@
   function drawModeHintNearButtons(view, computed) {
     var cfg = R.cfg;
     if (cfg.hudLineEnabled === false) return;
-    var dbgEnabled = !!MC.config.debug.enabled;
+    var dbgEnabled = !!(MC.config.debug.enabled && MC.debug.toolsOn);
     if (!dbgEnabled) return;
     // Prompts don't overlap this hint, so keep it visible in prompt mode too.
     if (!view || (view.mode !== "browse" && view.mode !== "prompt") || view.inspectActive) return;
@@ -720,13 +719,15 @@
     }
     if (!hasDebugBtn || minBtnX == null || maxBtnY == null) return;
 
+    // If debug buttons extend below the center row band (e.g. due to extra buttons),
+    // keep the hint anchored inside the center row so it doesn't overlap gameplay rows.
+    var yMaxCenter = rowY1(R.ROW_CENTER) + 1;
+    if (maxBtnY > yMaxCenter) maxBtnY = yMaxCenter;
+
     // Place left of the strip, aligned to its bottom.
     var x = minBtnX - 52;
     if (x < cfg.rowPadX) x = cfg.rowPadX;
     var y = maxBtnY - 7; // 6px font + 1
-    var yPhase = y - 7;
-    if (yPhase < 0) yPhase = 0;
-    printSafe(MC.config.meta.version, x, yPhase, cfg.hudLineCol);
     printSafe("Y:Mode", x, y, cfg.hudLineCol);
   }
 
@@ -768,6 +769,8 @@
       if (kind === "ai") bgCol = cfg.colToastBgAi;
       rectSafe(x0, y0, boxW, boxH, bgCol);
       rectbSafe(x0, y0, boxW, boxH, cfg.colCenterPanelBorder);
+      // 1px shadow line under the bottom border so the box doesn't blend into bright elements behind it.
+      if ((y0 + boxH) < cfg.screenH) rectSafe(x0, y0 + boxH, boxW, 1, cfg.colShadow);
 
       var textX = x0 + padX + iconW;
       if (isError) {
@@ -782,6 +785,9 @@
       if (yCursor > cfg.screenH - 8) break;
     }
   }
+
+  // Expose toast renderer so non-game modes (e.g. Title) can reuse it.
+  R.drawToasts = drawToasts;
 
   function drawTopLeftStatus(debug, selectedItem) {
     var cfg = R.cfg;

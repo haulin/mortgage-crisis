@@ -7,7 +7,7 @@ MC.config = {
 
 // Meta/version display (Phase 11).
 MC.config.meta = {
-  version: "v0.12"
+  version: "MVP v0.13"
 };
 
 // Debug/dev knobs (Phase 03b+). Keep these centralized so we can disable later.
@@ -53,6 +53,12 @@ MC.config.ui = {
   // Phase 07: AI pacing (frames at 60fps).
   aiStepDelayFrames: 60,
   aiNarrateToastFrames: 60,
+
+  // Toast timings (frames at 60fps). Central inventory for future time-scale work.
+  toast: {
+    infoFrames: 90,
+    errorFrames: 90
+  },
 
   // Phase 08: Sly Deal targeting presentation.
   // If true: show ghost outlines for non-selected Sly targets while targeting.

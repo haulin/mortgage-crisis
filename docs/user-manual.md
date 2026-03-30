@@ -19,8 +19,13 @@ npm run build
 
 On boot you start on the **Title screen**:
 
-- It shows the project name, a static main menu, and a controls quick-reference.
-- **Press any button** to continue into the dev harness (DebugText/Render). This will become a real menu entry point in Phase 13.
+- It shows the project name, a main menu, and a controls quick-reference (plus the version).
+- Use **Up/Down** to choose a menu item, then **A** to select.
+- Menu feedback (e.g. disabled **Continue**) appears as a **toast** at the top of the screen (same style as in-game).
+- **New Game** starts a fresh game.
+- If a game is already running, selecting **New Game** asks for confirmation (**A** confirm, **B** cancel).
+- **Continue** returns to the current in-memory game (disabled until you’ve started one).
+- **Dev: ON/OFF** (dev-only) toggles dev tooling (debug buttons + DebugText/Render mode toggle).
 
 ## Controls (current)
 
@@ -30,13 +35,14 @@ Button IDs are TIC-80 defaults for player 1: UP=0 DOWN=1 LEFT=2 RIGHT=3 A=4 B=5 
 - **A (tap)**:
   - on a hand card: open the action menu (Place/Build/Rent/Sly/Bank, depending on the card)
   - in menus: choose the hovered menu item
+  - on a center button: activate it (e.g. **Menu** returns to the title screen)
   - in prompts: confirm the prompt action (e.g. discard)
 - **A (hold)**:
   - start “grab/targeting” quickly (hold + nudge a direction enters targeting immediately)
   - release A to confirm (when targeting was entered from a hold)
 - **B (tap)**: back/cancel out of menu/targeting (and some prompts, if allowed).
 - **X (hold)**: Inspect overlay (after a short delay).
-- **Y (tap)**: dev harness toggle (DebugText ↔ Render).
+- **Y (tap)**: when **Dev tools** are enabled, toggle DebugText ↔ Render.
 
 ## Gameplay loop (current)
 
@@ -96,7 +102,7 @@ When you receive properties as payment, you place them explicitly:
 After some property placements, the rules may offer an *optional* prompt to reposition a Wild:
 
 - Trigger: after placing a property **into a set**, if that set contains an eligible Wild that can be removed while leaving the source set still **complete**
-- A banner/toast shows **“Move a Wild? A: move  B: skip”**
+- A banner/toast shows **“Move a Wild? A:move B:skip”**
 - The cursor auto-focuses an eligible Wild in the source set
 - **B**: skip (no reposition)
 - **A (tap)**: enter targeting to choose where the Wild goes
@@ -241,7 +247,8 @@ The project includes a built-in harness to make testing faster.
 
 - **DebugText mode**: text-only debug view
 - **Render mode**: the actual rendered game UI
-- Toggle with **Y**
+- Dev tools are toggled from the Title screen (`Dev: ON/OFF`).
+- When dev tools are enabled, toggle DebugText ↔ Render with **Y**.
 
 ### DebugText controls
 

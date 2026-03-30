@@ -22,5 +22,6 @@ MC.rng = {};
 MC.seed = {};
 MC.scenarios = {};
 MC.debug = {};
+MC.debug.toolsOn = false;
 MC.title = {};
 

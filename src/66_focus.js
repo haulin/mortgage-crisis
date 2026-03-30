@@ -171,15 +171,23 @@ MC.ui.focus.rules = [
   },
   {
     id: "OnGameOverEntered_Reset",
-    enabled: function (ctx) { return !!(MC.config && MC.config.debug && MC.config.debug.enabled); },
+    enabled: function () { return !!(MC.config.debug.enabled && MC.debug.toolsOn); },
     when: function (ctx) { return (ctx.view.ux.lastWinnerP === MC.state.NO_WINNER && ctx.state.winnerP !== MC.state.NO_WINNER); },
     pick: function (ctx) {
       return MC.ui.focus._pickCenterBtn(ctx.computed, "reset");
     }
   },
   {
+    id: "OnGameOverEntered_Menu",
+    enabled: function () { return true; },
+    when: function (ctx) { return (ctx.view.ux.lastWinnerP === MC.state.NO_WINNER && ctx.state.winnerP !== MC.state.NO_WINNER); },
+    pick: function (ctx) {
+      return MC.ui.focus._pickCenterBtn(ctx.computed, "mainMenu");
+    }
+  },
+  {
     id: "OnInvalidActionGameOver_Reset",
-    enabled: function (ctx) { return !!(MC.config && MC.config.debug && MC.config.debug.enabled); },
+    enabled: function () { return !!(MC.config.debug.enabled && MC.debug.toolsOn); },
     when: function (ctx) {
       if (ctx.state.winnerP === MC.state.NO_WINNER) return false;
       if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
@@ -188,6 +196,19 @@ MC.ui.focus.rules = [
     pick: function (ctx) {
       ctx.view.ux.pendingFocusErrorCode = "";
       return MC.ui.focus._pickCenterBtn(ctx.computed, "reset");
+    }
+  },
+  {
+    id: "OnInvalidActionGameOver_Menu",
+    enabled: function () { return true; },
+    when: function (ctx) {
+      if (ctx.state.winnerP === MC.state.NO_WINNER) return false;
+      if (ctx.view.mode !== "browse" || ctx.view.inspectActive) return false;
+      return (ctx.view.ux.pendingFocusErrorCode === "game_over");
+    },
+    pick: function (ctx) {
+      ctx.view.ux.pendingFocusErrorCode = "";
+      return MC.ui.focus._pickCenterBtn(ctx.computed, "mainMenu");
     }
   },
   {

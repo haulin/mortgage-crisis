@@ -9,7 +9,8 @@ This phase is intentionally **non-interactive** (menu items are visual only). Ph
 ### Boot flow: Title → DebugText
 
 - The cartridge now boots into a **Title** main mode (`MC._mainMode = 2`).
-- **Press any button** advances into the existing **DebugText** harness (`MC._mainMode = 0`) for fast iteration.
+- Phase 12 shipped with a temporary dev-friendly flow: **press any button** to advance into the existing **DebugText** harness (`MC._mainMode = 0`) for fast iteration.
+- Note: this boot flow is **superseded in Phase 13** (Title becomes the real menu entry point; DebugText is behind a dev toggle).
 
 ### Layout (MVP)
 

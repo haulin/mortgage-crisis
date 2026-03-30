@@ -13,7 +13,8 @@ MC.debug.lastUiIntentSummary = "";
 
 MC.debug.reset = function (opts) {
   var d = MC.debug;
-  var prevPaused = !!d.view.ux.autoFocusPausedByDebug;
+  var keepPrevPause = !(opts && opts.keepPrevAutoFocusPause === false);
+  var prevPaused = keepPrevPause ? !!d.view.ux.autoFocusPausedByDebug : false;
   var shouldPause = !!(opts && opts.pauseAutoFocus) || prevPaused;
   var seedU32 = MC.seed.computeSeedU32();
   var scenarioId = d.scenarios[d.scenarioI];
@@ -31,6 +32,12 @@ MC.debug.reset = function (opts) {
   d.lastRaw = null;
   d.lastUiActions = null;
   d.lastUiIntentSummary = "";
+};
+
+MC.debug.startNewGame = function () {
+  var d = MC.debug;
+  d.scenarioI = 0;
+  MC.debug.reset({ keepPrevAutoFocusPause: false });
 };
 
 MC.debug.nextScenario = function () {
@@ -306,30 +313,51 @@ MC.debug.tickTextMode = function () {
 // Main modes:
 // 0=DebugText, 1=Render, 2=Title
 MC.mainTick = function () {
-  // Title mode: boot-first, any press continues to DebugText harness.
+  var dbgEnabled = !!(MC.config.debug.enabled && MC.debug.toolsOn);
+
+  function clearTitleOverlay() {
+    // Clear vbank(1) overlay so it doesn't persist into DebugText/Render.
+    if (typeof vbank === "function") {
+      vbank(1);
+      if (typeof poke === "function") poke(0x03FF8, 15);
+      cls(15);
+      vbank(0);
+    }
+  }
+
+  // Title mode: main entry point (Phase 13).
   if (MC._mainMode === 2) {
     var rawT = MC.controls.pollGlobals();
-    if (MC.title && typeof MC.title.anyPressed === "function" && MC.title.anyPressed(rawT)) {
-      // Clear vbank(1) overlay so it doesn't persist into DebugText/Render.
-      if (typeof vbank === "function") {
-        vbank(1);
-        if (typeof poke === "function") poke(0x03FF8, 15);
-        cls(15);
-        vbank(0);
+    var intentT = null;
+    if (MC.title && typeof MC.title.tick === "function") intentT = MC.title.tick(rawT);
+
+    if (intentT && intentT.kind) {
+      if (intentT.kind === "startNewGame") {
+        clearTitleOverlay();
+        if (MC.debug && typeof MC.debug.startNewGame === "function") MC.debug.startNewGame();
+        MC._mainMode = 1;
+        return;
       }
-      MC._mainMode = 0;
-      return;
+
+      if (intentT.kind === "continueGame") {
+        if (MC.debug && MC.debug.state != null) {
+          clearTitleOverlay();
+          MC._mainMode = 1;
+          return;
+        }
+      }
     }
-    if (MC.title && typeof MC.title.tick === "function") MC.title.tick();
+
     return;
   }
 
-  // Modes: 0=DebugText, 1=Render. Y toggles DebugText ↔ Render.
-  if ((MC._mainMode === 0 || MC._mainMode === 1) && typeof btnp === "function" && btnp(7)) {
+  // Modes: 0=DebugText, 1=Render. Y toggles DebugText ↔ Render (dev-only).
+  if (dbgEnabled && (MC._mainMode === 0 || MC._mainMode === 1) && typeof btnp === "function" && btnp(7)) {
     MC._mainMode = MC._mainMode ? 0 : 1;
   }
 
   if (MC._mainMode === 0) {
+    if (!dbgEnabled) { MC._mainMode = 1; return; }
     if (MC.debug.state == null) MC.debug.reset(null);
     MC.debug.tickTextMode();
     return;
@@ -337,7 +365,7 @@ MC.mainTick = function () {
 
   // Render mode
   var d = MC.debug;
-  if (d.state == null) MC.debug.reset(null);
+  if (d.state == null) { MC._mainMode = 2; return; }
 
   {
     function summarizeUiIntent(intent) {
@@ -360,6 +388,11 @@ MC.mainTick = function () {
     var intent = MC.ui.step(d.state, d.view, actions);
     d.lastUiIntentSummary = summarizeUiIntent(intent);
 
+    if (intent && intent.kind === "mainMenu") {
+      MC._mainMode = 2;
+      return;
+    }
+
     if (actor === 0 && intent && intent.kind === "applyCmd" && intent.cmd) {
       try {
         var res = MC.engine.applyCommand(d.state, intent.cmd);
@@ -373,7 +406,7 @@ MC.mainTick = function () {
         var msg = MC.fmt.errorMessage(code);
         MC.anim.feedbackError(d.view, code, msg);
       }
-    } else if ((actor === 0 || gameOver) && intent && intent.kind === "debug") {
+    } else if ((actor === 0 || gameOver) && dbgEnabled && intent && intent.kind === "debug") {
       if (intent.action === "step") {
         MC.debug.step();
         MC.anim.onEvents(d.state, d.view, d.lastEvents);

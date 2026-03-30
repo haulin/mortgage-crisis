@@ -153,7 +153,7 @@ MC.ui.syncPromptToast = function (state, view) {
   } else if (pr.kind === "placeReceived") {
     txt = "Place received properties: " + pr.uids.length;
   } else if (pr.kind === "replaceWindow") {
-    txt = "Move a Wild? A: move  B: skip";
+    txt = "Move a Wild? A:move B:skip";
   } else if (pr.kind === "respondAction") {
     // Phase 08: Sly Deal response prompt.
     var col = MC.state.NO_COLOR;
@@ -764,18 +764,21 @@ MC.ui.buildRowItems = function (state, view, row, hint) {
     out.items.push({ kind: "deck", row: 2, x: x0, y: top, w: C.faceW, h: C.faceH });
     out.items.push({ kind: "discard", row: 2, x: x0 + C.faceW + gapX, y: top, w: C.faceW, h: C.faceH });
 
-    var dbgEnabled = !!MC.config.debug.enabled;
+    var dbgEnabled = !!(MC.config.debug.enabled && MC.debug.toolsOn);
 
     // Hide buttons while an overlay is active (menu/targeting).
     // Inspect should keep buttons visible/selectable so they can be inspected too.
     var overlayActive = !!(view && (view.mode === "menu" || view.mode === "targeting"));
     if (!overlayActive) {
-      // Right-side vertical strip: 4*10px = 40px tall, fits inside center row.
+      // Right-side vertical strip.
+      //
+      // Original layout (Phase 04 era): End/Step/Reset/Next were 10px tall with 1px gaps
+      // and filled the full center row. Phase 13 adds Menu below End; in dev mode this
+      // intentionally spills below the center row band (acceptable dev-only overlap).
       var stripW = C.centerBtnStripW;
       var stripH = 10;
       var stripX = C.screenW - C.centerBtnStripPadRight - stripW;
-      // Bottom-align within the center row band.
-      var stripY0 = (C.rowY[2] + C.rowH[2] - 43);
+      var stripY0 = C.rowY[2];
 
       function pushBtn(id, label, y, disabled) {
         out.items.push({ kind: "btn", id: id, label: label, disabled: !!disabled, row: 2, x: stripX, y: y, w: stripW, h: stripH });
@@ -784,12 +787,13 @@ MC.ui.buildRowItems = function (state, view, row, hint) {
       // End is always available on your turn; if hand > HAND_MAX the engine enters a discard-down prompt.
       var endDisabled = (state.winnerP !== MC.state.NO_WINNER) || (state.activeP !== 0);
       pushBtn("endTurn", "End", stripY0, endDisabled);
+      pushBtn("mainMenu", "Menu", stripY0 + 11, false);
       if (dbgEnabled) {
         // Game over: Step would attempt to mutate state via debugStep and can throw.
         // Keep Reset/Next available for recovery.
-        pushBtn("step", "Step", stripY0 + 11, (state.winnerP !== MC.state.NO_WINNER));
-        pushBtn("reset", "Reset", stripY0 + 22, false);
-        pushBtn("nextScenario", "Next", stripY0 + 33, false);
+        pushBtn("step", "Step", stripY0 + 22, (state.winnerP !== MC.state.NO_WINNER));
+        pushBtn("reset", "Reset", stripY0 + 33, false);
+        pushBtn("nextScenario", "Next", stripY0 + 44, false);
       }
     }
 
@@ -1983,6 +1987,16 @@ MC.ui.step = function (state, view, actions) {
     // Refresh selection anchor during prompt ticks so selection preservation doesn't fight user navigation.
     MC.ui.focus.snapshot(state, view, computed);
 
+    // Global prompt escape: allow returning to the title screen via the center Menu button.
+    if (actions.a && actions.a.tap) {
+      var selPromptBtn = currentSelection();
+      if (selPromptBtn && selPromptBtn.kind === "btn" && selPromptBtn.id === "mainMenu") {
+        setAutoFocusPauseForCenterBtn("mainMenu");
+        focusSnapshot();
+        return { kind: "mainMenu" };
+      }
+    }
+
     if (prompt.kind === "payDebt") {
       if (actions.b && actions.b.pressed) {
         MC.anim.feedbackError(view, "prompt_forced", "Must pay");
@@ -2027,7 +2041,7 @@ MC.ui.step = function (state, view, actions) {
                 if (itH.loc.setI !== setI) continue;
                 view.cursor.row = MC.render.ROW_P_TABLE;
                 view.cursor.i = ii;
-                MC.ui.toastPush(view, { id: "debt:houseFirst", kind: "info", text: "House must be paid first", frames: 45 });
+                MC.ui.toastPush(view, { id: "err:house_pay_first", kind: "error", text: "House must be paid first", frames: MC.config.ui.toast.errorFrames });
                 MC.anim.feedbackError(view, "house_pay_first", "");
                 return null;
               }
@@ -2216,7 +2230,7 @@ MC.ui.step = function (state, view, actions) {
 
     // Game over: only allow Reset/Next debug buttons; everything else is a no-op with feedback blink.
     if (gameOver) {
-      var allowBtn = !!(sel.row === 2 && sel.kind === "btn" && (sel.id === "reset" || sel.id === "nextScenario"));
+      var allowBtn = !!(sel.row === 2 && sel.kind === "btn" && (sel.id === "mainMenu" || sel.id === "reset" || sel.id === "nextScenario"));
       if (!allowBtn) {
         MC.anim.feedbackError(view, "game_over", "");
         return null;
@@ -2251,6 +2265,7 @@ MC.ui.step = function (state, view, actions) {
         return null;
       }
 
+      if (sel.id === "mainMenu") { setAutoFocusPauseForCenterBtn("mainMenu"); focusSnapshot(); return { kind: "mainMenu" }; }
       if (sel.id === "endTurn") { setAutoFocusPauseForCenterBtn("endTurn"); focusSnapshot(); return { kind: "applyCmd", cmd: { kind: "endTurn" } }; }
       if (sel.id === "step") { setAutoFocusPauseForCenterBtn("step"); focusSnapshot(); return { kind: "debug", action: "step" }; }
       if (sel.id === "reset") { setAutoFocusPauseForCenterBtn("reset"); focusSnapshot(); return { kind: "debug", action: "reset" }; }
