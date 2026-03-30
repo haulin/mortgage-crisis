@@ -7,7 +7,7 @@ MC.config = {
 
 // Meta/version display (Phase 11).
 MC.config.meta = {
-  version: "v0.11"
+  version: "v0.12"
 };
 
 // Debug/dev knobs (Phase 03b+). Keep these centralized so we can disable later.

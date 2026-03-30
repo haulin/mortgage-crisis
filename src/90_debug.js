@@ -310,6 +310,13 @@ MC.mainTick = function () {
   if (MC._mainMode === 2) {
     var rawT = MC.controls.pollGlobals();
     if (MC.title && typeof MC.title.anyPressed === "function" && MC.title.anyPressed(rawT)) {
+      // Clear vbank(1) overlay so it doesn't persist into DebugText/Render.
+      if (typeof vbank === "function") {
+        vbank(1);
+        if (typeof poke === "function") poke(0x03FF8, 15);
+        cls(15);
+        vbank(0);
+      }
       MC._mainMode = 0;
       return;
     }

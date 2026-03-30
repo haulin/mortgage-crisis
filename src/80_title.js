@@ -80,13 +80,15 @@
     var leftW = W - menuW;
 
     // Background.
-    if (typeof vbank === "function") vbank(0);
+    // Render title into vbank(1) so it can use a distinct palette (Phase 12).
+    // vbank(1) overlays vbank(0); OVR transparency index lives at 0x03FF8 on vbank(1).
+    var hasVbank = (typeof vbank === "function");
+    if (hasVbank) {
+      vbank(1);
+      if (typeof poke === "function") poke(0x03FF8, 15);
+    }
     cls(Pal.DarkBlue);
     drawTiledBg(tc, W, H);
-
-    // Right panel separator/border (panel fill removed; items are boxed).
-    rectb(leftW, 0, menuW, H, Pal.White);
-    rect(leftW - 1, 0, 1, H, Pal.Grey);
 
 
     // Logo (placeholder text).
@@ -151,6 +153,9 @@
     }
 
     T.st.frame += 1;
+
+    // Always restore bank 0 so other modes render normally.
+    if (hasVbank) vbank(0);
   };
 })();
 

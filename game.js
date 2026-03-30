@@ -39,7 +39,7 @@ MC.config = {
 
 // Meta/version display (Phase 11).
 MC.config.meta = {
-  version: "v0.11"
+  version: "v0.12"
 };
 
 // Debug/dev knobs (Phase 03b+). Keep these centralized so we can disable later.
@@ -7835,13 +7835,15 @@ MC.anim.present = function (state, view, computed) {
     var leftW = W - menuW;
 
     // Background.
-    if (typeof vbank === "function") vbank(0);
+    // Render title into vbank(1) so it can use a distinct palette (Phase 12).
+    // vbank(1) overlays vbank(0); OVR transparency index lives at 0x03FF8 on vbank(1).
+    var hasVbank = (typeof vbank === "function");
+    if (hasVbank) {
+      vbank(1);
+      if (typeof poke === "function") poke(0x03FF8, 15);
+    }
     cls(Pal.DarkBlue);
     drawTiledBg(tc, W, H);
-
-    // Right panel separator/border (panel fill removed; items are boxed).
-    rectb(leftW, 0, menuW, H, Pal.White);
-    rect(leftW - 1, 0, 1, H, Pal.Grey);
 
 
     // Logo (placeholder text).
@@ -7906,6 +7908,9 @@ MC.anim.present = function (state, view, computed) {
     }
 
     T.st.frame += 1;
+
+    // Always restore bank 0 so other modes render normally.
+    if (hasVbank) vbank(0);
   };
 })();
 
@@ -8222,6 +8227,13 @@ MC.mainTick = function () {
   if (MC._mainMode === 2) {
     var rawT = MC.controls.pollGlobals();
     if (MC.title && typeof MC.title.anyPressed === "function" && MC.title.anyPressed(rawT)) {
+      // Clear vbank(1) overlay so it doesn't persist into DebugText/Render.
+      if (typeof vbank === "function") {
+        vbank(1);
+        if (typeof poke === "function") poke(0x03FF8, 15);
+        cls(15);
+        vbank(0);
+      }
       MC._mainMode = 0;
       return;
     }

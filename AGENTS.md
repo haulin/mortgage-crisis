@@ -20,6 +20,11 @@ This repo commits `game.js` as a generated artifact.
   - `npm run build`
 - Do not leave `game.js` stale relative to `src/`.
 
+## Version bump checklist (important)
+
+- When you finish a phase, bump `MC.config.meta.version` (in `src/05_config.js`).
+- If the bump involves any `src/` change, follow the build artifact rule above so `game.js` stays in sync.
+
 ## Config knobs + numeric coercion policy (important)
 
 - **Config knobs**: if a value is a gameplay/UI tuning knob (timings, thresholds, scoring weights, layout constants that might need tweaking), prefer putting it in `src/05_config.js` under `MC.config.*` rather than hard-coding module-level constants.

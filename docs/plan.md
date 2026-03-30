@@ -466,7 +466,10 @@ Done:
 
 ### Phase 13 - Menu as main entry point
 - Replace dev-only `Y:Mode` hint/toggle with a proper dev entrypoint (e.g. hidden debug menu), hide debug buttons
+- Make menu buttons interactive
 - Make a way to return to main menu
+- Make a way to still use debug buttons (enable/disable)
+- Move version from game to title screen
 
 ### Phase 14 - How to play
 - Add a Rules / How-to-play screen (reachable from boot/title screen) so the game is self-explanatory without external docs
