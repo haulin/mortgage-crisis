@@ -311,7 +311,7 @@ MC.debug.tickTextMode = function () {
 };
 
 // Main modes:
-// 0=DebugText, 1=Render, 2=Title
+// 0=DebugText, 1=Render, 2=Title, 3=HowTo
 MC.mainTick = function () {
   var dbgEnabled = !!(MC.config.debug.enabled && MC.debug.toolsOn);
 
@@ -332,6 +332,12 @@ MC.mainTick = function () {
     if (MC.title && typeof MC.title.tick === "function") intentT = MC.title.tick(rawT);
 
     if (intentT && intentT.kind) {
+      if (intentT.kind === "howToPlay") {
+        clearTitleOverlay();
+        MC._mainMode = 3;
+        return;
+      }
+
       if (intentT.kind === "startNewGame") {
         clearTitleOverlay();
         if (MC.debug && typeof MC.debug.startNewGame === "function") MC.debug.startNewGame();
@@ -348,6 +354,18 @@ MC.mainTick = function () {
       }
     }
 
+    return;
+  }
+
+  // How-to-Play mode (Phase 14).
+  if (MC._mainMode === 3) {
+    var rawH = MC.controls.pollGlobals();
+    var intentH = null;
+    if (MC.howto && typeof MC.howto.tick === "function") intentH = MC.howto.tick(rawH);
+    if (intentH && intentH.kind === "backToTitle") {
+      MC._mainMode = 2;
+      return;
+    }
     return;
   }
 

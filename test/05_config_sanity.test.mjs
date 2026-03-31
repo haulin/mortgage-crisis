@@ -148,6 +148,7 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   assert.equal(typeof MC.config.controls, "object", "expected MC.config.controls");
   assert.equal(typeof MC.config.ui, "object", "expected MC.config.ui");
   assert.equal(typeof MC.config.title, "object", "expected MC.config.title");
+  assert.equal(typeof MC.config.howto, "object", "expected MC.config.howto");
   assert.equal(typeof MC.config.ai, "object", "expected MC.config.ai");
   assert.equal(typeof MC.config.ui.toast, "object", "expected MC.config.ui.toast");
 
@@ -213,6 +214,28 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   requireNum(MC.config.title, "bgTileColorkey");
   // allow 0 to disable blink
   requireNum(MC.config.title, "pressAnyBlinkPeriodFrames");
+
+  // How-to-play screen knobs.
+  requirePosNum(MC.config.howto, "padX");
+  requirePosNum(MC.config.howto, "padY");
+  requirePosNum(MC.config.howto, "headerH");
+  requirePosNum(MC.config.howto, "footerH");
+  requirePosNum(MC.config.howto, "headingCharW");
+  requirePosNum(MC.config.howto, "headingLineH");
+  requirePosNum(MC.config.howto, "bodyCharW");
+  requirePosNum(MC.config.howto, "bodyLineH");
+  requirePosNum(MC.config.howto, "blockGapY");
+  requirePosNum(MC.config.howto, "demoGapX");
+  requirePosNum(MC.config.howto, "demoGapY");
+  requirePosNum(MC.config.howto, "scrollStepPx");
+  requireNum(MC.config.howto, "bgCol");
+  requireNum(MC.config.howto, "panelCol");
+  requireNum(MC.config.howto, "borderCol");
+  requireNum(MC.config.howto, "titleCol");
+  requireNum(MC.config.howto, "headingCol");
+  requireNum(MC.config.howto, "textCol");
+  requireNum(MC.config.howto, "mutedCol");
+  requireNum(MC.config.howto, "accentCol");
 
   // AI policy knobs.
   assert.ok(Array.isArray(MC.config.ai.policyByP), "expected MC.config.ai.policyByP array");

@@ -24,4 +24,5 @@ MC.scenarios = {};
 MC.debug = {};
 MC.debug.toolsOn = false;
 MC.title = {};
+MC.howto = {};
 

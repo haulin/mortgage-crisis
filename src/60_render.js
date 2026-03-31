@@ -358,6 +358,9 @@
     drawCenterIcon(xFace, yFace, icon, !!flip180);
   }
 
+  // Expose mini-card drawing so other modes (e.g. How-to-Play) can reuse it.
+  R.drawMiniCard = drawMiniCard;
+
   function drawCardBack(xFace, yFace, flip180) {
     var cfg = R.cfg;
     var id = (R.spr && R.spr.cardBackTL != null) ? R.spr.cardBackTL : 0;

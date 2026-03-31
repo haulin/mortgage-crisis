@@ -106,7 +106,7 @@
     var menuItems = [
       { id: "startNewGame", text: "New Game", enabled: true },
       { id: "continueGame", text: "Continue", enabled: hasSession },
-      { id: "howToPlay", text: "How to Play", enabled: false }
+      { id: "howToPlay", text: "How to Play", enabled: true }
     ];
     if (devAvail) {
       menuItems.push({ id: "toggleDev", text: (toolsOn ? "Dev: ON" : "Dev: OFF"), enabled: true });
@@ -162,6 +162,10 @@
           titleClearToasts(toastView);
           intent = { kind: "continueGame" };
         }
+        else if (itSel.id === "howToPlay") {
+          titleClearToasts(toastView);
+          intent = { kind: "howToPlay" };
+        }
         else if (itSel.id === "toggleDev") {
           MC.debug.toolsOn = !MC.debug.toolsOn;
           titlePushToast(toastView, cfg, "info", MC.debug.toolsOn ? "Dev tools enabled" : "Dev tools disabled");
@@ -170,7 +174,6 @@
         // Disabled feedback (toast).
         var msg = "Not available";
         if (itSel.id === "continueGame") msg = "No game to continue";
-        else if (itSel.id === "howToPlay") msg = "How to Play: coming soon";
         titlePushToast(toastView, cfg, "error", msg);
       }
     }

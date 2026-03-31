@@ -171,6 +171,7 @@ When your cursor is on a hand card, **tap A** to open a menu of actions that are
 Notes:
 
 - The menu is **actionable-only**: if nothing is legal right now (e.g. **no plays left** while browsing), the menu may show **only Cancel**.
+- When you **Bank** an **action card**, it becomes **money only** for the rest of the game (you can’t play it as an action later).
 
 ### Single-destination shortcuts
 

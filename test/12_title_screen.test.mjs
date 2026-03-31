@@ -97,20 +97,20 @@ test("title: toasts stack by message text (dedupe identical)", async () => {
   const ctx = await loadSrcIntoVm({
     extraGlobals: {
       btn: (i) => {
-        // Down on frames 1 and 5.
-        if (i === 1) return frame === 1 || frame === 5;
-        // Up on frame 9.
-        if (i === 0) return frame === 9;
-        // A press on frames 3, 7, 11 (release happens on the following frames).
-        if (i === 4) return frame === 3 || frame === 7 || frame === 11;
+        // Down on frames 1, 5, 7.
+        if (i === 1) return frame === 1 || frame === 5 || frame === 7;
+        // Up on frames 11 and 13.
+        if (i === 0) return frame === 11 || frame === 13;
+        // A press on frames 3, 9, 15 (release happens on the following frames).
+        if (i === 4) return frame === 3 || frame === 9 || frame === 15;
         return false;
       },
       btnp: (i) => {
         // Press pulses for Down/Up.
-        if (i === 1 && (frame === 1 || frame === 5)) return true;
-        if (i === 0 && frame === 9) return true;
+        if (i === 1 && (frame === 1 || frame === 5 || frame === 7)) return true;
+        if (i === 0 && (frame === 11 || frame === 13)) return true;
         // A press pulse.
-        if (i === 4 && (frame === 3 || frame === 7 || frame === 11)) return true;
+        if (i === 4 && (frame === 3 || frame === 9 || frame === 15)) return true;
         return false;
       }
     }
@@ -132,24 +132,32 @@ test("title: toasts stack by message text (dedupe identical)", async () => {
   frame = 5; ctx.MC.mainTick();
   // Frame 6: idle.
   frame = 6; ctx.MC.mainTick();
-  // Frame 7/8: A tap on disabled How to Play -> toast "How to Play: coming soon".
+  // Frame 7: Down -> Dev toggle.
   frame = 7; ctx.MC.mainTick();
+  // Frame 8: idle.
   frame = 8; ctx.MC.mainTick();
+  // Frame 9/10: A tap on Dev toggle -> toast "Dev tools enabled" (info).
+  frame = 9; ctx.MC.mainTick();
+  frame = 10; ctx.MC.mainTick();
 
   const tv = ctx.MC.title.toastView;
   assert.ok(tv && Array.isArray(tv.toasts), "expected title.toastView.toasts");
   assert.equal(tv.toasts.length, 2, "expected two stacked toasts");
   assert.ok(tv.toasts.some((t) => String(t.text || "").includes("No game to continue")));
-  assert.ok(tv.toasts.some((t) => String(t.text || "").includes("How to Play: coming soon")));
+  assert.ok(tv.toasts.some((t) => String(t.text || "").includes("Dev tools enabled")));
 
   // Repeat the Continue error: should dedupe by message text id (not add a third toast).
-  // Frame 9: Up -> Continue.
-  frame = 9; ctx.MC.mainTick();
-  // Frame 10: idle.
-  frame = 10; ctx.MC.mainTick();
-  // Frame 11/12: A tap on disabled Continue again.
+  // Frame 11: Up -> How to Play.
   frame = 11; ctx.MC.mainTick();
+  // Frame 12: idle.
   frame = 12; ctx.MC.mainTick();
+  // Frame 13: Up -> Continue.
+  frame = 13; ctx.MC.mainTick();
+  // Frame 14: idle.
+  frame = 14; ctx.MC.mainTick();
+  // Frame 15/16: A tap on disabled Continue again.
+  frame = 15; ctx.MC.mainTick();
+  frame = 16; ctx.MC.mainTick();
 
   assert.equal(tv.toasts.length, 2, "expected identical toast to dedupe (still 2)");
 });

@@ -7,7 +7,7 @@ MC.config = {
 
 // Meta/version display (Phase 11).
 MC.config.meta = {
-  version: "MVP v0.13"
+  version: "MVP v0.14"
 };
 
 // Debug/dev knobs (Phase 03b+). Keep these centralized so we can disable later.
@@ -184,6 +184,39 @@ MC.Pal = {
   LightGrey: 13,  // #94b0c2
   Grey: 14,       // #566c86
   DarkGrey: 15,   // #333c57
+};
+
+// How-to-play screen knobs (Phase 14). Keep layout/typography here for easy tuning.
+MC.config.howto = {
+  padX: 8,
+  padY: 6,
+
+  headerH: 10,
+  footerH: 2,
+
+  // Typography: fixed-width for predictable wrapping.
+  headingCharW: 6,
+  headingLineH: 7,
+  bodyCharW: 4,
+  bodyLineH: 6,
+
+  // Layout spacing.
+  blockGapY: 10,
+  demoGapX: 6,
+  demoGapY: 3,
+
+  // Scrolling.
+  scrollStepPx: 6,
+
+  // Colors (Sweetie-16 indices).
+  bgCol: MC.Pal.Black,
+  panelCol: MC.Pal.DarkBlue,
+  borderCol: MC.Pal.Grey,
+  titleCol: MC.Pal.White,
+  headingCol: MC.Pal.White,
+  textCol: MC.Pal.LightGrey,
+  mutedCol: MC.Pal.LightGrey,
+  accentCol: MC.Pal.Yellow,
 };
 
 MC.config.render = {

@@ -28,6 +28,7 @@ Documentation convention (for future phases):
 - **Phase 11 ✅**: Quick wins: rename to Mortgage Crisis + `MC` namespace, HUD version string, AI prompt prefix (`AI:`), AI debt payment bias toward bank, Source-only disallow, and early-turn AI heuristics (Rent gating, early discipline, Sly bias). See `docs/phase11.md`.
 - **Phase 12 ✅**: Title screen (boot-first) with static menu + controls list. See `docs/phase12.md`.
 - **Phase 13 ✅**: Title menu becomes the main entry point (interactive menu + return-to-menu), with dev tools gated behind `Dev: ON/OFF`. See `docs/phase13.md`.
+- **Phase 14 ✅**: In-game How to Play screen (3 pages + scrolling + editable content blocks). See `docs/phase14.md`.
 
 ### Deferred-items capture (scope creep safety net)
 
@@ -475,8 +476,11 @@ Done:
 - With debug:off starting a default scenario should get a new seed each time new game is started
 - See `docs/phase13.md`.
 
-### Phase 14 - How to play
-- Add a Rules / How-to-play screen (reachable from boot/title screen) so the game is self-explanatory without external docs
+### Phase 14 ✅ - How to play
+- Add a Rules / How-to-play screen (reachable from the Title screen) so the game is self-explanatory without external docs
+- 3 pages (Quick Start / Controls / Details) with scrolling + block-level demos
+- Content is editable by a human in `src/82_howto_content.js`
+- See `docs/phase14.md`.
 
 ### Phase 16 — MVP ready
 - when starting a game/default scenario, the 5/7 cards on each side are already dealt. We should probably start with the 2x5 draw animation and display a toast with who is starting.

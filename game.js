@@ -29,6 +29,7 @@ MC.scenarios = {};
 MC.debug = {};
 MC.debug.toolsOn = false;
 MC.title = {};
+MC.howto = {};
 
 // ---- src/05_config.js ----
 // MC.config: central gameplay/UI/render tuning knobs (validated in tests; avoid runtime fallbacks).
@@ -40,7 +41,7 @@ MC.config = {
 
 // Meta/version display (Phase 11).
 MC.config.meta = {
-  version: "MVP v0.13"
+  version: "MVP v0.14"
 };
 
 // Debug/dev knobs (Phase 03b+). Keep these centralized so we can disable later.
@@ -217,6 +218,39 @@ MC.Pal = {
   LightGrey: 13,  // #94b0c2
   Grey: 14,       // #566c86
   DarkGrey: 15,   // #333c57
+};
+
+// How-to-play screen knobs (Phase 14). Keep layout/typography here for easy tuning.
+MC.config.howto = {
+  padX: 8,
+  padY: 6,
+
+  headerH: 10,
+  footerH: 2,
+
+  // Typography: fixed-width for predictable wrapping.
+  headingCharW: 6,
+  headingLineH: 7,
+  bodyCharW: 4,
+  bodyLineH: 6,
+
+  // Layout spacing.
+  blockGapY: 10,
+  demoGapX: 6,
+  demoGapY: 3,
+
+  // Scrolling.
+  scrollStepPx: 6,
+
+  // Colors (Sweetie-16 indices).
+  bgCol: MC.Pal.Black,
+  panelCol: MC.Pal.DarkBlue,
+  borderCol: MC.Pal.Grey,
+  titleCol: MC.Pal.White,
+  headingCol: MC.Pal.White,
+  textCol: MC.Pal.LightGrey,
+  mutedCol: MC.Pal.LightGrey,
+  accentCol: MC.Pal.Yellow,
 };
 
 MC.config.render = {
@@ -3982,6 +4016,9 @@ MC.layout.playerForRow = function (row) {
     var icon = iconForDef(def);
     drawCenterIcon(xFace, yFace, icon, !!flip180);
   }
+
+  // Expose mini-card drawing so other modes (e.g. How-to-Play) can reuse it.
+  R.drawMiniCard = drawMiniCard;
 
   function drawCardBack(xFace, yFace, flip180) {
     var cfg = R.cfg;
@@ -7918,7 +7955,7 @@ MC.anim.present = function (state, view, computed) {
     var menuItems = [
       { id: "startNewGame", text: "New Game", enabled: true },
       { id: "continueGame", text: "Continue", enabled: hasSession },
-      { id: "howToPlay", text: "How to Play", enabled: false }
+      { id: "howToPlay", text: "How to Play", enabled: true }
     ];
     if (devAvail) {
       menuItems.push({ id: "toggleDev", text: (toolsOn ? "Dev: ON" : "Dev: OFF"), enabled: true });
@@ -7974,6 +8011,10 @@ MC.anim.present = function (state, view, computed) {
           titleClearToasts(toastView);
           intent = { kind: "continueGame" };
         }
+        else if (itSel.id === "howToPlay") {
+          titleClearToasts(toastView);
+          intent = { kind: "howToPlay" };
+        }
         else if (itSel.id === "toggleDev") {
           MC.debug.toolsOn = !MC.debug.toolsOn;
           titlePushToast(toastView, cfg, "info", MC.debug.toolsOn ? "Dev tools enabled" : "Dev tools disabled");
@@ -7982,7 +8023,6 @@ MC.anim.present = function (state, view, computed) {
         // Disabled feedback (toast).
         var msg = "Not available";
         if (itSel.id === "continueGame") msg = "No game to continue";
-        else if (itSel.id === "howToPlay") msg = "How to Play: coming soon";
         titlePushToast(toastView, cfg, "error", msg);
       }
     }
@@ -8109,6 +8149,738 @@ MC.anim.present = function (state, view, computed) {
     T.st.frame += 1;
 
     return intent;
+  };
+})();
+
+// ---- src/81_howto.js ----
+// MC.howto: in-game How to Play screen (Phase 14).
+(function initHowtoModule() {
+  var H = MC.howto;
+
+  H.ctrl = MC.controls.newState();
+  H.st = {
+    pageI: 0,
+    scrollByPage: [],
+    layoutByPage: null,
+    layoutForN: 0
+  };
+
+  H._demoState = null;
+
+  function clamp(v, lo, hi) {
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+  }
+
+  function wrapI(i, n) {
+    if (n <= 0) return 0;
+    i = i % n;
+    if (i < 0) i += n;
+    return i;
+  }
+
+  function rectSafe(x, y, w, h, c) { rect(x, y, w, h, c); }
+  function printExSafe(s, x, y, c, fixed, smallfont) {
+    // scale=1 always in this screen for predictable metrics.
+    return print(String(s), x, y, c, !!fixed, 1, !!smallfont);
+  }
+
+  function ensureDemoState() {
+    if (H._demoState) return H._demoState;
+    var s = { uidToDefI: [0], totalUids: 0 };
+    MC.state.buildAllUids(s);
+    H._demoState = s;
+    return s;
+  }
+
+  function uidForCardId(cardId) {
+    var di = (MC.DEF_INDEX_BY_ID && MC.DEF_INDEX_BY_ID[String(cardId)]) != null ? MC.DEF_INDEX_BY_ID[String(cardId)] : -1;
+    if (di < 0) return 0;
+    var uid = 1;
+    var i;
+    for (i = 0; i < di; i++) {
+      uid += (MC.CARD_DEFS[i] && MC.CARD_DEFS[i].count) ? MC.CARD_DEFS[i].count : 0;
+    }
+    return uid;
+  }
+
+  H.drawMiniCardById = function (cardId, xFace, yFace, assignedColor) {
+    if (!MC.render || typeof MC.render.drawMiniCard !== "function") return;
+    var uid = uidForCardId(cardId);
+    if (!uid) return;
+    var s = ensureDemoState();
+    MC.render.drawMiniCard(s, uid, xFace, yFace, false, assignedColor);
+  };
+
+  function parseMarkupTokens(txt, defaultCol) {
+    txt = String(txt || "");
+    var tokens = [];
+    var curCol = defaultCol;
+    var i = 0;
+
+    function pushText(s) {
+      if (!s) return;
+      tokens.push({ text: s, col: curCol });
+    }
+
+    while (i < txt.length) {
+      var lt = txt.indexOf("<", i);
+      if (lt < 0) { pushText(txt.slice(i)); break; }
+      if (lt > i) pushText(txt.slice(i, lt));
+
+      // Try parse a tag.
+      var gt = txt.indexOf(">", lt + 1);
+      if (gt < 0) { pushText("<"); i = lt + 1; continue; }
+
+      var tag = txt.slice(lt + 1, gt); // without < >
+      // Opening: cN
+      if (tag.length >= 2 && tag.charAt(0) === "c") {
+        var num = tag.slice(1);
+        if (/^\d+$/.test(num)) {
+          curCol = Number(num);
+          i = gt + 1;
+          continue;
+        }
+      }
+      // Closing: /c or /cN
+      if (tag.length >= 2 && tag.charAt(0) === "/" && tag.charAt(1) === "c") {
+        curCol = defaultCol;
+        i = gt + 1;
+        continue;
+      }
+
+      // Not a recognized tag: keep literal.
+      pushText("<");
+      i = lt + 1;
+    }
+
+    return tokens;
+  }
+
+  function wordsFromTokens(tokens) {
+    var out = [];
+    var cur = [];
+    var curLen = 0;
+
+    function flush() {
+      if (!curLen) { cur = []; return; }
+      out.push({ tokens: cur, len: curLen });
+      cur = [];
+      curLen = 0;
+    }
+
+    var ti;
+    for (ti = 0; ti < tokens.length; ti++) {
+      var t = tokens[ti];
+      if (!t || !t.text) continue;
+      var s = String(t.text);
+      var col = t.col;
+      var j = 0;
+      while (j < s.length) {
+        var ch = s.charAt(j);
+        var isSpace = (ch === " " || ch === "\t");
+        if (isSpace) {
+          flush();
+          // Skip consecutive whitespace.
+          while (j < s.length && (s.charAt(j) === " " || s.charAt(j) === "\t")) j++;
+          continue;
+        }
+        // Consume a non-space run.
+        var k = j;
+        while (k < s.length) {
+          var ch2 = s.charAt(k);
+          if (ch2 === " " || ch2 === "\t") break;
+          k++;
+        }
+        var part = s.slice(j, k);
+        cur.push({ text: part, col: col });
+        curLen += part.length;
+        j = k;
+      }
+    }
+    flush();
+    return out;
+  }
+
+  function wrapTokens(tokens, maxChars, spaceCol) {
+    if (!(maxChars > 0)) return [];
+    var words = wordsFromTokens(tokens);
+    var lines = [];
+    var line = [];
+    var lineLen = 0;
+    var wi;
+
+    function pushLine() {
+      lines.push({ tokens: line, len: lineLen });
+      line = [];
+      lineLen = 0;
+    }
+
+    for (wi = 0; wi < words.length; wi++) {
+      var w = words[wi];
+      if (!w || !w.len) continue;
+
+      if (w.len > maxChars) {
+        // Finish current line, then allow the long word to overflow.
+        if (lineLen) pushLine();
+        lines.push({ tokens: w.tokens, len: w.len });
+        continue;
+      }
+
+      if (!lineLen) {
+        line = w.tokens.slice();
+        lineLen = w.len;
+        continue;
+      }
+
+      if ((lineLen + 1 + w.len) <= maxChars) {
+        line.push({ text: " ", col: spaceCol });
+        Array.prototype.push.apply(line, w.tokens);
+        lineLen += 1 + w.len;
+      } else {
+        pushLine();
+        line = w.tokens.slice();
+        lineLen = w.len;
+      }
+    }
+
+    if (lineLen) pushLine();
+    return lines;
+  }
+
+  function layoutPage(page, cfg, textCol, headingCol) {
+    var items = [];
+    var y = 0;
+    var blocks = page && page.blocks ? page.blocks : [];
+
+    var i;
+    for (i = 0; i < blocks.length; i++) {
+      var b = blocks[i];
+      if (!b || !b.kind) continue;
+
+      var yBlock0 = y;
+
+      var demo = b.demo || null;
+      var demoLayout = demo ? String(demo.layout || "") : "";
+      var demoW = demo && demo.w != null ? demo.w : 0;
+      var demoH = demo && demo.h != null ? demo.h : 0;
+
+      var textX = 0;
+      var maxW = cfg.contentW + 16;
+      if (demo && demoLayout === "left" && demoW > 0) {
+        textX = demoW + cfg.demoGapX;
+        maxW = cfg.contentW - textX;
+        if (maxW < cfg.bodyCharW * 10) maxW = cfg.bodyCharW * 10;
+        items.push({ kind: "demo", x: 0, y: yBlock0, w: demoW, h: demoH, draw: demo.draw });
+      }
+
+      if (demo && demoLayout === "above" && demoH > 0) {
+        items.push({ kind: "demo", x: 0, y: yBlock0, w: demoW, h: demoH, draw: demo.draw });
+        y += demoH + cfg.demoGapY;
+      }
+
+      if (b.kind === "h") {
+        var hTxt = String(b.text || "");
+        var parasH = hTxt.split("\n");
+        var piH;
+        for (piH = 0; piH < parasH.length; piH++) {
+          var pH = String(parasH[piH] || "");
+          if (!pH.trim()) { y += cfg.headingLineH; continue; }
+          var tH = parseMarkupTokens(pH, headingCol);
+          var maxCharsH = Math.floor(maxW / cfg.headingCharW);
+          var linesH = wrapTokens(tH, maxCharsH, headingCol);
+          var liH;
+          for (liH = 0; liH < linesH.length; liH++) {
+            items.push({ kind: "text", x: textX, y: y, tokens: linesH[liH].tokens, small: false });
+            y += cfg.headingLineH - 6;
+          }
+        }
+      }
+      else if (b.kind === "p") {
+        var pTxt = String(b.text || "");
+        var paras = pTxt.split("\n");
+        var pi;
+        for (pi = 0; pi < paras.length; pi++) {
+          var p = String(paras[pi] || "");
+          if (!p.trim()) { y += cfg.bodyLineH; continue; }
+          var t = parseMarkupTokens(p, textCol);
+          var maxChars = Math.floor(maxW / cfg.bodyCharW);
+          var lines = wrapTokens(t, maxChars, textCol);
+          var li;
+          for (li = 0; li < lines.length; li++) {
+            items.push({ kind: "text", x: textX, y: y, tokens: lines[li].tokens, small: true });
+            y += cfg.bodyLineH;
+          }
+        }
+      }
+      else if (b.kind === "bullets") {
+        var bulletItems = b.items;
+        if (!bulletItems || bulletItems.length === 0) { y += cfg.blockGapY; continue; }
+        var bi;
+        for (bi = 0; bi < bulletItems.length; bi++) {
+          var sIt = String(bulletItems[bi] || "");
+          if (!sIt.trim()) continue;
+          var tIt = parseMarkupTokens(sIt, textCol);
+          var bulletPrefix = "-";
+          var prefixW = cfg.bodyCharW * 2; // "- "
+          var bulletTextX = textX + prefixW;
+          var maxWB = maxW - prefixW;
+          if (maxWB < cfg.bodyCharW * 10) maxWB = cfg.bodyCharW * 10;
+          var maxCharsB = Math.floor(maxWB / cfg.bodyCharW);
+          var linesB = wrapTokens(tIt, maxCharsB, textCol);
+          var liB;
+          for (liB = 0; liB < linesB.length; liB++) {
+            items.push({
+              kind: "text",
+              x: bulletTextX,
+              y: y,
+              tokens: linesB[liB].tokens,
+              small: true,
+              prefix: (liB === 0) ? bulletPrefix : null,
+              prefixX: textX
+            });
+            y += cfg.bodyLineH;
+          }
+          y += 1;
+        }
+      }
+
+      // If demo is left-aligned, make sure block height accounts for it.
+      if (demo && demoLayout === "left" && demoH > 0) {
+        var demoBottom = yBlock0 + demoH;
+        if (demoBottom > y) y = demoBottom;
+      }
+
+      y += cfg.blockGapY;
+    }
+
+    return { items: items, contentH: y };
+  }
+
+  function ensureLayouts(cfg, pages) {
+    var st = H.st;
+    var n = pages.length;
+    if (st.layoutByPage && st.layoutForN === n) return;
+
+    var hc = cfg.howto;
+    var screenW = cfg.screenW;
+    var padX = hc.padX;
+    var bodyX0 = padX;
+    var bodyX1 = screenW - padX - 1;
+    var contentW = bodyX1 - bodyX0 + 1;
+
+    var perCfg = {
+      contentW: contentW,
+      padX: hc.padX,
+      padY: hc.padY,
+      demoGapX: hc.demoGapX,
+      demoGapY: hc.demoGapY,
+      blockGapY: hc.blockGapY,
+      headingCharW: hc.headingCharW,
+      headingLineH: hc.headingLineH,
+      bodyCharW: hc.bodyCharW,
+      bodyLineH: hc.bodyLineH
+    };
+
+    var layouts = [];
+    var i;
+    for (i = 0; i < n; i++) {
+      layouts[i] = layoutPage(pages[i], perCfg, hc.textCol, hc.headingCol);
+    }
+    st.layoutByPage = layouts;
+    st.layoutForN = n;
+  }
+
+  function ensureScrollMemory(nPages) {
+    var st = H.st;
+    var arr = st.scrollByPage;
+    var i;
+    for (i = 0; i < nPages; i++) {
+      if (arr[i] == null) arr[i] = 0;
+    }
+    if (arr.length > nPages) arr.length = nPages;
+  }
+
+  function pagesFromContent() {
+    var c = H.CONTENT;
+    var pages = c && c.pages ? c.pages : [];
+    if (!pages || !pages.length) return [];
+    return pages;
+  }
+
+  function drawTokensLine(tokens, x, y, charW, fixed, smallfont, defaultCol) {
+    var dx = 0;
+    var i;
+    for (i = 0; i < tokens.length; i++) {
+      var t = tokens[i];
+      if (!t || !t.text) continue;
+      var s = String(t.text);
+      if (!s) continue;
+      var col = (t.col != null) ? t.col : defaultCol;
+      var w = print(String(s), x + dx, y, col, !!fixed, 1, !!smallfont);
+      if (typeof w === "number" && Number.isFinite(w)) dx += w;
+      else dx += s.length * charW;
+    }
+  }
+
+  function drawHowto(cfg, pages, layout, pageI, scrollY) {
+    var hc = cfg.howto;
+    var W = cfg.screenW;
+    var Hh = cfg.screenH;
+
+    // Background (blue-only; no inner panel).
+    cls(hc.bgCol);
+
+    var headerH = hc.headerH;
+    var footerH = hc.footerH;
+    var bodyY0 = headerH;
+    var bodyY1 = Hh - footerH - 1;
+
+    // Header (drawn last; background bar masks any overdraw while scrolling).
+    var page = pages[pageI];
+    var title = page ? String(page.title || "") : "";
+
+    // Body content window (with padding).
+    var contentX0 = hc.padX;
+    var contentX1 = W - hc.padX - 1;
+    var contentY0 = bodyY0 + hc.padY;
+    var contentY1 = bodyY1 - hc.padY;
+
+    // Draw items. Header/footer bars mask any overflow.
+    var items = layout ? layout.items : [];
+    var itI;
+    for (itI = 0; itI < items.length; itI++) {
+      var it = items[itI];
+      if (!it) continue;
+      var yScreen = contentY0 + it.y - scrollY;
+
+      if (it.kind === "demo") {
+        if (typeof it.draw === "function") {
+          it.draw({
+            x: contentX0 + it.x,
+            y: yScreen,
+            w: it.w,
+            h: it.h,
+            clipX0: contentX0,
+            clipY0: contentY0,
+            clipX1: contentX1,
+            clipY1: contentY1
+          });
+        }
+        continue;
+      }
+
+      if (it.kind === "text") {
+        if (it.prefix) {
+          printExSafe("- ", contentX0 + it.prefixX, yScreen, hc.textCol, false, true);
+        }
+
+        var xx = contentX0 + it.x;
+        var charW = it.small ? hc.bodyCharW : hc.headingCharW;
+        var toks = it.tokens;
+        if (toks && toks.length) {
+          drawTokensLine(toks, xx, yScreen, charW, false, !!it.small, hc.textCol);
+        }
+      }
+    }
+
+    // Scrollbar (only when needed).
+    var contentH = layout ? layout.contentH : 0;
+    var viewH = (contentY1 - contentY0 + 1);
+    if (contentH > viewH && viewH > 0) {
+      var trackX = contentX1 + 2;
+      if (trackX < W - 2) {
+        var trackY0 = contentY0;
+        var trackH = viewH;
+        rectSafe(trackX, trackY0, 2, trackH, hc.borderCol);
+        var maxScroll = contentH - viewH;
+        var thumbH = Math.floor((viewH * viewH) / contentH);
+        if (thumbH < 6) thumbH = 6;
+        if (thumbH > trackH) thumbH = trackH;
+        var thumbY = trackY0 + Math.floor((scrollY * (trackH - thumbH)) / maxScroll);
+        rectSafe(trackX, thumbY, 2, thumbH, hc.accentCol);
+      }
+    }
+
+    // Header/footer masks (to hide any demo overdraw in the margins).
+    if (headerH > 0) rectSafe(0, 0, W, headerH, hc.panelCol);
+    if (footerH > 0) rectSafe(0, Hh - footerH, W, footerH, hc.panelCol);
+    if (footerH > 0) rectSafe(0, Hh - footerH - 1, W, 1, hc.bgCol);
+
+    // Single-line header: "How to play (1/3): Quick Start" + controls on the right.
+    if (headerH > 0) {
+      // Separator line under the header bar.
+      rectSafe(0, headerH - 1, W, 1, hc.borderCol);
+      rectSafe(0, headerH, W, 1, hc.bgCol);
+
+      var controls = "B:Back L/R:Page U/D:Scroll";
+      var charW = hc.bodyCharW;
+      var yH = Math.floor((headerH - hc.bodyLineH) / 2);
+      if (yH < 0) yH = 0;
+
+      var xCtrl = W - hc.padX - controls.length * charW;
+      if (xCtrl < hc.padX) xCtrl = hc.padX;
+      printExSafe(controls, xCtrl, yH, hc.mutedCol, true, true);
+
+      var prefix = "How to Play (" + (pageI + 1) + "/" + pages.length + "): ";
+      var x0 = hc.padX;
+      var gapPx = 2 * charW;
+      var wPrefix = printExSafe(prefix, x0, yH, hc.mutedCol, false, true);
+      var hasPrefixW = (typeof wPrefix === "number" && Number.isFinite(wPrefix));
+      if (!hasPrefixW) wPrefix = prefix.length * charW;
+
+      var xTitle = x0 + wPrefix;
+
+      var xMax = xCtrl - gapPx;
+      if (xMax < xTitle) xMax = xTitle;
+
+      var availPx = xMax - xTitle;
+      var availChars = hasPrefixW ? Math.floor(availPx / charW) : title.length;
+      if (availChars < 0) availChars = 0;
+
+      var titleDraw = title;
+      if (titleDraw.length > availChars) {
+        if (availChars <= 3) titleDraw = titleDraw.slice(0, availChars);
+        else titleDraw = titleDraw.slice(0, availChars - 3) + "...";
+      }
+
+      if (titleDraw) {
+        printExSafe(titleDraw, xTitle, yH, hc.titleCol, false, true);
+      }
+    }
+  }
+
+  H.tick = function (raw) {
+    var cfg = MC.config;
+    if (!raw) raw = MC.controls.pollGlobals();
+
+    var pages = pagesFromContent();
+    if (!pages || pages.length === 0) {
+      cls(MC.Pal.Black);
+      printExSafe("How to Play", 8, 8, MC.Pal.White, false, false);
+      printExSafe("(missing content)", 8, 18, MC.Pal.LightGrey, false, true);
+      return null;
+    }
+
+    ensureLayouts(cfg, pages);
+    ensureScrollMemory(pages.length);
+
+    var st = H.st;
+    st.pageI = wrapI(st.pageI, pages.length);
+
+    var actions = MC.controls.actions(H.ctrl, raw, cfg.controls);
+
+    if (actions.b && actions.b.pressed) {
+      return { kind: "backToTitle" };
+    }
+
+    if (actions.nav && actions.nav.left) st.pageI = wrapI(st.pageI - 1, pages.length);
+    if (actions.nav && actions.nav.right) st.pageI = wrapI(st.pageI + 1, pages.length);
+
+    var layout = st.layoutByPage ? st.layoutByPage[st.pageI] : null;
+
+    // Scroll input.
+    var hc = cfg.howto;
+    var headerH = hc.headerH;
+    var footerH = hc.footerH;
+    var bodyY0 = headerH;
+    var bodyY1 = cfg.screenH - footerH - 1;
+    var contentY0 = bodyY0 + hc.padY;
+    var contentY1 = bodyY1 - hc.padY;
+    var viewH = (contentY1 - contentY0 + 1);
+    var contentH = layout ? layout.contentH : 0;
+    var maxScroll = (contentH > viewH) ? (contentH - viewH) : 0;
+
+    var scroll = st.scrollByPage[st.pageI];
+    if (actions.nav && actions.nav.up) scroll -= hc.scrollStepPx;
+    if (actions.nav && actions.nav.down) scroll += hc.scrollStepPx;
+    scroll = clamp(scroll, 0, maxScroll);
+    st.scrollByPage[st.pageI] = scroll;
+
+    drawHowto(cfg, pages, layout, st.pageI, scroll);
+    return null;
+  };
+})();
+
+// ---- src/82_howto_content.js ----
+// How-to-Play content (Phase 14).
+// Intended workflow: humans edit strings; small demo draw() blocks are optional.
+(function initHowtoContent() {
+  var H = MC.howto;
+
+  function demoTwoCards(idA, idB, dx) {
+    dx = dx || 20;
+    return function (ctx) {
+      H.drawMiniCardById(idA, ctx.x, ctx.y);
+      H.drawMiniCardById(idB, ctx.x + dx, ctx.y);
+    };
+  }
+
+  function shadowBarAt(xFace, yFace) {
+    var L = MC.config.render.layout;
+    var S = MC.config.render.style;
+    rect(xFace + L.shadowBarDx, yFace, 1, L.faceH, S.colShadow);
+  }
+
+  H.CONTENT = {
+    pages: [
+      {
+        id: "quickStart",
+        title: "Quick Start",
+        blocks: [
+          { kind: "h", text: "Goal" },
+          {
+            kind: "p",
+            text:
+              "Be the first player to complete <c4>3</c> property <c4>sets</c>. A set is complete when it has the required number of properties (2, 3, or 4 depending on the color).",
+            demo: { layout: "left", w: 30, h: 25, draw: function(ctx) {
+              var L = MC.config.render.layout;
+              var dx = L.stackStrideX;
+              demoTwoCards("wild_cb", "prop_cyan", dx)(ctx);
+              shadowBarAt(ctx.x + dx, ctx.y);
+            }}
+          },
+
+          { kind: "h", text: "On your turn" },
+          {
+            kind: "bullets",
+            items: [
+              "<c4>Draw 2</c> cards (or <c4>5</c> if you start the turn with an empty hand).",
+              "<c4>Play</c> up to <c4>3</c> cards.",
+              "End your turn. If you have more than <c4>7</c> cards, you must <c4>discard</c> down."
+            ]
+          },
+
+          { kind: "h", text: "Quick tips" },
+          {
+            kind: "bullets",
+            items: [
+              "<c4>Tap A</c> on a hand card to see what it can do right now.",
+              "<c4>Hold X</c> to Inspect the selected card to learn about its properties and effects.",
+              "If you owe money, you choose what to pay with (from your <c4>Bank</c> and your <c4>Properties</c>).",
+              "The value of every card is shown in the top left corner."
+            ]
+          }
+        ]
+      },
+
+      {
+        id: "controls",
+        title: "Controls",
+        blocks: [
+          { kind: "h", text: "Basics" },
+          {
+            kind: "bullets",
+            items: [
+              "<c4>D-pad</c>: move selection (cursor).",
+              "<c4>A (tap)</c>: open a card menu / confirm a choice.",
+              "<c4>A (hold)</c>: enter targeting faster (release A confirms when entered from a hold).",
+              "<c4>B</c>: back / cancel (when allowed).",
+              "<c4>X (hold)</c>: Inspect overlay (after a short delay)."
+            ],
+            demo: { layout: "above", w: 60, h: 14, draw: function (ctx) {
+              // Tiny button legend mock.
+              rect(ctx.x, ctx.y, 60, 14, MC.Pal.Black);
+              rectb(ctx.x, ctx.y, 60, 14, MC.Pal.Grey);
+              print("A", ctx.x + 6, ctx.y + 4, MC.Pal.Yellow);
+              print("B", ctx.x + 20, ctx.y + 4, MC.Pal.Red);
+              print("X", ctx.x + 34, ctx.y + 4, MC.Pal.Cyan);
+              print("Y", ctx.x + 48, ctx.y + 4, MC.Pal.LightGrey);
+            } }
+          },
+
+          { kind: "h", text: "Menus and targeting" },
+          {
+            kind: "p",
+            text:
+              "Most actions start from the card menu (tap <c4>A</c> on a hand card).\n" +
+              "If an action needs a destination/target, you enter targeting and cycle options with <c4>L/R</c>."
+          }
+        ]
+      },
+
+      {
+        id: "details",
+        title: "Details",
+        blocks: [
+          { kind: "h", text: "Cards (what they do)" },
+          {
+            kind: "bullets",
+            items: [
+              "<c12>1</c> - <c4>Money</c>: bank it as cash, or spend it to pay debts.",
+              "<c12>2</c> - <c4>Properties</c>: place into sets on your table. (Not bankable.)",
+              "<c12>3</c> - <c4>Wild</c>: a property that can be used as either color.",
+              "<c12>4</c> - <c4>Rent</c>: charge rent for one of your sets that matches the color bars (opponent must pay).",
+              "<c12>5</c> - <c4>Sly Deal</c>: steal one opponent property (not from a complete set).",
+              "<c12>6</c> - <c4>Just Say No</c>: cancel an action played against you.",
+              "<c4>Banking action cards</c>: action cards can be banked for money.\nOnce banked, they count as money only for the rest of the game (you can't play them as actions)."
+            ],
+            demo: { layout: "above", w: 150, h: 25, draw: function (ctx) {
+              var dx = 0
+              print("1", ctx.x + dx,  ctx.y + 0, MC.Pal.White, true, 1, true);
+              H.drawMiniCardById("money_1", ctx.x + dx + 6, ctx.y);
+              dx += 26;
+              print("2", ctx.x + dx, ctx.y + 0, MC.Pal.White, true, 1, true);
+              H.drawMiniCardById("prop_orange", ctx.x + dx + 6, ctx.y);
+              dx += 26;
+              print("3", ctx.x + dx, ctx.y + 0, MC.Pal.White, true, 1, true);
+              H.drawMiniCardById("wild_mo", ctx.x + dx + 6, ctx.y);
+              dx += 26;
+              print("4", ctx.x + dx, ctx.y + 0, MC.Pal.White, true, 1, true);
+              H.drawMiniCardById("rent_mo", ctx.x + dx + 6, ctx.y);
+              dx += 26;
+              print("5", ctx.x + dx, ctx.y + 0, MC.Pal.White, true, 1, true);
+              H.drawMiniCardById("sly_deal", ctx.x + dx + 6, ctx.y);
+              dx += 26;
+              print("6", ctx.x + dx,ctx.y + 0, MC.Pal.White, true, 1, true);
+              H.drawMiniCardById("just_say_no", ctx.x + dx + 6, ctx.y);
+            } }  
+          },
+          { kind: "h", text: "Paying a debt" },
+          {
+            kind: "p",
+            text:
+              "When you owe money (for example, Rent), you must pay until the debt is covered.\n" +
+              "Navigate to a payable card and press <c4>A</c> to pay it.",
+            demo: { layout: "left", w: 40, h: 25, draw: demoTwoCards("money_2", "prop_black", 20) }
+          },
+          {
+            kind: "bullets",
+            items: [
+              "You can pay using cards from your <c4>Bank</c> and <c4>Properties</c> (not from hand).",
+              "If you pay with a <c4>Property</c>, the opponent receives it and must place it.",
+              "If a set has a <c4>House</c>, that House must be paid first before properties from that set.",
+              "Overpay is allowed. <c4>No change</c> is returned."
+            ]
+          },
+
+          { kind: "h", text: "Placing received properties" },
+          {
+            kind: "p",
+            text:
+              "When you receive properties as payment, you place them one-by-one into your sets.\n" +
+              "Wild properties let you pick which color they count as while placing.",
+          },
+
+          { kind: "h", text: "Wild move (optional prompt)" },
+          {
+            kind: "p",
+            text:
+              "After some property placements, the game may offer a one-time option to move a Wild.\n" +
+              "Press <c4>A</c> to move it, or <c4>B</c> to skip.",
+          },
+
+          { kind: "h", text: "Just Say No windows" },
+          {
+            kind: "p",
+            text:
+              "If you have a Just Say No in hand, you can use it when an action targets you.\n" +
+              "Important: for action-sourced debts, JSN is only allowed before any payment is made."
+          }
+        ]
+      }
+    ]
   };
 })();
 
@@ -8426,7 +9198,7 @@ MC.debug.tickTextMode = function () {
 };
 
 // Main modes:
-// 0=DebugText, 1=Render, 2=Title
+// 0=DebugText, 1=Render, 2=Title, 3=HowTo
 MC.mainTick = function () {
   var dbgEnabled = !!(MC.config.debug.enabled && MC.debug.toolsOn);
 
@@ -8447,6 +9219,12 @@ MC.mainTick = function () {
     if (MC.title && typeof MC.title.tick === "function") intentT = MC.title.tick(rawT);
 
     if (intentT && intentT.kind) {
+      if (intentT.kind === "howToPlay") {
+        clearTitleOverlay();
+        MC._mainMode = 3;
+        return;
+      }
+
       if (intentT.kind === "startNewGame") {
         clearTitleOverlay();
         if (MC.debug && typeof MC.debug.startNewGame === "function") MC.debug.startNewGame();
@@ -8463,6 +9241,18 @@ MC.mainTick = function () {
       }
     }
 
+    return;
+  }
+
+  // How-to-Play mode (Phase 14).
+  if (MC._mainMode === 3) {
+    var rawH = MC.controls.pollGlobals();
+    var intentH = null;
+    if (MC.howto && typeof MC.howto.tick === "function") intentH = MC.howto.tick(rawH);
+    if (intentH && intentH.kind === "backToTitle") {
+      MC._mainMode = 2;
+      return;
+    }
     return;
   }
 
