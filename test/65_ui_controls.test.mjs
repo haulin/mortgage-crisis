@@ -829,13 +829,15 @@ test("ui: onEvents stages dealing and hides drawn cards until revealed", async (
   assert.ok(!(c.selected && c.selected.kind === "hand" && (c.selected.uid === uid0 || c.selected.uid === uid1)), "expected selection to not reveal hidden dealt cards");
 
   // Tick until first card is revealed.
-  const frames = ctx.MC.config.ui.dealFramesPerCard;
+  assert.ok(view.anim && view.anim.active && view.anim.active.kind === "deal", "expected active deal anim after draw events");
+  const frames = view.anim.active.dealFrames;
+  const gap = view.anim.active.gapFrames;
   for (let f = 0; f < frames; f++) ctx.MC.anim.tick(s, view);
   assert.ok(!view.anim.hiddenByP[p][uid0], "expected uid0 revealed after dealFramesPerCard");
   assert.ok(view.anim.hiddenByP[p][uid1], "expected uid1 still hidden");
 
   // Tick through gap + second reveal.
-  for (let f = 0; f < ctx.MC.config.ui.dealGapFrames; f++) ctx.MC.anim.tick(s, view);
+  for (let f = 0; f < gap; f++) ctx.MC.anim.tick(s, view);
   for (let f = 0; f < frames; f++) ctx.MC.anim.tick(s, view);
   assert.ok(!view.anim.hiddenByP[p][uid1], "expected uid1 revealed after second deal");
 
@@ -845,6 +847,149 @@ test("ui: onEvents stages dealing and hides drawn cards until revealed", async (
 
   // Ensure original hand cards are still present (sanity).
   for (const u of beforeHand) assert.ok(s.players[p].hand.includes(u), "expected original hand uid to remain");
+});
+
+test("ui: deal lock keeps bank selection stable while new hand cards appear", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  const s = ctx.MC.state.newGame({ seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+  s.winnerP = ctx.MC.state.NO_WINNER;
+  ctx.MC.state.clearPrompt(s);
+
+  // Force a simple state: empty hands, known bank stack, and a known 2-card draw.
+  const b0 = ctx.MC.state.takeUid(s, "money_1");
+  const b1 = ctx.MC.state.takeUid(s, "money_2");
+  const b2 = ctx.MC.state.takeUid(s, "money_3");
+  const d0 = ctx.MC.state.takeUid(s, "money_4");
+  const d1 = ctx.MC.state.takeUid(s, "money_5");
+
+  for (let p = 0; p < 2; p++) {
+    s.players[p].hand = [];
+    s.players[p].bank = [];
+    s.players[p].sets = [];
+  }
+  s.players[0].bank = [b0, b1, b2];
+  s.deck = [d0, d1]; // drawToHand pops from the end
+  s.discard = [];
+
+  const view = ctx.MC.ui.newView();
+  view.cursor.row = ctx.MC.render.ROW_P_HAND;
+
+  // Select the middle bank card and snapshot focus anchor.
+  let c0 = ctx.MC.ui.computeRowModels(s, view);
+  const rm0 = c0.models[ctx.MC.render.ROW_P_HAND];
+  const iB = rm0.items.findIndex((it) => it && it.kind === "bank" && it.uid === b1);
+  assert.ok(iB >= 0, "expected to find bank item b1");
+  view.cursor.i = iB;
+  c0 = ctx.MC.ui.computeRowModels(s, view);
+  ctx.MC.ui.focus.snapshot(s, view, c0);
+  assert.ok(view.ux && view.ux.selAnchor && view.ux.selAnchor.uid === b1, "expected selAnchor uid to be bank b1");
+
+  // Trigger a draw->deal animation.
+  const events = [];
+  ctx.MC.state.drawToHand(s, 0, 2, events);
+  ctx.MC.anim.onEvents(s, view, events);
+  assert.ok(view.anim && view.anim.lock, "expected anim lock during deal");
+
+  function assertSelectedBankUid() {
+    const c = ctx.MC.ui.computeRowModels(s, view);
+    assert.ok(c.selected && c.selected.uid === b1, "expected selected uid to stay on b1 during deal lock");
+    assert.ok(c.selected.loc && c.selected.loc.zone === "bank" && c.selected.loc.p === 0, "expected selection to remain in bank zone");
+  }
+
+  const frames = ctx.MC.config.ui.dealFramesPerCard;
+  const gap = ctx.MC.config.ui.dealGapFrames;
+  const act = { nav: {}, a: {}, b: {}, x: {} };
+
+  // Before and during first reveal.
+  assertSelectedBankUid();
+  for (let f = 0; f < frames; f++) {
+    ctx.MC.ui.step(s, view, act);
+    if (view.anim && view.anim.lock) assertSelectedBankUid();
+  }
+
+  // Gap + second reveal.
+  for (let f = 0; f < gap; f++) {
+    ctx.MC.ui.step(s, view, act);
+    if (view.anim && view.anim.lock) assertSelectedBankUid();
+  }
+  for (let f = 0; f < frames; f++) {
+    ctx.MC.ui.step(s, view, act);
+    if (view.anim && view.anim.lock) assertSelectedBankUid();
+  }
+});
+
+test("ui: payDebt bank selection does not jump when xfer lock clears (mid-stack payment)", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  const s = ctx.MC.state.newGame({ seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+  s.winnerP = ctx.MC.state.NO_WINNER;
+
+  // Minimal board: no hand/sets; 5-card bank so paying index 3 causes a splice+shift.
+  for (let p = 0; p < 2; p++) {
+    s.players[p].hand = [];
+    s.players[p].bank = [];
+    s.players[p].sets = [];
+  }
+
+  const b0 = ctx.MC.state.takeUid(s, "money_1");
+  const b1 = ctx.MC.state.takeUid(s, "money_2");
+  const b2 = ctx.MC.state.takeUid(s, "money_3");
+  const b3 = ctx.MC.state.takeUid(s, "money_4");
+  const b4 = ctx.MC.state.takeUid(s, "money_5");
+  s.players[0].bank = [b0, b1, b2, b3, b4];
+
+  // Open a simple payDebt prompt that can be covered by a single money card.
+  ctx.MC.state.setPrompt(s, { kind: "payDebt", p: 0, toP: 1, rem: 1, buf: [] });
+
+  const view = ctx.MC.ui.newView();
+  // Enter prompt mode and build initial models/cameras.
+  ctx.MC.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+
+  // Select bank card at loc.i===3.
+  let c0 = ctx.MC.ui.computeRowModels(s, view);
+  const rm0 = c0.models[ctx.MC.render.ROW_P_HAND];
+  const iPay = rm0.items.findIndex((it) => it && it.loc && it.loc.zone === "bank" && it.loc.p === 0 && it.loc.i === 3);
+  assert.ok(iPay >= 0, "expected to find bank card at loc.i=3");
+  view.cursor.row = ctx.MC.render.ROW_P_HAND;
+  view.cursor.i = iPay;
+
+  // Pay with the selected card (this snapshots selAnchor to the paid uid).
+  const intent = ctx.MC.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.ok(intent && intent.kind === "applyCmd" && intent.cmd && intent.cmd.kind === "payDebt");
+
+  const res = ctx.MC.engine.applyCommand(s, intent.cmd);
+  ctx.MC.anim.onEvents(s, view, (res && res.events) ? res.events : []);
+  assert.ok(view.anim && view.anim.lock, "expected xfer anim lock after payDebt");
+
+  // After splice, cursor index should now point at the card that used to be loc.i===4.
+  // The bug: when the lock clears, focus.preserve used to snap back toward the removed card's
+  // old screen position (right-anchored bank), which is nearest to loc.i===2.
+  const act = { nav: {}, a: {}, b: {}, x: {} };
+  let guard = 0;
+  while (view.anim && view.anim.lock) {
+    guard += 1;
+    assert.ok(guard < 500, "expected xfer lock to clear quickly");
+
+    const prevLock = !!view.anim.lock;
+    const cBefore = ctx.MC.ui.computeRowModels(s, view);
+    assert.ok(cBefore.selected && cBefore.selected.loc && cBefore.selected.loc.zone === "bank", "expected selection to remain in bank during lock");
+    const uidBefore = cBefore.selected.uid;
+
+    ctx.MC.ui.step(s, view, act);
+
+    const nowLock = !!(view.anim && view.anim.lock);
+    if (prevLock && !nowLock) {
+      const cAfter = ctx.MC.ui.computeRowModels(s, view);
+      assert.ok(cAfter.selected && cAfter.selected.loc && cAfter.selected.loc.zone === "bank");
+      assert.equal(cAfter.selected.uid, uidBefore, "expected bank selection uid to not jump when xfer lock clears");
+      break;
+    }
+  }
 });
 
 test("ui: placeReceived prompt - A on real hand snaps back to faux-hand", async () => {
@@ -1681,6 +1826,36 @@ test("ui: exiting placeReceived prompt with playsLeft<=0 snaps to End", async ()
   assert.equal(c.selected.id, "endTurn");
 });
 
+test("ui: exiting replaceWindow prompt with playsLeft<=0 snaps to End", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.MC.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 1;
+  s.winnerP = ctx.MC.state.NO_WINNER;
+  ctx.MC.state.clearPrompt(s);
+
+  // Spend the last play on a prop placement that opens replaceWindow.
+  const mv = ctx.MC.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);
+  assert.ok(mv, "expected playProp into set 0");
+  ctx.MC.engine.applyCommand(s, mv);
+  assert.equal(s.playsLeft, 0, "expected to be out of plays after the triggering playProp");
+  assert.ok(s.prompt && s.prompt.kind === "replaceWindow");
+
+  const view = ctx.MC.ui.newView();
+  // Tick once while prompt is active so lastPromptKind is recorded.
+  ctx.MC.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+
+  // Prompt ends between ticks (simulate player choosing to skip the optional move).
+  ctx.MC.engine.applyCommand(s, { kind: "skipReplaceWindow" });
+  assert.equal(s.prompt, null);
+  ctx.MC.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+
+  const c = ctx.MC.ui.computeRowModels(s, view);
+  assert.equal(c.selected.row, ctx.MC.render.ROW_CENTER);
+  assert.equal(c.selected.kind, "btn");
+  assert.equal(c.selected.id, "endTurn");
+});
+
 test("ui: payDebt prompt auto-focuses bank when available, else house/props", async () => {
   const ctx = await loadSrcIntoVm();
 
@@ -1850,7 +2025,7 @@ test("ui: debug pause latch survives long opponent delay and clears on first non
 test("debug: Next/Reset preserve autofocus pause latch across debugReset", async () => {
   const ctx = await loadSrcIntoVm();
 
-  ctx.MC.debug.reset();
+  ctx.MC.debug.reset({ skipGameStartAnim: true });
   const v0 = ctx.MC.debug.view;
   assert.ok(v0 && v0.ux);
   assert.equal(v0.ux.autoFocusPausedByDebug, false);
@@ -1864,7 +2039,7 @@ test("debug: Next/Reset preserve autofocus pause latch across debugReset", async
 
   // A plain debugReset should preserve a previously latched pause.
   v1.ux.autoFocusPausedByDebug = true;
-  ctx.MC.debug.reset();
+  ctx.MC.debug.reset({ skipGameStartAnim: true });
   const v2 = ctx.MC.debug.view;
   assert.notEqual(v2, v1, "expected debugReset to recreate the view");
   assert.ok(v2 && v2.ux);
@@ -1878,7 +2053,7 @@ test("debug: game over does not freeze controls when actor!=0 (Reset still works
 
   // Enter Render mode deterministically.
   ctx.MC._mainMode = 1;
-  ctx.MC.debug.reset();
+  ctx.MC.debug.reset({ skipGameStartAnim: true });
 
   // Simulate opponent win while it's still opponent's turn.
   ctx.MC.debug.state.activeP = 1;

@@ -15,10 +15,11 @@ Key idea: prompts are **rules-owned** and can bind to a player via `prompt.p` in
 ### New prompt kinds
 
 - **`payDebt`**
-  - Shape: `{ kind:"payDebt", p:<payer>, toP:<payee>, rem:<int>, buf:[uids...] }`
+  - Shape: `{ kind:"payDebt", p:<payer>, toP:<payee>, rem:<int>, buf:[uids...], srcAction?: { kind, fromP, actionUid } }`
   - Meaning: payer must pay down a remaining amount `rem`.
   - Selected cards are removed from the payer’s zones and pushed into `buf` (prompt-owned).
   - **Auto-finalizes** when `rem <= 0` or the payer has no remaining payables.
+  - `srcAction` was added in Phase 08 to support explicit response windows (e.g. Rent + Just Say No); it’s absent for non-action-sourced debts.
 
 - **`placeReceived`**
   - Shape: `{ kind:"placeReceived", p:<recipient>, uids:[uids...] }`
@@ -48,10 +49,11 @@ Key idea: prompts are **rules-owned** and can bind to a player via `prompt.p` in
 
 ### Faux-hand UI (recipient placement)
 
-- During `placeReceived` (P0-only UI for now):
-  - Row 4 shows a **faux-hand** (received properties) on the left, and the real hand/bank on the right.
-  - Only faux-hand cards are actionable.
-  - `A` on a faux-hand card enters **targeting** to choose destination set / new set.
+- During `placeReceived`:
+  - If the actor is **P0**, Row 4 shows a **faux-hand** (received properties) on the left, and the real hand/bank on the right.
+    - Only faux-hand cards are actionable.
+    - `A` on a faux-hand card enters **targeting** to choose destination set / new set.
+  - If the actor is **P1** (opponent/AI), the received buffer is still rendered as a faux-hand area on the opponent’s row for readability, but it is effectively **read-only** because player input is suppressed while AI is acting.
 
 ### Rent (vertical slice)
 

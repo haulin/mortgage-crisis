@@ -73,6 +73,7 @@ test("config sanity: render.layout/style/spr/moneyBgByValue shape", async () => 
     "centerTopInsetY",
     "centerDeckX",
     "centerPileGapX",
+    "centerPayBufX",
     "centerPreviewX",
     "centerPreviewGapX",
     "centerDescDy",
@@ -174,8 +175,14 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   requirePosNum(MC.config.ui, "navConeKUpDown");
 
   // Animation timings (frames).
+  requirePosNum(MC.config.ui, "animSpeedMult");
   requirePosNum(MC.config.ui, "dealFramesPerCard");
   requirePosNum(MC.config.ui, "dealGapFrames");
+  requirePosNum(MC.config.ui, "xferFramesPerCard");
+  requirePosNum(MC.config.ui, "xferGapFrames");
+  requirePosNum(MC.config.ui, "xferHoldFromFrames");
+  requirePosNum(MC.config.ui, "xferHoldFrames");
+  requirePosNum(MC.config.ui, "gameStartToastFrames");
   requirePosNum(MC.config.ui, "shuffleAnimFrames");
   requirePosNum(MC.config.ui, "shuffleToastFrames");
   requirePosNum(MC.config.ui, "aiStepDelayFrames");

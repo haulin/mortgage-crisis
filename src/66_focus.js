@@ -319,6 +319,22 @@ MC.ui.focus.rules = [
     }
   },
   {
+    id: "OnExitReplaceWindowPrompt_End",
+    enabled: function () { return true; },
+    when: function (ctx) {
+      if (ctx.state.winnerP !== MC.state.NO_WINNER) return false;
+      var pr = ctx.state.prompt;
+      var cur = !!(pr && pr.kind === "replaceWindow" && pr.p === 0);
+      var exited = (ctx.view.ux.lastPromptForP0 && ctx.view.ux.lastPromptKind === "replaceWindow" && !cur);
+      if (!exited) return false;
+      if (ctx.state.activeP !== 0) return false;
+      return (ctx.state.playsLeft <= 0);
+    },
+    pick: function (ctx) {
+      return MC.ui.focus._pickCenterBtn(ctx.computed, "endTurn");
+    }
+  },
+  {
     id: "OnEnterRespondActionPrompt_FocusTarget",
     enabled: function () { return true; },
     when: function (ctx) {

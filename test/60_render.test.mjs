@@ -37,7 +37,7 @@ test("render: highlight is drawn last for selected card", async () => {
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
   const debug = ctx.MC.debug;
-  ctx.MC.debug.reset();
+  ctx.MC.debug.reset({ skipGameStartAnim: true });
   debug.state.activeP = 0;
   debug.view.cursor.row = ctx.MC.render.ROW_P_HAND;
   debug.view.cursor.i = 0;
@@ -66,7 +66,7 @@ test("render: feedback blink turns highlight red", async () => {
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
-  ctx.MC.debug.reset();
+  ctx.MC.debug.reset({ skipGameStartAnim: true });
   const s = ctx.MC.debug.state;
   const v = ctx.MC.debug.view;
   s.activeP = 0;
@@ -91,7 +91,7 @@ test("render: stack uses stride=8 and shadow at xFace-1", async () => {
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
   // Create a deterministic table state with at least one stack of 2 cards.
-  ctx.MC.debug.reset();
+  ctx.MC.debug.reset({ skipGameStartAnim: true });
   // Ensure P0 has a set with 2 props via scenario.
   const s2 = ctx.MC.state.newGame({ scenarioId: "houseBasic", seedU32: 1 });
   const view = newView(ctx);
@@ -606,6 +606,9 @@ test("render: shuffle masking shows discard empty while deck shuffles", async ()
     q: [],
     lock: true,
     hiddenByP: [{}, {}],
+    hiddenByUid: {},
+    lastPosByUid: {},
+    payBufUids: [],
     // t=9 ensures the renderer is in the "2 underlayers" shuffle phase.
     active: { kind: "shuffle", t: 9, frames: 42, deckNVis: 0, discardNVis: 0 }
   };

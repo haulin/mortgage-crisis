@@ -69,9 +69,10 @@
             items: [
               "<c4>D-pad</c>: move selection (cursor).",
               "<c4>A (tap)</c>: open a card menu / confirm a choice.",
-              "<c4>A (hold)</c>: enter targeting faster (release A confirms when entered from a hold).",
+              "<c4>A (hold)</c>: enter quick play (use D-pad to cycle options, release A confirms).",
               "<c4>B</c>: back / cancel (when allowed).",
-              "<c4>X (hold)</c>: Inspect overlay (after a short delay)."
+              "<c4>X (hold)</c>: Inspect cards, buttons, deck for more information.",
+              "Similarly with keyboard, use arrow keys for navigation, Z for action/confirm, X for back/cancel, and A for inspect."
             ],
             demo: { layout: "above", w: 60, h: 14, draw: function (ctx) {
               // Tiny button legend mock.

@@ -507,6 +507,27 @@
       }
     }
 
+    // Phase 15: non-selectable center overlays (e.g. payDebt buffer stack).
+    if (rowM && rowM.overlayItems) {
+      for (i = 0; i < rowM.overlayItems.length; i++) {
+        var itO = rowM.overlayItems[i];
+        if (!itO) continue;
+        if (itO.kind === "payBuf") {
+          var uids = itO.uids;
+          if (!uids || uids.length === 0) continue;
+          var strideB = cfg.stackStrideX;
+          var stack = [];
+          var jB;
+          for (jB = 0; jB < uids.length; jB++) {
+            var uidB = uids[jB];
+            if (!uidB) continue;
+            stack.push({ kind: "payBufCard", uid: uidB, x: itO.x + jB * strideB, y: itO.y, depth: jB });
+          }
+          drawFannedStack(stack, { state: s, fanDir: 1, flip180: false, camX: 0, selectedItem: null, drawSelected: false, highlightCol: hlCol });
+        }
+      }
+    }
+
     // Overlay content area (right side).
     var C = R.center;
     var xPrev = C.preview.x;
@@ -1088,6 +1109,17 @@
       drawShadowBar(x, y);
       if (p === 1) drawCardBack(x, y, true);
       else drawMiniCard(state, uid, x, y, false);
+    } else if (ov.kind === "moveCard") {
+      var x2 = ov.x;
+      var y2 = ov.y;
+      var uid2 = ov.uid;
+      var flip180 = !!ov.flip180;
+      drawShadowBar(x2, y2);
+      drawMiniCard(state, uid2, x2, y2, flip180);
+      if (ov.outlinePal != null) {
+        rectbSafe(x2 - 1, y2 - 1, R.cfg.faceW, R.cfg.faceH, MC.Pal.Black);
+        rectbSafe(x2, y2, R.cfg.faceW, R.cfg.faceH, ov.outlinePal);
+      }
     }
   }
 

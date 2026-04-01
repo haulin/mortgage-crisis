@@ -364,10 +364,52 @@ test("Phase 06: paying house can overpay and resolves debt; house goes to recipi
   });
 
   assert.ok(res.events.some((e) => e.kind === "payDebt"), "expected payDebt event");
+  assert.ok(
+    res.events.some(
+      (e) => e && e.kind === "move" && e.uid === houseUid && e.from && e.from.zone === "promptBuf" && e.to && e.to.zone === "bank" && e.to.p === 1
+    ),
+    "expected move event for house transfer to recipient bank"
+  );
   assert.equal(state.players[0].sets[0].houseUid, 0, "expected house removed from set");
   assert.equal(state.players[1].bank.length, before + 1, "expected house transferred to bank");
   assert.equal(state.players[1].bank[state.players[1].bank.length - 1], houseUid);
   assert.equal(state.prompt, null, "expected prompt cleared (no properties received)");
+});
+
+test("Phase 15: payDebt property transfer emits move promptBuf->recvProps", async () => {
+  const ctx = await loadSrcIntoVm();
+  const state = ctx.MC.state.newGame({ seedU32: 1 });
+
+  // Force a simple prompt where a single property overpays and is received.
+  state.activeP = 0;
+  state.playsLeft = 3;
+  ctx.MC.state.clearPrompt(state);
+
+  const propUid = state.deck.find((u) => ctx.MC.state.defByUid(state, u).id === "prop_orange");
+  assert.ok(propUid, "expected prop_orange in deck");
+  state.deck = state.deck.filter((u) => u !== propUid);
+
+  const set = ctx.MC.state.newEmptySet();
+  set.props.push([propUid, ctx.MC.Color.Orange]);
+  state.players[0].sets = [set];
+  state.players[0].bank = [];
+
+  ctx.MC.state.setPrompt(state, { kind: "payDebt", p: 0, toP: 1, rem: 1, buf: [], srcAction: null });
+  assert.ok(state.prompt && state.prompt.kind === "payDebt");
+
+  const res = ctx.MC.engine.applyCommand(state, {
+    kind: "payDebt",
+    card: { uid: propUid, loc: { p: 0, zone: "setProps", setI: 0, i: 0 } }
+  });
+
+  assert.ok(
+    res.events.some(
+      (e) => e && e.kind === "move" && e.uid === propUid && e.from && e.from.zone === "promptBuf" && e.to && e.to.zone === "recvProps" && e.to.p === 1
+    ),
+    "expected move event for property transfer to recvProps"
+  );
+  assert.ok(state.prompt && state.prompt.kind === "placeReceived", "expected placeReceived prompt for recipient");
+  assert.equal(state.prompt.p, 1);
 });
 
 test("Phase 06: placeReceived allows placing from recvProps without consuming plays", async () => {
@@ -643,7 +685,21 @@ test("Phase 08: Sly Deal - respondAction offered when defender has JSN; respondP
   assert.equal(s.prompt.p, 1, "expected defender to respond");
 
   // Defender passes -> steal resolves and opens placement prompt for attacker.
-  ctx.MC.engine.applyCommand(s, { kind: "respondPass" });
+  const res2 = ctx.MC.engine.applyCommand(s, { kind: "respondPass" });
+  assert.ok(
+    res2.events.some(
+      (e) =>
+        e &&
+        e.kind === "move" &&
+        e.uid === propUid &&
+        e.from &&
+        e.from.zone === "setProps" &&
+        e.to &&
+        e.to.zone === "recvProps" &&
+        e.to.p === 0
+    ),
+    "expected move event for sly steal setProps->recvProps"
+  );
   assert.ok(s.prompt && s.prompt.kind === "placeReceived", "expected placeReceived prompt");
   assert.equal(s.prompt.p, 0, "expected attacker to place received property");
   assert.equal(s.prompt.uids.length, 1);

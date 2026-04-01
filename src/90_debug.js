@@ -16,6 +16,7 @@ MC.debug.reset = function (opts) {
   var keepPrevPause = !(opts && opts.keepPrevAutoFocusPause === false);
   var prevPaused = keepPrevPause ? !!d.view.ux.autoFocusPausedByDebug : false;
   var shouldPause = !!(opts && opts.pauseAutoFocus) || prevPaused;
+  var skipGameStartAnim = !!(opts && opts.skipGameStartAnim);
   var seedU32 = MC.seed.computeSeedU32();
   var scenarioId = d.scenarios[d.scenarioI];
   if (scenarioId === "default") {
@@ -25,6 +26,9 @@ MC.debug.reset = function (opts) {
   }
   d.view = MC.ui.newView();
   if (shouldPause) d.view.ux.autoFocusPausedByDebug = true;
+  // Phase 15: default newGame starts in the final 5/7 state; animate the initial deal.
+  // Skip scenarios so resets stay fast and deterministic for debugging.
+  if (scenarioId === "default" && !skipGameStartAnim) MC.anim.beginGameStart(d.state, d.view);
   d.ctrl = MC.controls.newState();
   d.ai = { wait: 0 };
   d.lastCmd = "";

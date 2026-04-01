@@ -7,7 +7,7 @@ MC.config = {
 
 // Meta/version display (Phase 11).
 MC.config.meta = {
-  version: "MVP v0.14"
+  version: "MVP v0.15"
 };
 
 // Debug/dev knobs (Phase 03b+). Keep these centralized so we can disable later.
@@ -44,8 +44,19 @@ MC.config.ui = {
   navConeKUpDown: 6,
 
   // Phase 05c+: animation timings (frames at 60fps).
+  // Debug aid: multiply animation timings for slow-motion debugging (1 = normal speed).
+  animSpeedMult: 3,
   dealFramesPerCard: 8,
   dealGapFrames: 2,
+  // Phase 15: transfer animations (frames at 60fps).
+  xferFramesPerCard: 8,
+  xferGapFrames: 2,
+  // Phase 15 polish: hold at the source before motion when AI chose the card/target.
+  xferHoldFromFrames: 18,
+  // Phase 15 polish: pause after the final payment selection before draining transfers.
+  xferHoldFrames: 12,
+  // Phase 15: game-start toast hold (frames at 60fps).
+  gameStartToastFrames: 60,
   // Shuffle: default includes ~1 extra 1→2→3 loop for readability.
   shuffleAnimFrames: 42,
   shuffleToastFrames: 42,
@@ -257,6 +268,9 @@ MC.config.render = {
     centerTopInsetY: 4,
     centerDeckX: 6,
     centerPileGapX: 6,
+    // Phase 15: payment/transfer buffer anchor (screen-space x).
+    // Y uses rowY[ROW_CENTER] + centerTopInsetY to match deck/discard.
+    centerPayBufX: 48,
     centerPreviewX: 70,
     centerPreviewGapX: 8,
     centerDescDy: 8,

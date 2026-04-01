@@ -41,7 +41,7 @@ MC.config = {
 
 // Meta/version display (Phase 11).
 MC.config.meta = {
-  version: "MVP v0.14"
+  version: "MVP v0.15"
 };
 
 // Debug/dev knobs (Phase 03b+). Keep these centralized so we can disable later.
@@ -78,8 +78,19 @@ MC.config.ui = {
   navConeKUpDown: 6,
 
   // Phase 05c+: animation timings (frames at 60fps).
+  // Debug aid: multiply animation timings for slow-motion debugging (1 = normal speed).
+  animSpeedMult: 3,
   dealFramesPerCard: 8,
   dealGapFrames: 2,
+  // Phase 15: transfer animations (frames at 60fps).
+  xferFramesPerCard: 8,
+  xferGapFrames: 2,
+  // Phase 15 polish: hold at the source before motion when AI chose the card/target.
+  xferHoldFromFrames: 18,
+  // Phase 15 polish: pause after the final payment selection before draining transfers.
+  xferHoldFrames: 12,
+  // Phase 15: game-start toast hold (frames at 60fps).
+  gameStartToastFrames: 60,
   // Shuffle: default includes ~1 extra 1→2→3 loop for readability.
   shuffleAnimFrames: 42,
   shuffleToastFrames: 42,
@@ -291,6 +302,9 @@ MC.config.render = {
     centerTopInsetY: 4,
     centerDeckX: 6,
     centerPileGapX: 6,
+    // Phase 15: payment/transfer buffer anchor (screen-space x).
+    // Y uses rowY[ROW_CENTER] + centerTopInsetY to match deck/discard.
+    centerPayBufX: 48,
     centerPreviewX: 70,
     centerPreviewGapX: 8,
     centerDescDy: 8,
@@ -1460,6 +1474,13 @@ MC.engine.applyCommand = function (state, cmd) {
 
     // Attacker receives the property and must place it.
     MC.state.setPrompt(state, { kind: "placeReceived", p: fromP, uids: [target.uid] });
+    events.push({
+      kind: "move",
+      uid: target.uid,
+      selectedByP: fromP,
+      from: { p: defP, zone: "setProps", setI: setI, i: pi },
+      to: { p: fromP, zone: "recvProps", i: 0 }
+    });
     // Direction: stolen from defender -> attacker.
     events.push({ kind: "slySteal", fromP: defP, toP: fromP, uid: target.uid });
   }
@@ -1520,6 +1541,14 @@ MC.engine.applyCommand = function (state, cmd) {
         throw new Error("bad_loc");
       }
 
+      var bufI = buf.length;
+      events.push({
+        kind: "move",
+        uid: uid,
+        selectedByP: p,
+        from: card.loc,
+        to: { p: p, zone: "promptBuf", i: bufI }
+      });
       buf.push(uid);
       prompt.rem = prompt.rem - payValueForUid(uid);
 
@@ -1537,7 +1566,14 @@ MC.engine.applyCommand = function (state, cmd) {
         var uidT = buf[i];
         var defT = MC.state.defByUid(state, uidT);
         if (defT && defT.kind === MC.CardKind.Property) {
+          var ri = recv.length;
           recv.push(uidT);
+          events.push({
+            kind: "move",
+            uid: uidT,
+            from: { p: p, zone: "promptBuf", i: i },
+            to: { p: toP, zone: "recvProps", i: ri }
+          });
         } else {
           state.players[toP].bank.push(uidT);
           events.push({
@@ -4166,6 +4202,27 @@ MC.layout.playerForRow = function (row) {
       }
     }
 
+    // Phase 15: non-selectable center overlays (e.g. payDebt buffer stack).
+    if (rowM && rowM.overlayItems) {
+      for (i = 0; i < rowM.overlayItems.length; i++) {
+        var itO = rowM.overlayItems[i];
+        if (!itO) continue;
+        if (itO.kind === "payBuf") {
+          var uids = itO.uids;
+          if (!uids || uids.length === 0) continue;
+          var strideB = cfg.stackStrideX;
+          var stack = [];
+          var jB;
+          for (jB = 0; jB < uids.length; jB++) {
+            var uidB = uids[jB];
+            if (!uidB) continue;
+            stack.push({ kind: "payBufCard", uid: uidB, x: itO.x + jB * strideB, y: itO.y, depth: jB });
+          }
+          drawFannedStack(stack, { state: s, fanDir: 1, flip180: false, camX: 0, selectedItem: null, drawSelected: false, highlightCol: hlCol });
+        }
+      }
+    }
+
     // Overlay content area (right side).
     var C = R.center;
     var xPrev = C.preview.x;
@@ -4747,6 +4804,17 @@ MC.layout.playerForRow = function (row) {
       drawShadowBar(x, y);
       if (p === 1) drawCardBack(x, y, true);
       else drawMiniCard(state, uid, x, y, false);
+    } else if (ov.kind === "moveCard") {
+      var x2 = ov.x;
+      var y2 = ov.y;
+      var uid2 = ov.uid;
+      var flip180 = !!ov.flip180;
+      drawShadowBar(x2, y2);
+      drawMiniCard(state, uid2, x2, y2, flip180);
+      if (ov.outlinePal != null) {
+        rectbSafe(x2 - 1, y2 - 1, R.cfg.faceW, R.cfg.faceH, MC.Pal.Black);
+        rectbSafe(x2, y2, R.cfg.faceW, R.cfg.faceH, ov.outlinePal);
+      }
     }
   }
 
@@ -4856,7 +4924,14 @@ MC.ui.newView = function () {
       active: null,
       lock: false,
       // hiddenByP[p][uid] = true means uid is in-hand but not yet revealed.
-      hiddenByP: [{}, {}]
+      hiddenByP: [{}, {}],
+      // Phase 15: hide cards that are mid-transfer (any zone, any player).
+      hiddenByUid: {},
+      // Phase 15: last seen screen-space face origins by uid (for transfer animations).
+      lastPosByUid: {},
+      // Phase 15: visual list of cards in the pay/transfer buffer stack (center row).
+      // Used to keep the buffer visible while promptBuf-sourced transfers drain after the prompt clears.
+      payBufUids: []
     },
 
     // Feedback: blink + message, plus attempt counts.
@@ -5343,7 +5418,7 @@ MC.ui.buildRowItems = function (state, view, row, hint) {
         p: p,
         uid: uid,
         depth: depth,
-        fanDir: 0,
+        fanDir: isOp ? -1 : 1,
         x: xFace,
         y: yFace,
         w: L.faceW,
@@ -5359,7 +5434,7 @@ MC.ui.buildRowItems = function (state, view, row, hint) {
 
     // Hand zone (spaced).
     var pr = state.prompt;
-    var isRecvPrompt = !!(!isOp && row === 4 && pr && pr.kind === "placeReceived" && pr.p === 0 && p === 0);
+    var isRecvPrompt = !!(pr && pr.kind === "placeReceived" && pr.p === p);
     var recv = isRecvPrompt ? pr.uids : null;
     var nRecv = recv ? recv.length : 0;
 
@@ -5372,6 +5447,13 @@ MC.ui.buildRowItems = function (state, view, row, hint) {
       }
       var recvW = (nRecv > 0) ? ((nRecv - 1) * L.handStrideX + L.faceW) : 0;
       xHandStart = padX + recvW + L.stackGapX + 2;
+    } else if (isOp && isRecvPrompt && nRecv > 0) {
+      var xRecvStart = xHandStart;
+      for (i = 0; i < nRecv; i++) {
+        pushRecvHandItem(recv[i], xRecvStart - i * L.handStrideX, i);
+      }
+      var recvW2 = (nRecv > 0) ? ((nRecv - 1) * L.handStrideX + L.faceW) : 0;
+      xHandStart = xRecvStart - recvW2 - L.stackGapX - 2;
     }
 
     for (i = 0; i < nHand; i++) {
@@ -5986,8 +6068,57 @@ MC.ui.computeRowModels = function (state, view) {
     }
   }
 
+  // Phase 15: visualize the pay/transfer buffer as a non-selectable center-row stack.
+  // - During payDebt: show prompt.buf (what has been committed so far).
+  // - While draining: show view.anim.payBufUids even after the prompt clears.
+  var payBufUids = null;
+  if (pr && pr.kind === "payDebt" && pr.buf && pr.buf.length > 0) {
+    payBufUids = pr.buf.slice();
+  } else if (view.anim.payBufUids.length > 0) {
+    payBufUids = view.anim.payBufUids.slice();
+  }
+
+  if (payBufUids && payBufUids.length > 0) {
+    var rowCenter2 = MC.render.ROW_CENTER;
+    var rmCenter2 = models[rowCenter2];
+    if (rmCenter2 && rmCenter2.overlayItems) {
+      var topC = L.rowY[rowCenter2] + L.centerTopInsetY;
+      rmCenter2.overlayItems.push({
+        kind: "payBuf",
+        row: rowCenter2,
+        x: L.centerPayBufX,
+        y: topC,
+        w: L.faceW,
+        h: L.faceH,
+        uids: payBufUids,
+        nVis: payBufUids.length
+      });
+    }
+  }
+
   var computed = { models: models, selected: sel, meta: meta };
   computed = MC.anim.present(state, view, computed) || computed;
+
+  // Phase 15: snapshot last-seen screen-space positions for transfer animations.
+  if (view && view.anim && view.anim.lastPosByUid && computed && computed.models) {
+    var posByUid = view.anim.lastPosByUid;
+    var k;
+    for (k in posByUid) delete posByUid[k];
+
+    var row;
+    for (row = 0; row < computed.models.length; row++) {
+      var rmSnap = computed.models[row];
+      if (!rmSnap || !rmSnap.items) continue;
+      var camSnap = (view.camX && view.camX[row] != null) ? view.camX[row] : 0;
+      var iSnap;
+      for (iSnap = 0; iSnap < rmSnap.items.length; iSnap++) {
+        var itSnap = rmSnap.items[iSnap];
+        if (!itSnap || !itSnap.uid) continue;
+        posByUid[itSnap.uid] = { x: (itSnap.x - camSnap), y: itSnap.y, row: row };
+      }
+    }
+  }
+
   return computed;
 };
 
@@ -6321,6 +6452,42 @@ MC.ui.step = function (state, view, actions) {
   if (view.anim && view.anim.lock) {
     computed = MC.ui.computeRowModels(state, view);
     MC.ui.updateCameras(state, view, computed);
+
+    // Phase 15 polish: during deal animations, keep cursor stable by anchored uid so
+    // the selection highlight doesn't drift through the bank as new hand cards appear.
+    if (view.anim.active && view.anim.active.kind === "deal" && view.ux && view.ux.selAnchor && view.ux.selAnchor.uid && view.ux.selAnchor.loc) {
+      var a = view.ux.selAnchor;
+      var rowA = a.row;
+      if (rowA != null && rowA >= 0 && rowA < computed.models.length) {
+        var rmA = computed.models[rowA];
+        if (rmA && rmA.items) {
+          var iA;
+          var pick = null;
+          for (iA = 0; iA < rmA.items.length; iA++) {
+            var itA = rmA.items[iA];
+            if (!itA || !itA.uid || !itA.loc) continue;
+            if (itA.uid !== a.uid) continue;
+            if (String(itA.loc.zone || "") !== String(a.loc.zone || "")) continue;
+            if ((itA.loc.p != null) && (a.loc.p != null) && itA.loc.p !== a.loc.p) continue;
+            pick = { row: rowA, i: iA, item: itA };
+            break;
+          }
+
+          if (pick) {
+            MC.ui.cursorMoveTo(view, pick);
+            computed = MC.ui.computeRowModels(state, view);
+            MC.ui.updateCameras(state, view, computed);
+          }
+        }
+      }
+    }
+
+    // Phase 15 polish: during non-deal animation locks (notably xfer), refresh the selection
+    // anchor so focus preservation doesn't "snap" when the lock clears after list splices
+    // (e.g., paying with a mid-stack bank card).
+    if (!(view.anim.active && view.anim.active.kind === "deal")) {
+      MC.ui.focus.snapshot(state, view, computed);
+    }
     return null;
   }
 
@@ -7416,6 +7583,22 @@ MC.ui.focus.rules = [
     }
   },
   {
+    id: "OnExitReplaceWindowPrompt_End",
+    enabled: function () { return true; },
+    when: function (ctx) {
+      if (ctx.state.winnerP !== MC.state.NO_WINNER) return false;
+      var pr = ctx.state.prompt;
+      var cur = !!(pr && pr.kind === "replaceWindow" && pr.p === 0);
+      var exited = (ctx.view.ux.lastPromptForP0 && ctx.view.ux.lastPromptKind === "replaceWindow" && !cur);
+      if (!exited) return false;
+      if (ctx.state.activeP !== 0) return false;
+      return (ctx.state.playsLeft <= 0);
+    },
+    pick: function (ctx) {
+      return MC.ui.focus._pickCenterBtn(ctx.computed, "endTurn");
+    }
+  },
+  {
     id: "OnEnterRespondActionPrompt_FocusTarget",
     enabled: function () { return true; },
     when: function (ctx) {
@@ -7530,11 +7713,24 @@ MC.anim.onEvents = function (state, view, events) {
 
   // Config knobs are validated in tests (avoid runtime fallbacks in the cartridge).
   var uiCfg = MC.config.ui;
-  var dealFrames = Math.floor(uiCfg.dealFramesPerCard);
-  var dealGap = Math.floor(uiCfg.dealGapFrames);
-  var shuffleFrames = Math.floor(uiCfg.shuffleAnimFrames);
-  var shuffleToastFrames = Math.floor(uiCfg.shuffleToastFrames);
+  var animSpeedMult = uiCfg.animSpeedMult;
+  var dealFrames = Math.floor(uiCfg.dealFramesPerCard * animSpeedMult);
+  var dealGap = Math.floor(uiCfg.dealGapFrames * animSpeedMult);
+  var xferFrames = Math.floor(uiCfg.xferFramesPerCard * animSpeedMult);
+  var xferGap = Math.floor(uiCfg.xferGapFrames * animSpeedMult);
+  var xferHoldFromFrames = Math.floor(uiCfg.xferHoldFromFrames * animSpeedMult);
+  var xferHoldFrames = Math.floor(uiCfg.xferHoldFrames * animSpeedMult);
+  var shuffleFrames = Math.floor(uiCfg.shuffleAnimFrames * animSpeedMult);
+  var shuffleToastFrames = Math.floor(uiCfg.shuffleToastFrames * animSpeedMult);
   if (shuffleFrames < shuffleToastFrames) shuffleFrames = shuffleToastFrames;
+
+  var didPromptBufOutHold = false;
+
+  function payBufAnchor() {
+    var L = MC.config.render.layout;
+    var rowCenter = MC.render.ROW_CENTER;
+    return { x: L.centerPayBufX, y: L.rowY[rowCenter] + L.centerTopInsetY };
+  }
 
   var i;
   for (i = 0; i < events.length; i++) {
@@ -7589,9 +7785,188 @@ MC.anim.onEvents = function (state, view, events) {
         t: 0
       });
     }
+
+    if (ev.kind === "move") {
+      var uidM = ev.uid;
+      var from = ev.from;
+      var to = ev.to;
+      if (!uidM || !from || !to) continue;
+      var fz = String(from.zone || "");
+      var tz = String(to.zone || "");
+      var selectedByP = ev.selectedByP;
+
+      var isPromptBufOut = (fz === "promptBuf");
+      var isPromptBufIn = (tz === "promptBuf");
+      var isSlySteal = (fz === "setProps" && tz === "recvProps");
+
+      // Curated transfer animations for MVP polish (Phase 15).
+      var animate = false;
+      if (isPromptBufIn) {
+        // payDebt selection into the buffer: animate only when AI chose it.
+        animate = (selectedByP != null && selectedByP !== 0);
+      } else if (isPromptBufOut) {
+        if (tz === "bank") animate = true;
+        else if (tz === "recvProps") animate = true;
+      } else if (isSlySteal) {
+        animate = true; // to.p may be 0 (visible) or 1 (invisible -> fly to buffer anchor)
+      }
+      if (!animate) continue;
+
+      if (xferFrames < 1) xferFrames = 1;
+      if (xferGap < 0) xferGap = 0;
+
+      // Source position is taken from the last rendered snapshot when possible.
+      var fromX = null, fromY = null;
+      if (fz === "promptBuf") {
+        var pb = payBufAnchor();
+        fromX = pb.x;
+        fromY = pb.y;
+      } else if (anim.lastPosByUid && anim.lastPosByUid[uidM]) {
+        fromX = anim.lastPosByUid[uidM].x;
+        fromY = anim.lastPosByUid[uidM].y;
+      } else {
+        var pb2 = payBufAnchor();
+        fromX = pb2.x;
+        fromY = pb2.y;
+      }
+
+      // Source presentation hints (used for hold-at-source readability).
+      var fromRow = MC.render.ROW_CENTER;
+      var fromFlip180 = false;
+      var fromStackKey = null;
+      if (fz === "bank") {
+        fromRow = (from.p === 0) ? MC.render.ROW_P_HAND : MC.render.ROW_OP_HAND;
+        fromFlip180 = (fromRow === MC.render.ROW_OP_HAND);
+        fromStackKey = "bank:p" + from.p + ":row" + fromRow;
+      } else if (fz === "setProps" || fz === "setHouse") {
+        fromRow = (from.p === 0) ? MC.render.ROW_P_TABLE : MC.render.ROW_OP_TABLE;
+        fromFlip180 = (fromRow === MC.render.ROW_OP_TABLE);
+        fromStackKey = "set:p" + from.p + ":set" + from.setI;
+      } else if (fz === "recvProps") {
+        fromRow = (from.p === 0) ? MC.render.ROW_P_HAND : MC.render.ROW_OP_HAND;
+        fromFlip180 = (fromRow === MC.render.ROW_OP_HAND);
+        fromStackKey = "recvProps:p" + from.p + ":row" + fromRow;
+      } else if (fz === "hand") {
+        fromRow = (from.p === 0) ? MC.render.ROW_P_HAND : MC.render.ROW_OP_HAND;
+        fromFlip180 = (fromRow === MC.render.ROW_OP_HAND);
+      }
+
+      // Hide the moved card until it “lands” (presentation-only).
+      anim.hiddenByUid[uidM] = true;
+
+      // Keep the pay/transfer buffer visible while promptBuf-sourced transfers drain out.
+      if (isPromptBufOut) {
+        anim.payBufUids.push(uidM);
+      }
+
+      var holdFrom = 0;
+      if (selectedByP != null && selectedByP !== 0 && fz !== "promptBuf") holdFrom = xferHoldFromFrames;
+
+      // After the final payDebt selection, promptBuf can drain immediately; insert a short hold
+      // before the first promptBuf->dest transfer so the player can register the full buffer.
+      if (isPromptBufOut && !didPromptBufOutHold && xferHoldFrames > 0) {
+        anim.q.push({ kind: "xferHold", t: 0, frames: xferHoldFrames });
+        didPromptBufOutHold = true;
+      }
+
+      anim.q.push({
+        kind: "xfer",
+        uid: uidM,
+        fromX: fromX,
+        fromY: fromY,
+        fromRow: fromRow,
+        fromFlip180: fromFlip180,
+        fromStackKey: fromStackKey,
+        to: {
+          p: (to.p != null) ? to.p : 0,
+          zone: tz,
+          setI: (to.setI != null) ? to.setI : null,
+          i: (to.i != null) ? to.i : null
+        },
+        fromPromptBuf: !!isPromptBufOut,
+        t: 0,
+        holdFromFrames: holdFrom,
+        frames: xferFrames,
+        gapFrames: xferGap,
+        phase: (holdFrom > 0) ? "holdFrom" : "move"
+      });
+    }
+  }
+
+  // Start immediately if idle so the very first queued step can be presented this frame.
+  // (MC.ui.step ticks anim before commands apply; without this, new anims would start 1 frame later.)
+  if (!anim.active && anim.q && anim.q.length > 0) {
+    anim.active = anim.q.shift();
   }
 
   anim.lock = !!(anim.active || (anim.q && anim.q.length));
+};
+
+// Phase 15: game-start animation orchestration.
+// Default newGame mutates directly into the final 5/7 start state; this function hides cards
+// and schedules synthetic draw events to make the start readable.
+MC.anim.beginGameStart = function (state, view) {
+  if (!state || !view || !view.anim) return false;
+  var anim = view.anim;
+  if (!state.players || !state.players[0] || !state.players[1]) return false;
+  var h0 = state.players[0].hand ? state.players[0].hand.length : 0;
+  var h1 = state.players[1].hand ? state.players[1].hand.length : 0;
+  var starterP = state.activeP;
+  if (!(starterP === 0 || starterP === 1)) return false;
+
+  // Only arm for the canonical default start shape (avoid surprising animations in scenarios).
+  if (!((h0 === 7 && h1 === 5) || (h0 === 5 && h1 === 7))) return false;
+
+  // Clear any prior anim state.
+  anim.q = [];
+  anim.active = null;
+  anim.lock = false;
+  anim.hiddenByP = [{}, {}];
+  anim.hiddenByUid = {};
+  anim.payBufUids = [];
+  if (anim.lastPosByUid) {
+    var kPos;
+    for (kPos in anim.lastPosByUid) delete anim.lastPosByUid[kPos];
+  }
+
+  // Initial 5-card deal per player (starter has 2 extra cards appended).
+  var deal0 = state.players[0].hand.slice(0, 5);
+  var deal1 = state.players[1].hand.slice(0, 5);
+
+  // Starter's draw-2 cards are the last 2 in their hand.
+  var handS = state.players[starterP].hand;
+  var draw2 = [];
+  if (handS && handS.length >= 7) {
+    draw2 = [handS[handS.length - 2], handS[handS.length - 1]];
+  }
+
+  // Hide the starter's draw-2 until after the initial deal + toast.
+  var i;
+  for (i = 0; i < draw2.length; i++) {
+    var uidD = draw2[i];
+    if (uidD) anim.hiddenByP[starterP][uidD] = true;
+  }
+
+  // Schedule initial deal as synthetic draws.
+  MC.anim.onEvents(state, view, [
+    { kind: "draw", p: 0, uids: deal0 },
+    { kind: "draw", p: 1, uids: deal1 }
+  ]);
+
+  // Then show toast + deal the starter's draw-2.
+  var hold = Math.floor(MC.config.ui.gameStartToastFrames * MC.config.ui.animSpeedMult);
+  if (!(hold > 0)) hold = 1;
+  anim.q.push({
+    kind: "gameStart",
+    starterP: starterP,
+    drawUids: draw2.slice(),
+    didToast: false,
+    t: 0,
+    frames: hold
+  });
+
+  anim.lock = true;
+  return true;
 };
 
 MC.anim.tick = function (state, view) {
@@ -7612,6 +7987,77 @@ MC.anim.tick = function (state, view) {
   if (a.kind === "shuffle") {
     a.t += 1;
     if (a.t >= a.frames) anim.active = null;
+    anim.lock = !!(anim.active || (anim.q && anim.q.length));
+    return;
+  }
+
+  if (a.kind === "gameStart") {
+    if (!a.didToast) {
+      var starterP = a.starterP;
+      var txt = (starterP === 0) ? "You start" : "AI starts";
+      MC.ui.toastPush(view, { id: "game_start", kind: "info", text: txt, frames: Math.floor(MC.config.ui.gameStartToastFrames * MC.config.ui.animSpeedMult) });
+      a.didToast = true;
+    }
+
+    a.t += 1;
+    if (a.t >= a.frames) {
+      var starterP2 = a.starterP;
+      var uids2 = a.drawUids;
+      if (uids2 && uids2.length > 0) {
+        MC.anim.onEvents(state, view, [{ kind: "draw", p: starterP2, uids: uids2.slice() }]);
+      }
+      anim.active = null;
+    }
+
+    anim.lock = !!(anim.active || (anim.q && anim.q.length));
+    return;
+  }
+
+  if (a.kind === "xferHold") {
+    a.t += 1;
+    if (a.t >= a.frames) anim.active = null;
+    anim.lock = !!(anim.active || (anim.q && anim.q.length));
+    return;
+  }
+
+  if (a.kind === "xfer") {
+    var uidX = a.uid;
+    if (!uidX) { anim.active = null; anim.lock = !!(anim.q && anim.q.length); return; }
+
+    // Keep the moved uid hidden from its state location for the full duration of the step.
+    // (Important for multi-step chains where the same uid flies into promptBuf, then out.)
+    if (a.phase !== "gap") anim.hiddenByUid[uidX] = true;
+
+    a.t += 1;
+    if (a.phase === "holdFrom") {
+      if (a.t >= a.holdFromFrames) {
+        a.phase = "move";
+        a.t = 0;
+      }
+    } else if (a.phase === "move") {
+      if (a.t >= a.frames) {
+        // Reveal at destination (but promptBuf is not a rendered zone; buffer is drawn separately).
+        var tzX = String(a.to.zone || "");
+        if (tzX !== "promptBuf") delete anim.hiddenByUid[uidX];
+        if (a.fromPromptBuf) {
+          var bi = anim.payBufUids.indexOf(uidX);
+          if (bi >= 0) anim.payBufUids.splice(bi, 1);
+        }
+
+        a.t = 0;
+        if (a.gapFrames > 0) {
+          a.phase = "gap";
+        } else {
+          anim.active = null;
+        }
+      }
+    } else {
+      // gap
+      if (a.t >= a.gapFrames) {
+        anim.active = null;
+      }
+    }
+
     anim.lock = !!(anim.active || (anim.q && anim.q.length));
     return;
   }
@@ -7753,7 +8199,132 @@ MC.anim.present = function (state, view, computed) {
     }
   }
 
+  // Phase 15: hide in-flight transfer cards until they “land” (presentation-only).
+  if (anim && anim.hiddenByUid) {
+    var hidU = anim.hiddenByUid;
+    var rowH;
+    for (rowH = 0; rowH < computed.models.length; rowH++) {
+      var rmH = computed.models[rowH];
+      if (!rmH || !rmH.items) continue;
+      var outH = [];
+      var ii;
+      for (ii = 0; ii < rmH.items.length; ii++) {
+        var itH = rmH.items[ii];
+        if (!itH || !itH.uid) { outH.push(itH); continue; }
+        if (hidU[itH.uid]) continue;
+        outH.push(itH);
+      }
+      rmH.items = outH;
+
+      // If the cursor is on this row, recompute selection from the filtered items so
+      // hidden cards can't be revealed via the selection redraw path in the renderer.
+      if (view.cursor && view.cursor.row === rowH) {
+        if (rmH.items.length === 0) computed.selected = null;
+        else {
+          var ci2 = MC.ui.clampI(view.cursor.i, rmH.items.length);
+          computed.selected = rmH.items[ci2];
+        }
+      } else if (computed.selected && computed.selected.uid && hidU[computed.selected.uid]) {
+        computed.selected = null;
+      }
+    }
+  }
+
+  // Phase 15: avoid duplicating in-flight cards in the center buffer stack.
+  // - promptBuf->dest: remove the leaving card from the stack during flight
+  // - src->promptBuf (AI selection): don't show the card in the stack until its flight lands
+  var hidePayBufByUid = {};
+  var hidePayBufAny = false;
+  function hidePayBuf(uid) {
+    if (!uid) return;
+    hidePayBufByUid[uid] = true;
+    hidePayBufAny = true;
+  }
+
+  if (a && a.kind === "xfer" && a.uid && a.phase !== "gap") {
+    if (a.fromPromptBuf) hidePayBuf(a.uid);
+    var tzH = (a.to && a.to.zone) ? String(a.to.zone) : "";
+    if (tzH === "promptBuf") hidePayBuf(a.uid);
+  }
+
+  if (anim && anim.q && anim.q.length) {
+    var qi;
+    for (qi = 0; qi < anim.q.length; qi++) {
+      var qit = anim.q[qi];
+      if (!qit || qit.kind !== "xfer" || !qit.uid || qit.phase === "gap") continue;
+      var tzQ = (qit.to && qit.to.zone) ? String(qit.to.zone) : "";
+      if (tzQ === "promptBuf") hidePayBuf(qit.uid);
+    }
+  }
+
+  if (hidePayBufAny) {
+    var rowCenterPB = MC.render.ROW_CENTER;
+    var rmPB = computed.models[rowCenterPB];
+    if (rmPB && rmPB.overlayItems) {
+      var oiPB;
+      for (oiPB = 0; oiPB < rmPB.overlayItems.length; oiPB++) {
+        var ovPB = rmPB.overlayItems[oiPB];
+        if (!ovPB || ovPB.kind !== "payBuf" || !ovPB.uids) continue;
+        var uOutPB = [];
+        var uiPB;
+        for (uiPB = 0; uiPB < ovPB.uids.length; uiPB++) {
+          var uidPB = ovPB.uids[uiPB];
+          if (!uidPB) continue;
+          if (hidePayBufByUid[uidPB]) continue;
+          uOutPB.push(uidPB);
+        }
+        ovPB.uids = uOutPB;
+        ovPB.nVis = uOutPB.length;
+      }
+    }
+  }
+
   if (!a || !a.kind) return computed;
+
+  // Phase 15 polish: when AI selects a payment card (xfer-to-promptBuf), keep the source
+  // stack visually stable during the hold-at-source so it doesn't collapse under the highlight.
+  if (a.kind === "xfer" && a.phase === "holdFrom" && String(a.to.zone || "") === "promptBuf") {
+    var rowF = a.fromRow;
+    var stKeyF = a.fromStackKey;
+    if (stKeyF && anim && anim.lastPosByUid && computed.models[rowF] && computed.models[rowF].items) {
+      var rmF = computed.models[rowF];
+      var camF = (view.camX && view.camX[rowF] != null) ? view.camX[rowF] : 0;
+      var Lf = MC.config.render.layout;
+
+      var iF;
+      for (iF = 0; iF < rmF.items.length; iF++) {
+        var itF = rmF.items[iF];
+        if (!itF || !itF.uid || !itF.stackKey) continue;
+        if (String(itF.stackKey) !== String(stKeyF)) continue;
+        var posF = anim.lastPosByUid[itF.uid];
+        if (!posF) continue;
+        itF.x = posF.x + camF;
+        itF.y = posF.y;
+      }
+
+      // Recompute bounds to keep camera stable while frozen.
+      var minXF = 999999, maxXF = -999999;
+      for (iF = 0; iF < rmF.items.length; iF++) {
+        var itB = rmF.items[iF];
+        if (!itB || itB.x == null || itB.w == null) continue;
+        var xFaceB = itB.x;
+        var xLoB = xFaceB;
+        var xHiB = xFaceB + itB.w - 1;
+        var kindB = String(itB.kind || "");
+        var fanB = (itB.fanDir != null) ? itB.fanDir : 0;
+        if (kindB === "hand") {
+          xLoB = xFaceB + Lf.shadowBarDx;
+        } else if (kindB === "bank" || kindB === "setProp" || kindB === "setHouse") {
+          if (fanB < 0) xHiB = xFaceB + itB.w;
+          else xLoB = xFaceB + Lf.shadowBarDx;
+        }
+        if (xLoB < minXF) minXF = xLoB;
+        if (xHiB > maxXF) maxXF = xHiB;
+      }
+      rmF.minX = (minXF === 999999) ? 0 : minXF;
+      rmF.maxX = (maxXF === -999999) ? 0 : maxXF;
+    }
+  }
 
   var rowCenter = MC.render.ROW_CENTER;
   var rmC = computed.models[rowCenter];
@@ -7839,6 +8410,99 @@ MC.anim.present = function (state, view, computed) {
       y: y,
       p: p,
       uid: uids[iCard]
+    };
+    return computed;
+  }
+
+  if (a.kind === "xfer") {
+    if (a.phase === "gap") return computed;
+    var framesX = a.frames;
+    if (framesX < 1) framesX = 1;
+    var uX = 0;
+    if (a.phase === "move") {
+      var tX = a.t;
+      if (tX < 0) tX = 0;
+      if (tX > framesX) tX = framesX;
+      uX = tX / framesX;
+    }
+
+    function payBufAnchor() {
+      var Lp = MC.config.render.layout;
+      var rowC = MC.render.ROW_CENTER;
+      return { x: Lp.centerPayBufX, y: Lp.rowY[rowC] + Lp.centerTopInsetY, flip180: false };
+    }
+
+    function screenPosForLoc(loc) {
+      if (!loc) return null;
+      var p = loc.p;
+      var z = String(loc.zone || "");
+      var L = MC.config.render.layout;
+
+      // Prompt buffer and AI received props are not rendered; use the center buffer anchor.
+      if (z === "promptBuf") return payBufAnchor();
+      if (z === "recvProps" && p === 1) {
+        var rowHandO = MC.render.ROW_OP_HAND;
+        var camO = (view.camX && view.camX[rowHandO] != null) ? view.camX[rowHandO] : 0;
+        var idxO = (loc.i != null) ? loc.i : 0;
+        var xWO = (L.screenW - L.rowPadX - L.faceW) - idxO * L.handStrideX;
+        var yWO = MC.layout.faceYForRow(rowHandO);
+        return { x: xWO - camO, y: yWO, flip180: true };
+      }
+
+      if (z === "recvProps" && p === 0) {
+        var rowHand = MC.render.ROW_P_HAND;
+        var camH = (view.camX && view.camX[rowHand] != null) ? view.camX[rowHand] : 0;
+        var idxR = (loc.i != null) ? loc.i : 0;
+        var xW = L.rowPadX + idxR * L.handStrideX;
+        var yW = MC.layout.faceYForRow(rowHand);
+        return { x: xW - camH, y: yW, flip180: false };
+      }
+
+      if (z === "bank") {
+        var rowB = (p === 0) ? MC.render.ROW_P_HAND : MC.render.ROW_OP_HAND;
+        var rmB = computed.models[rowB];
+        var stKeyB = "bank:p" + p + ":row" + rowB;
+        var stB = (rmB && rmB.stacks) ? rmB.stacks[stKeyB] : null;
+        if (!stB) return null;
+        var camB = (view.camX && view.camX[rowB] != null) ? view.camX[rowB] : 0;
+        var depthB = (loc.i != null) ? loc.i : 0;
+        var xBW = stB.x0 + depthB * stB.stride * stB.fanDir;
+        return { x: xBW - camB, y: stB.y, flip180: (rowB === MC.render.ROW_OP_HAND) };
+      }
+
+      if (z === "setProps") {
+        var rowT = (p === 0) ? MC.render.ROW_P_TABLE : MC.render.ROW_OP_TABLE;
+        var rmT = computed.models[rowT];
+        var stKeyT = "set:p" + p + ":set" + loc.setI;
+        var stT = (rmT && rmT.stacks) ? rmT.stacks[stKeyT] : null;
+        if (!stT) return null;
+        var camT = (view.camX && view.camX[rowT] != null) ? view.camX[rowT] : 0;
+        var depthT = (loc.i != null) ? loc.i : 0;
+        var xTW = stT.x0 + depthT * stT.stride * stT.fanDir;
+        return { x: xTW - camT, y: stT.y, flip180: (rowT === MC.render.ROW_OP_TABLE) };
+      }
+
+      return null;
+    }
+
+    var toPos = screenPosForLoc(a.to);
+    if (!toPos) return computed;
+
+    var xFromS = a.fromX;
+    var yFromS = a.fromY;
+    var xToS = toPos.x;
+    var yToS = toPos.y;
+
+    var xX = Math.floor(xFromS + (xToS - xFromS) * uX);
+    var yX = Math.floor(yFromS + (yToS - yFromS) * uX);
+
+    computed.animOverlay = {
+      kind: "moveCard",
+      x: xX,
+      y: yX,
+      uid: a.uid,
+      flip180: !!((a.phase === "holdFrom" || (a.phase === "move" && a.t === 0)) ? a.fromFlip180 : toPos.flip180),
+      outlinePal: (a.phase === "holdFrom") ? MC.Pal.Green : null
     };
     return computed;
   }
@@ -8775,9 +9439,10 @@ MC.anim.present = function (state, view, computed) {
             items: [
               "<c4>D-pad</c>: move selection (cursor).",
               "<c4>A (tap)</c>: open a card menu / confirm a choice.",
-              "<c4>A (hold)</c>: enter targeting faster (release A confirms when entered from a hold).",
+              "<c4>A (hold)</c>: enter quick play (use D-pad to cycle options, release A confirms).",
               "<c4>B</c>: back / cancel (when allowed).",
-              "<c4>X (hold)</c>: Inspect overlay (after a short delay)."
+              "<c4>X (hold)</c>: Inspect cards, buttons, deck for more information.",
+              "Similarly with keyboard, use arrow keys for navigation, Z for action/confirm, X for back/cancel, and A for inspect."
             ],
             demo: { layout: "above", w: 60, h: 14, draw: function (ctx) {
               // Tiny button legend mock.
@@ -8814,7 +9479,7 @@ MC.anim.present = function (state, view, computed) {
               "<c12>4</c> - <c4>Rent</c>: charge rent for one of your sets that matches the color bars (opponent must pay).",
               "<c12>5</c> - <c4>Sly Deal</c>: steal one opponent property (not from a complete set).",
               "<c12>6</c> - <c4>Just Say No</c>: cancel an action played against you.",
-              "<c4>Banking action cards</c>: action cards can be banked for money.\nOnce banked, they count as money only for the rest of the game (you can't play them as actions)."
+              "<c4>Banking action cards</c>: action cards can be banked for money. Once banked, they count as money only for the rest of the game (you can't play them as actions)."
             ],
             demo: { layout: "above", w: 150, h: 25, draw: function (ctx) {
               var dx = 0
@@ -8903,6 +9568,7 @@ MC.debug.reset = function (opts) {
   var keepPrevPause = !(opts && opts.keepPrevAutoFocusPause === false);
   var prevPaused = keepPrevPause ? !!d.view.ux.autoFocusPausedByDebug : false;
   var shouldPause = !!(opts && opts.pauseAutoFocus) || prevPaused;
+  var skipGameStartAnim = !!(opts && opts.skipGameStartAnim);
   var seedU32 = MC.seed.computeSeedU32();
   var scenarioId = d.scenarios[d.scenarioI];
   if (scenarioId === "default") {
@@ -8912,6 +9578,9 @@ MC.debug.reset = function (opts) {
   }
   d.view = MC.ui.newView();
   if (shouldPause) d.view.ux.autoFocusPausedByDebug = true;
+  // Phase 15: default newGame starts in the final 5/7 state; animate the initial deal.
+  // Skip scenarios so resets stay fast and deterministic for debugging.
+  if (scenarioId === "default" && !skipGameStartAnim) MC.anim.beginGameStart(d.state, d.view);
   d.ctrl = MC.controls.newState();
   d.ai = { wait: 0 };
   d.lastCmd = "";

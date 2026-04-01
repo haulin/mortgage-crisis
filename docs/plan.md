@@ -29,6 +29,7 @@ Documentation convention (for future phases):
 - **Phase 12 ✅**: Title screen (boot-first) with static menu + controls list. See `docs/phase12.md`.
 - **Phase 13 ✅**: Title menu becomes the main entry point (interactive menu + return-to-menu), with dev tools gated behind `Dev: ON/OFF`. See `docs/phase13.md`.
 - **Phase 14 ✅**: In-game How to Play screen (3 pages + scrolling + editable content blocks). See `docs/phase14.md`.
+- **Phase 15 ✅**: MVP animation polish (game-start deal/toast/draw, pay-buffer stack, curated transfer animations + focus stability). See `docs/phase15.md`.
 
 ### Deferred-items capture (scope creep safety net)
 
@@ -482,8 +483,14 @@ Done:
 - Content is editable by a human in `src/82_howto_content.js`
 - See `docs/phase14.md`.
 
-### Phase 16 — MVP ready
-- when starting a game/default scenario, the 5/7 cards on each side are already dealt. We should probably start with the 2x5 draw animation and display a toast with who is starting.
+### Phase 15 ✅ — MVP ready
+- Animate game start on default New Game: deal 5 each → toast (`You start` / `AI starts`) → starter draws 2.
+- Animate curated transfers (no discard animations): payDebt transfers and Sly steals, including during AI turns; sequential one-card-at-a-time.
+- Make AI-selected sources readable (brief hold-at-source + outline) and add a short pause after the final payDebt selection before buffer drain begins.
+- Visualize the payDebt buffer as a center-row stack (actual card faces) near the middle while paying / while transfers drain.
+- Add a global animation slow-motion knob (`MC.config.ui.animSpeedMult`) to scale UI animation timing for debugging.
+- Fix focus stability edge cases exposed by animation locks (deal lock selection anchoring; transfer lock anchor refresh; replace-window exit snapping to End when out of plays).
+- See `docs/phase15.md`.
 
 
 ### Phase 17 - Demo ready
@@ -516,7 +523,6 @@ Done:
 
 Issues:
 - action menu should maybe get rendered as a bigger overlay, similar to inspect and not cover buttons
-- When we do transfers (paying rent/debt, stealing props, discarding), cards often just “appear” in the destination. Hard to notice. Perhaps animate transfers similarly to dealing/drawing?
 - Debt: house first does not auto-focus house when another property is selected
 - Unify wording in various prompts and menus, humanize it.
 
@@ -525,7 +531,7 @@ Issues:
 - Optional vertical area labels explaining the different zones (hand/bank/properties/opponent areas)
 - Continue Inspect overlay polish as needed (still not “big cards”)
 - Reduce scenario list noise: merge `placeBasic` / `wildBasic` / `houseBasic` into a single “Basics” scenario (or otherwise consolidate) - also placeReceived and replace wild.
-- Deferred: Add a toast/animation time-scale multiplier (slow/medium/fast) to slow down toasts and UI animations.
+- Deferred: Add an in-game animation speed toggle (slow/medium/fast) wired to `MC.config.ui.animSpeedMult` (the underlying multiplier exists; Phase 15 added the knob).
 - Deferred: Refactor `MC.ui.computeRowModels` overlay/preview logic into smaller helpers (reduce “policy knot” + improve readability)
 - Deferred: Split `MC.ui.step` mode handling (browse/menu/targeting/prompt) into smaller per-mode helpers (reduce nesting + make input rules easier to audit)
 - Deferred: Consolidate UI slot/stack geometry helpers (destination→slot + stack locators) to reduce duplication and keep ghost/reservation rules consistent
@@ -549,9 +555,6 @@ Issues:
 - Free organization / preparation actions (UI-only; no play cost):
   - Reorder/sort hand, bank, and stacks for readability (purely cosmetic; no rules/commands)
   - Flip a Wild property’s preferred color **in the source** (e.g. via context menu) so you can “pre-set” it before targeting/placing
-
-### Phase 15 — Card art + palette polish
-
 - Money/action card faces: dithered / lighter background treatment (sprite pattern or fast overlay)
 - (Optional, later) implement true “big card” rendering for previews once icons exist for all card types (keeps big-card work dependent on art readiness)
 

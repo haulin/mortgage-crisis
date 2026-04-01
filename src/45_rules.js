@@ -279,6 +279,13 @@ MC.engine.applyCommand = function (state, cmd) {
 
     // Attacker receives the property and must place it.
     MC.state.setPrompt(state, { kind: "placeReceived", p: fromP, uids: [target.uid] });
+    events.push({
+      kind: "move",
+      uid: target.uid,
+      selectedByP: fromP,
+      from: { p: defP, zone: "setProps", setI: setI, i: pi },
+      to: { p: fromP, zone: "recvProps", i: 0 }
+    });
     // Direction: stolen from defender -> attacker.
     events.push({ kind: "slySteal", fromP: defP, toP: fromP, uid: target.uid });
   }
@@ -339,6 +346,14 @@ MC.engine.applyCommand = function (state, cmd) {
         throw new Error("bad_loc");
       }
 
+      var bufI = buf.length;
+      events.push({
+        kind: "move",
+        uid: uid,
+        selectedByP: p,
+        from: card.loc,
+        to: { p: p, zone: "promptBuf", i: bufI }
+      });
       buf.push(uid);
       prompt.rem = prompt.rem - payValueForUid(uid);
 
@@ -356,7 +371,14 @@ MC.engine.applyCommand = function (state, cmd) {
         var uidT = buf[i];
         var defT = MC.state.defByUid(state, uidT);
         if (defT && defT.kind === MC.CardKind.Property) {
+          var ri = recv.length;
           recv.push(uidT);
+          events.push({
+            kind: "move",
+            uid: uidT,
+            from: { p: p, zone: "promptBuf", i: i },
+            to: { p: toP, zone: "recvProps", i: ri }
+          });
         } else {
           state.players[toP].bank.push(uidT);
           events.push({

@@ -37,12 +37,16 @@ This avoids “2–5 cards appear instantly” and makes draw timing readable.
 
 Animation timings are tunable in `MC.config.ui` (frames @ 60fps):
 
+- `animSpeedMult` (added in Phase 15): global multiplier applied to shuffle/deal/xfer timings (useful for slow-motion debugging).
 - `dealFramesPerCard`
 - `dealGapFrames`
 - `shuffleAnimFrames`
 - `shuffleToastFrames`
 
 These are validated in config sanity tests.
+
+Note: effective staged-deal timing is `dealFramesPerCard * animSpeedMult` and `dealGapFrames * animSpeedMult`.
+If a test needs to tick “exactly until reveal”, prefer reading the active step’s `dealFrames`/`gapFrames` from `view.anim.active` instead of assuming the base config values.
 
 ## Definition of done
 

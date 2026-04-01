@@ -53,7 +53,14 @@ MC.ui.newView = function () {
       active: null,
       lock: false,
       // hiddenByP[p][uid] = true means uid is in-hand but not yet revealed.
-      hiddenByP: [{}, {}]
+      hiddenByP: [{}, {}],
+      // Phase 15: hide cards that are mid-transfer (any zone, any player).
+      hiddenByUid: {},
+      // Phase 15: last seen screen-space face origins by uid (for transfer animations).
+      lastPosByUid: {},
+      // Phase 15: visual list of cards in the pay/transfer buffer stack (center row).
+      // Used to keep the buffer visible while promptBuf-sourced transfers drain after the prompt clears.
+      payBufUids: []
     },
 
     // Feedback: blink + message, plus attempt counts.
@@ -540,7 +547,7 @@ MC.ui.buildRowItems = function (state, view, row, hint) {
         p: p,
         uid: uid,
         depth: depth,
-        fanDir: 0,
+        fanDir: isOp ? -1 : 1,
         x: xFace,
         y: yFace,
         w: L.faceW,
@@ -556,7 +563,7 @@ MC.ui.buildRowItems = function (state, view, row, hint) {
 
     // Hand zone (spaced).
     var pr = state.prompt;
-    var isRecvPrompt = !!(!isOp && row === 4 && pr && pr.kind === "placeReceived" && pr.p === 0 && p === 0);
+    var isRecvPrompt = !!(pr && pr.kind === "placeReceived" && pr.p === p);
     var recv = isRecvPrompt ? pr.uids : null;
     var nRecv = recv ? recv.length : 0;
 
@@ -569,6 +576,13 @@ MC.ui.buildRowItems = function (state, view, row, hint) {
       }
       var recvW = (nRecv > 0) ? ((nRecv - 1) * L.handStrideX + L.faceW) : 0;
       xHandStart = padX + recvW + L.stackGapX + 2;
+    } else if (isOp && isRecvPrompt && nRecv > 0) {
+      var xRecvStart = xHandStart;
+      for (i = 0; i < nRecv; i++) {
+        pushRecvHandItem(recv[i], xRecvStart - i * L.handStrideX, i);
+      }
+      var recvW2 = (nRecv > 0) ? ((nRecv - 1) * L.handStrideX + L.faceW) : 0;
+      xHandStart = xRecvStart - recvW2 - L.stackGapX - 2;
     }
 
     for (i = 0; i < nHand; i++) {
@@ -1183,8 +1197,57 @@ MC.ui.computeRowModels = function (state, view) {
     }
   }
 
+  // Phase 15: visualize the pay/transfer buffer as a non-selectable center-row stack.
+  // - During payDebt: show prompt.buf (what has been committed so far).
+  // - While draining: show view.anim.payBufUids even after the prompt clears.
+  var payBufUids = null;
+  if (pr && pr.kind === "payDebt" && pr.buf && pr.buf.length > 0) {
+    payBufUids = pr.buf.slice();
+  } else if (view.anim.payBufUids.length > 0) {
+    payBufUids = view.anim.payBufUids.slice();
+  }
+
+  if (payBufUids && payBufUids.length > 0) {
+    var rowCenter2 = MC.render.ROW_CENTER;
+    var rmCenter2 = models[rowCenter2];
+    if (rmCenter2 && rmCenter2.overlayItems) {
+      var topC = L.rowY[rowCenter2] + L.centerTopInsetY;
+      rmCenter2.overlayItems.push({
+        kind: "payBuf",
+        row: rowCenter2,
+        x: L.centerPayBufX,
+        y: topC,
+        w: L.faceW,
+        h: L.faceH,
+        uids: payBufUids,
+        nVis: payBufUids.length
+      });
+    }
+  }
+
   var computed = { models: models, selected: sel, meta: meta };
   computed = MC.anim.present(state, view, computed) || computed;
+
+  // Phase 15: snapshot last-seen screen-space positions for transfer animations.
+  if (view && view.anim && view.anim.lastPosByUid && computed && computed.models) {
+    var posByUid = view.anim.lastPosByUid;
+    var k;
+    for (k in posByUid) delete posByUid[k];
+
+    var row;
+    for (row = 0; row < computed.models.length; row++) {
+      var rmSnap = computed.models[row];
+      if (!rmSnap || !rmSnap.items) continue;
+      var camSnap = (view.camX && view.camX[row] != null) ? view.camX[row] : 0;
+      var iSnap;
+      for (iSnap = 0; iSnap < rmSnap.items.length; iSnap++) {
+        var itSnap = rmSnap.items[iSnap];
+        if (!itSnap || !itSnap.uid) continue;
+        posByUid[itSnap.uid] = { x: (itSnap.x - camSnap), y: itSnap.y, row: row };
+      }
+    }
+  }
+
   return computed;
 };
 
@@ -1518,6 +1581,42 @@ MC.ui.step = function (state, view, actions) {
   if (view.anim && view.anim.lock) {
     computed = MC.ui.computeRowModels(state, view);
     MC.ui.updateCameras(state, view, computed);
+
+    // Phase 15 polish: during deal animations, keep cursor stable by anchored uid so
+    // the selection highlight doesn't drift through the bank as new hand cards appear.
+    if (view.anim.active && view.anim.active.kind === "deal" && view.ux && view.ux.selAnchor && view.ux.selAnchor.uid && view.ux.selAnchor.loc) {
+      var a = view.ux.selAnchor;
+      var rowA = a.row;
+      if (rowA != null && rowA >= 0 && rowA < computed.models.length) {
+        var rmA = computed.models[rowA];
+        if (rmA && rmA.items) {
+          var iA;
+          var pick = null;
+          for (iA = 0; iA < rmA.items.length; iA++) {
+            var itA = rmA.items[iA];
+            if (!itA || !itA.uid || !itA.loc) continue;
+            if (itA.uid !== a.uid) continue;
+            if (String(itA.loc.zone || "") !== String(a.loc.zone || "")) continue;
+            if ((itA.loc.p != null) && (a.loc.p != null) && itA.loc.p !== a.loc.p) continue;
+            pick = { row: rowA, i: iA, item: itA };
+            break;
+          }
+
+          if (pick) {
+            MC.ui.cursorMoveTo(view, pick);
+            computed = MC.ui.computeRowModels(state, view);
+            MC.ui.updateCameras(state, view, computed);
+          }
+        }
+      }
+    }
+
+    // Phase 15 polish: during non-deal animation locks (notably xfer), refresh the selection
+    // anchor so focus preservation doesn't "snap" when the lock clears after list splices
+    // (e.g., paying with a mid-stack bank card).
+    if (!(view.anim.active && view.anim.active.kind === "deal")) {
+      MC.ui.focus.snapshot(state, view, computed);
+    }
     return null;
   }
 
