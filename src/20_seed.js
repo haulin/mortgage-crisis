@@ -6,7 +6,6 @@ MC.seed.computeSeedU32 = function () {
   var toolsOn = !!(MC.debug && MC.debug.toolsOn);
   if (toolsOn) return MC.rng.u32NonZero(seedBase);
 
-  // TIC-80: `tstamp()` is available and per-second resolution is sufficient here.
   var t = Math.floor(tstamp());
   return MC.rng.u32NonZero(seedBase + t);
 };

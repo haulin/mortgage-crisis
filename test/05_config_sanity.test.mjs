@@ -121,8 +121,6 @@ test("config sanity: render.layout/style/spr/moneyBgByValue shape", async () => 
     "colHighlight",
     "colCenterPanel",
     "colCenterPanelBorder",
-    "colValuePatch",
-    "colValuePatchBorder",
     "hudLineCol",
     "colToastBgAi",
     "pileShadowOutlineCol",
@@ -219,8 +217,6 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   assert.equal(typeof MC.config.title.bgTileEnabled, "boolean", "expected bgTileEnabled boolean");
   requireNum(MC.config.title, "bgTileSprId");
   requireNum(MC.config.title, "bgTileColorkey");
-  // allow 0 to disable blink
-  requireNum(MC.config.title, "pressAnyBlinkPeriodFrames");
 
   // How-to-play screen knobs.
   requirePosNum(MC.config.howto, "padX");

@@ -20,8 +20,7 @@
   R.spr = renderCfg.spr;
   R.moneyBgByValue = renderCfg.moneyBgByValue;
   R.center = null;
-
-  function initCenterFromLayout() {
+  R.center = (function () {
     var cfg = R.cfg;
     var row = R.ROW_CENTER;
     var y0 = cfg.rowY[row];
@@ -39,9 +38,7 @@
       title: { x: prevX + cfg.faceW + prevGapX, y: top },
       desc: { x: prevX + cfg.faceW + prevGapX, y: top + cfg.centerDescDy }
     };
-  }
-
-  R.center = initCenterFromLayout();
+  })();
 
   // Property bar palette (placeholder; tweak later).
   R.propBarColByColor = [];
@@ -72,12 +69,9 @@
   }
 
   function rowY0(row) { return R.cfg.rowY[row]; }
-  function rowH(row) { return R.cfg.rowH[row]; }
-  function rowY1(row) { return rowY0(row) + rowH(row) - 1; }
+  function rowY1(row) { return rowY0(row) + R.cfg.rowH[row] - 1; }
 
   // Row policy lives in MC.layout; renderer uses it for flip decisions.
-  function isOpponentRow(row) { return MC.layout.isOpponentRow(row); }
-
   function cardLocalRectToScreen(xFace, yFace, lx, ly, w, h, flip180) {
     if (!flip180) {
       return { x: xFace + lx, y: yFace + ly, w: w, h: h };
@@ -175,13 +169,9 @@
     );
   }
 
-  function digitSpriteId(n) {
-    return R.spr.digit0 + n;
-  }
-
   function drawDigitGlyph(n, xGlyphTL, yGlyphTL, flip180) {
     if (n < 0 || n > 9) return;
-    var id = digitSpriteId(n);
+    var id = R.spr.digit0 + n;
     var ck = R.cfg.glyphColorkey;
     var insetX = R.cfg.glyphInsetX;
     var insetY = R.cfg.glyphInsetY;
@@ -204,19 +194,6 @@
       1,
       1
     );
-  }
-
-  function drawRentRow(xFace, yFace, rentArr, flip180) {
-    if (!rentArr || rentArr.length <= 0) return;
-    var i;
-    for (i = 0; i < rentArr.length; i++) {
-      var v = rentArr[i];
-      if (v < 0 || v > 9) continue;
-      var lx = R.cfg.propRentX + i * R.cfg.propRentDx;
-      var ly = R.cfg.propRentY;
-      var p = cardLocalRectToScreen(xFace, yFace, lx, ly, R.cfg.digitGlyphW, R.cfg.digitGlyphH, flip180);
-      drawDigitGlyph(v, p.x, p.y, flip180);
-    }
   }
 
   function drawDualPropHalf(xFace, yFace, color, cardValue, flip180) {
@@ -242,7 +219,17 @@
 
     // Rent row (rent table)
     var rent = (MC.SET_RULES && MC.SET_RULES[color]) ? MC.SET_RULES[color].rent : null;
-    drawRentRow(xFace, yFace, rent, flip180);
+    if (rent && rent.length > 0) {
+      var i;
+      for (i = 0; i < rent.length; i++) {
+        var v = rent[i];
+        if (v < 0 || v > 9) continue;
+        var lx = R.cfg.propRentX + i * R.cfg.propRentDx;
+        var ly = R.cfg.propRentY;
+        var p = cardLocalRectToScreen(xFace, yFace, lx, ly, R.cfg.digitGlyphW, R.cfg.digitGlyphH, flip180);
+        drawDigitGlyph(v, p.x, p.y, flip180);
+      }
+    }
   }
 
   function iconForDef(def) {
@@ -259,20 +246,6 @@
     return 0;
   }
 
-  function rentColorsForDef(def) {
-    if (!def || def.actionKind !== MC.ActionKind.Rent) return null;
-    var a = def.rentAllowedColors;
-    if (a && a.length) return a;
-    // rent_any: treat as 4 colors in a stable order.
-    return [MC.Color.Cyan, MC.Color.Black, MC.Color.Magenta, MC.Color.Orange];
-  }
-
-  function rentBarColForColor(color) {
-    if (color === MC.Color.Black) return MC.Pal.Black;
-    var c = R.propBarColByColor[color];
-    return c != null ? c : R.cfg.colText;
-  }
-
   function drawRentBars(xFace, yFace, colors, flip180) {
     if (!colors || colors.length <= 0) return;
     var barH = 2;
@@ -287,7 +260,11 @@
     for (i = 0; i < count; i++) {
       var ly = bottomY - i * barH;
       var p = cardLocalRectToScreen(xFace, yFace, lx, ly, w, barH, flip180);
-      rectSafe(p.x, p.y, p.w, p.h, rentBarColForColor(colors[i]));
+      var color = colors[i];
+      var c;
+      if (color === MC.Color.Black) c = MC.Pal.Black;
+      else c = R.propBarColByColor[color];
+      rectSafe(p.x, p.y, p.w, p.h, c != null ? c : R.cfg.colText);
     }
   }
 
@@ -341,7 +318,11 @@
 
     if (def.kind === MC.CardKind.Action && def.actionKind === MC.ActionKind.Rent) {
       drawCardFaceBase(xFace, yFace, R.cfg.colCardInterior);
-      drawRentBars(xFace, yFace, rentColorsForDef(def), !!flip180);
+      var colors = def.rentAllowedColors;
+      if (!(colors && colors.length)) {
+        colors = [MC.Color.Cyan, MC.Color.Black, MC.Color.Magenta, MC.Color.Orange];
+      }
+      drawRentBars(xFace, yFace, colors, !!flip180);
       var rv = def.bankValue;
       drawValueDigit(xFace, yFace, rv, !!flip180);
       var rIcon = iconForDef(def);
@@ -366,7 +347,7 @@
     var id = (R.spr && R.spr.cardBackTL != null) ? R.spr.cardBackTL : 0;
 
     if (id) {
-      // Phase 03b back: 2x3 sprite (16x24) drawn inside the 1px border.
+      // Card back: 2x3 sprite (16x24) drawn inside the 1px border.
       // Art convention: last col + last row are colorkey (15) so the effective area is 15x23.
       drawCardFaceBase(xFace, yFace, cfg.colCardInterior);
       // When rotated 180°, the padded colorkey row/col becomes the top/left edge.
@@ -385,9 +366,6 @@
     rectSafe(p2.x, p2.y, p2.w, p2.h, 12);
   }
 
-  // Phase 04: renderer no longer computes row models/navigation/cameras.
-  // UI owns selection + cameras via MC.ui, and passes computed models in.
-
   function drawCenter(opts) {
     if (!opts || !opts.state || !opts.view || !opts.computed) return;
     var s = opts.state;
@@ -405,7 +383,7 @@
     var dbgEnabled = !!(MC.config.debug.enabled && MC.debug.toolsOn);
     var hlCol = (opts.highlightCol != null) ? opts.highlightCol : cfg.colHighlight;
 
-    // Header: removed (Phase 04). Plays indicator is drawn in screen-space.
+    // Plays indicator is drawn in screen-space.
 
     function drawCountDigits(n, xFace, yFace) {
       var sN = String(n);
@@ -507,7 +485,7 @@
       }
     }
 
-    // Phase 15: non-selectable center overlays (e.g. payDebt buffer stack).
+    // Non-selectable center overlays (e.g. payDebt buffer stack).
     if (rowM && rowM.overlayItems) {
       for (i = 0; i < rowM.overlayItems.length; i++) {
         var itO = rowM.overlayItems[i];
@@ -537,7 +515,7 @@
     var xDesc = C.desc.x;
     var yDesc = C.desc.y;
 
-    // Phase 05: Inspect uses a screen-space panel with panel-driven anchors.
+    // Inspect uses a screen-space panel with panel-driven anchors.
     var panel = null;
     if (view.inspectActive) {
       var Lp = MC.config.render.layout;
@@ -813,71 +791,6 @@
   // Expose toast renderer so non-game modes (e.g. Title) can reuse it.
   R.drawToasts = drawToasts;
 
-  function drawTopLeftStatus(debug, selectedItem) {
-    var cfg = R.cfg;
-    if (!debug || !debug.state) return;
-
-    var s = debug.state;
-    var x0 = (cfg.topStatusX != null) ? cfg.topStatusX : 0;
-    var y0 = (cfg.topStatusY != null) ? cfg.topStatusY : 0;
-    var step = (cfg.topStatusLineStep != null) ? cfg.topStatusLineStep : 7;
-    if (cfg.topStatusEnabled === false) return;
-
-    var lines = [];
-    lines.push("Phase 03 Render");
-    lines.push("Scenario:" + String(debug.scenarios[debug.scenarioI]));
-    lines.push("Active:P" + s.activeP + " Plays:" + s.playsLeft);
-
-    if (selectedItem && selectedItem.row === R.ROW_CENTER) {
-      var k = selectedItem.kind;
-      if (k === "deck") {
-        lines.push("Sel:Deck");
-        lines.push("Cards:" + s.deck.length);
-      } else if (k === "discard") {
-        lines.push("Sel:Disc");
-        lines.push("Cards:" + s.discard.length);
-      } else if (k === "bank0") {
-        lines.push("Sel:B0");
-        lines.push("Total:" + MC.util.bankValueTotal(s, 0));
-      } else if (k === "bank1") {
-        lines.push("Sel:B1");
-        lines.push("Total:" + MC.util.bankValueTotal(s, 1));
-      } else {
-        lines.push("Sel:" + String(k || "?"));
-        lines.push("");
-      }
-    } else if (selectedItem && selectedItem.uid) {
-      var uid = selectedItem.uid;
-      var def = MC.state.defByUid(s, uid);
-      var defId = def ? def.id : "?";
-      lines.push("Sel:" + defId + " uid:" + uid);
-
-      var detail = "";
-      if (def && def.kind === MC.CardKind.Property) {
-        if (MC.rules.isWildDef(def)) {
-          detail = "Wild:" + def.wildColors[0] + "/" + def.wildColors[1];
-          if (selectedItem && selectedItem.color != null && selectedItem.color !== MC.state.NO_COLOR) {
-            detail += " As:c" + selectedItem.color;
-          }
-        }
-        else detail = "Prop:c" + def.propertyColor;
-      } else if (def && def.bankValue != null) {
-        detail = "Value:" + def.bankValue;
-      } else {
-        detail = "(no detail)";
-      }
-      lines.push(detail);
-    } else {
-      lines.push("Sel:(none)");
-      lines.push("");
-    }
-
-    var i;
-    for (i = 0; i < 5; i++) {
-      printSafe(lines[i] || "", x0, y0 + i * step, cfg.colText);
-    }
-  }
-
   function groupStacksByKey(items, camX) {
     var byKey = {};
     var keys = [];
@@ -920,7 +833,7 @@
     var cfg = R.cfg;
     if (cam == null) cam = 0;
     if (highlightCol == null) highlightCol = cfg.colHighlight;
-    var flipCards = isOpponentRow(row);
+    var flipCards = MC.layout.isOpponentRow(row);
     var i;
 
     var overlayItems = rowModel && rowModel.overlayItems ? rowModel.overlayItems : null;
@@ -1095,7 +1008,7 @@
     return ["Sel:" + String(it.kind || "?"), ""];
   };
 
-  // Phase 05c: shuffle + deal animations (render-only visuals).
+  // Shuffle + deal animations (render-only visuals).
   // Renderer is oblivious to `view.anim`; UI/anim modules provide presentation in `computed`.
   function drawAnimOverlay(state, view, computed) {
     if (!state || !view || !computed) return;
@@ -1158,7 +1071,7 @@
     // Center panel last (so text overlays are readable).
     drawCenter({ state: state, view: view, computed: computed, selected: sel, highlightCol: hlCol });
 
-    // Phase 05c: animations on top of scene (but under toasts).
+    // Animations on top of scene (but under toasts).
     drawAnimOverlay(state, view, computed);
 
     // Highlight center widgets if selected.

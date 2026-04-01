@@ -19,7 +19,7 @@ MC.ActionKind = {
   JustSayNo: 2,
 };
 
-// Rule note display text (Phase 05+). These are appended in Inspect when enabled by config.
+// Rule note display text. These are appended in Inspect when enabled by config.
 MC.ruleNoteTextById = [];
 MC.ruleNoteTextById[MC.RuleNote.SlyDeal_NotFromFullSet] = "(Cannot be part of a full set)";
 MC.ruleNoteTextById[MC.RuleNote.House_StationsUtilities] = "(Except stations & utilities)";

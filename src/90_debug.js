@@ -8,7 +8,6 @@ MC.debug.ai = { wait: 0 };
 MC.debug.lastCmd = "";
 MC.debug.lastEvents = [];
 MC.debug.lastRaw = null;
-MC.debug.lastUiActions = null;
 MC.debug.lastUiIntentSummary = "";
 
 MC.debug.reset = function (opts) {
@@ -26,7 +25,7 @@ MC.debug.reset = function (opts) {
   }
   d.view = MC.ui.newView();
   if (shouldPause) d.view.ux.autoFocusPausedByDebug = true;
-  // Phase 15: default newGame starts in the final 5/7 state; animate the initial deal.
+  // Default newGame starts in the final 5/7 state; animate the initial deal.
   // Skip scenarios so resets stay fast and deterministic for debugging.
   if (scenarioId === "default" && !skipGameStartAnim) MC.anim.beginGameStart(d.state, d.view);
   d.ctrl = MC.controls.newState();
@@ -34,7 +33,6 @@ MC.debug.reset = function (opts) {
   d.lastCmd = "";
   d.lastEvents = [];
   d.lastRaw = null;
-  d.lastUiActions = null;
   d.lastUiIntentSummary = "";
 };
 
@@ -107,39 +105,30 @@ MC.debug.tickTextMode = function () {
 
   function bool01(v) { return v ? 1 : 0; }
 
-  function wrapLines(txt, maxChars) {
-    txt = String(txt || "");
-    maxChars = maxChars || 55;
-    if (!txt) return [];
+  cls(0);
+  var x = 0;
+  var y = 6;
+  var step = 6;
+  var xR = 120;
 
-    // Preserve explicit newlines, but word-wrap within each paragraph.
-    var paras = txt.split("\n");
-    var out = [];
-    var pi;
-    for (pi = 0; pi < paras.length; pi++) {
-      var p = String(paras[pi] || "").trim();
-      if (!p) { out.push(""); continue; }
+  printSmall("Debug", x, y, 12); y += step;
+  var sid = d.scenarios[d.scenarioI];
+  var info = (MC.scenarios.INFO && sid) ? MC.scenarios.INFO[String(sid)] : null;
+  var title = (info && info.title) ? String(info.title) : String(sid);
+  printSmall("Scn:" + title, x, y, 12); y += step;
+  var pendingDesc = (info && info.desc) ? String(info.desc) : "";
+  printSmall("Seed:" + MC.seed.computeSeedU32(), x, y, 12); y += step;
 
-      var words = p.split(/\s+/);
-      var line = "";
-      var wi;
-      for (wi = 0; wi < words.length; wi++) {
-        var w = words[wi];
-        if (!w) continue;
-        if (!line) { line = w; continue; }
-        if ((line.length + 1 + w.length) <= maxChars) {
-          line += " " + w;
-        } else {
-          out.push(line);
-          line = w;
-        }
-      }
-      if (line) out.push(line);
+  if (MC.render && MC.render.debug && typeof MC.render.debug.selectedLines === "function") {
+    var sel = MC.render.debug.selectedLines(d);
+    if (sel && sel.length) {
+      printSmall(sel[0] || "", x, y, 12); y += step;
+      if (sel[1]) { printSmall(sel[1], x, y, 12); y += step; }
     }
-    return out;
   }
 
-  function promptLine(state) {
+  printSmall("Active:P" + s.activeP + " Plays:" + s.playsLeft, x, y, 12); y += step;
+  printSmall((function (state) {
     if (!state) return "Prompt:(none)";
     var pr = state.prompt;
     if (!pr || !pr.kind) return "Prompt:(none)";
@@ -170,32 +159,7 @@ MC.debug.tickTextMode = function () {
     }
 
     return "Prompt:" + k;
-  }
-
-  cls(0);
-  var x = 0;
-  var y = 6;
-  var step = 6;
-  var xR = 120;
-
-  printSmall("Phase 02 Debug", x, y, 12); y += step;
-  var sid = d.scenarios[d.scenarioI];
-  var info = (MC.scenarios.INFO && sid) ? MC.scenarios.INFO[String(sid)] : null;
-  var title = (info && info.title) ? String(info.title) : String(sid);
-  printSmall("Scn:" + title, x, y, 12); y += step;
-  var pendingDesc = (info && info.desc) ? String(info.desc) : "";
-  printSmall("Seed:" + MC.seed.computeSeedU32(), x, y, 12); y += step;
-
-  if (MC.render && MC.render.debug && typeof MC.render.debug.selectedLines === "function") {
-    var sel = MC.render.debug.selectedLines(d);
-    if (sel && sel.length) {
-      printSmall(sel[0] || "", x, y, 12); y += step;
-      if (sel[1]) { printSmall(sel[1], x, y, 12); y += step; }
-    }
-  }
-
-  printSmall("Active:P" + s.activeP + " Plays:" + s.playsLeft, x, y, 12); y += step;
-  printSmall(promptLine(s), x, y, 12); y += step;
+  })(s), x, y, 12); y += step;
   var w = s.winnerP;
   if (w !== MC.state.NO_WINNER) { printSmall("Winner:P" + w, x, y, 11); y += step; }
 
@@ -224,7 +188,37 @@ MC.debug.tickTextMode = function () {
 
   // Render scenario description after Events so it doesn't overlap the right UI column.
   if (pendingDesc) {
-    var lines = wrapLines(pendingDesc, 55);
+    var lines = (function (txt, maxChars) {
+      txt = String(txt || "");
+      maxChars = maxChars || 55;
+      if (!txt) return [];
+
+      // Preserve explicit newlines, but word-wrap within each paragraph.
+      var paras = txt.split("\n");
+      var out = [];
+      var pi;
+      for (pi = 0; pi < paras.length; pi++) {
+        var p = String(paras[pi] || "").trim();
+        if (!p) { out.push(""); continue; }
+
+        var words = p.split(/\s+/);
+        var line = "";
+        var wi;
+        for (wi = 0; wi < words.length; wi++) {
+          var w = words[wi];
+          if (!w) continue;
+          if (!line) { line = w; continue; }
+          if ((line.length + 1 + w.length) <= maxChars) {
+            line += " " + w;
+          } else {
+            out.push(line);
+            line = w;
+          }
+        }
+        if (line) out.push(line);
+      }
+      return out;
+    })(pendingDesc, 55);
     var li;
     for (li = 0; li < lines.length; li++) {
       if (lines[li]) printSmall(lines[li], x, y, 13);
@@ -329,7 +323,7 @@ MC.mainTick = function () {
     }
   }
 
-  // Title mode: main entry point (Phase 13).
+  // Title mode: main entry point.
   if (MC._mainMode === 2) {
     var rawT = MC.controls.pollGlobals();
     var intentT = null;
@@ -361,7 +355,7 @@ MC.mainTick = function () {
     return;
   }
 
-  // How-to-Play mode (Phase 14).
+  // How-to-Play mode.
   if (MC._mainMode === 3) {
     var rawH = MC.controls.pollGlobals();
     var intentH = null;
@@ -390,25 +384,25 @@ MC.mainTick = function () {
   if (d.state == null) { MC._mainMode = 2; return; }
 
   {
-    function summarizeUiIntent(intent) {
-      if (!intent || !intent.kind) return "(none)";
-      if (intent.kind === "applyCmd" && intent.cmd && intent.cmd.kind) return "applyCmd:" + String(intent.cmd.kind);
-      if (intent.kind === "debug" && intent.action) return "debug:" + String(intent.action);
-      return String(intent.kind);
-    }
-
     var raw = MC.controls.pollGlobals();
     d.lastRaw = raw;
     var actions = MC.controls.actions(d.ctrl, raw, MC.config.controls);
-    d.lastUiActions = actions;
 
-    // Phase 07: AI acts for actor=1 (activeP or prompt.p). While AI is acting, suppress player input.
+    // AI acts for actor=1 (activeP or prompt.p). While AI is acting, suppress player input.
     var actor = MC.ai.actor(d.state);
     var gameOver = (d.state.winnerP !== MC.state.NO_WINNER);
     if (actor !== 0 && !gameOver) actions = {};
 
     var intent = MC.ui.step(d.state, d.view, actions);
-    d.lastUiIntentSummary = summarizeUiIntent(intent);
+    {
+      var sum = "(none)";
+      if (intent && intent.kind) {
+        if (intent.kind === "applyCmd" && intent.cmd && intent.cmd.kind) sum = "applyCmd:" + String(intent.cmd.kind);
+        else if (intent.kind === "debug" && intent.action) sum = "debug:" + String(intent.action);
+        else sum = String(intent.kind);
+      }
+      d.lastUiIntentSummary = sum;
+    }
 
     if (intent && intent.kind === "mainMenu") {
       MC._mainMode = 2;
@@ -437,7 +431,7 @@ MC.mainTick = function () {
       else if (intent.action === "nextScenario") MC.debug.nextScenario();
     }
 
-    // Phase 07: AI pacing loop (one command per step, with fixed delay).
+    // AI pacing loop (one command per step, with fixed delay).
     if (!gameOver && actor !== 0 && !(d.view && d.view.anim && d.view.anim.lock)) {
       if (d.ai.wait > 0) {
         d.ai.wait -= 1;

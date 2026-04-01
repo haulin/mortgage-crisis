@@ -65,19 +65,19 @@ MC.scenarios.applyScenario = function (state, scenarioId) {
 
 // Scenario registry (single source of truth).
 MC.scenarios.IDS = [
-  // Phase 10
+  // Replace-window + placement basics
   "replaceWindow",
   "placeBasic",
   "wildBasic",
   "houseBasic",
   "winCheck",
   "bankScrollShuffle",
-  // Phase 06
+  // Prompt-driven debt + recipient placement
   "debtHouseFirst",
   "placeReceived",
-  // Phase 07+: move generation smoke / AI policy stress
+  // Move generation smoke / AI policy stress
   "moveStress",
-  // Phase 08+: actions + responses
+  // Actions + responses
   "slyJSN",
   // Anim edge cases
   "payDebtShuffleDeal"
@@ -85,7 +85,7 @@ MC.scenarios.IDS = [
 
 // Optional metadata for debug UI / docs.
 MC.scenarios.INFO = {
-  replaceWindow: { title: "Replace-window", desc: "Phase 10: play into an overfill-complete set so the replace-window prompt is offered (move a Wild out of the just-played-into set)." },
+  replaceWindow: { title: "Replace-window", desc: "Play into an overfill-complete set so the replace-window prompt is offered (move a Wild out of the just-played-into set)." },
   placeBasic: { title: "Place (basic)", desc: "Fixed property placement + Rent play-test (opponent has a small bank payable)." },
   wildBasic: { title: "Wild (basic)", desc: "Wild property placement + discard depth demo." },
   houseBasic: { title: "House (basic)", desc: "Build House on complete set only." },
@@ -236,7 +236,6 @@ MC.scenarios._applyById = {
     state.winnerP = MC.state.NO_WINNER;
   },
 
-  // Phase 06: prompt-driven debt payment where House must be paid first.
   // Goal: exercise prompt actor separation + house-first redirect + overpay allowed.
   debtHouseFirst: function (state) {
     // P0: complete Cyan set with a House.
@@ -259,7 +258,6 @@ MC.scenarios._applyById = {
     MC.state.setPrompt(state, { kind: "payDebt", p: 0, toP: 1, rem: 1, buf: [], srcAction: { kind: "rent", fromP: 1, actionUid: rentUid } });
   },
 
-  // Phase 06: recipient faux-turn placement buffer (received properties).
   placeReceived: function (state) {
     // P0 has an existing Orange set to allow placing into existing sets.
     var setO = MC.state.newEmptySet();
@@ -277,7 +275,6 @@ MC.scenarios._applyById = {
     state.players[0].hand.push(MC.state.takeUid(state, "rent_mo"));
   },
 
-  // Phase 07+: maximize legalMoves fanout for smoke testing + AI policy tuning.
   moveStress: function (state) {
     // Board: P0 has many partial sets so properties/wilds have multiple existing destinations.
     // Hand: 9 cards including wilds + rent-any + house, so move list gets large.
@@ -338,7 +335,6 @@ MC.scenarios._applyById = {
     state.players[0].hand.push(MC.state.takeUid(state, "sly_deal"));
   },
 
-  // Phase 08: Sly Deal respondAction prompt (Allow vs JSN).
   slyJSN: function (state) {
     // P0 has a stealable (incomplete) set with a single property.
     var setO = MC.state.newEmptySet();

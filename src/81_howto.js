@@ -1,4 +1,4 @@
-// MC.howto: in-game How to Play screen (Phase 14).
+// MC.howto: in-game How to Play screen.
 (function initHowtoModule() {
   var H = MC.howto;
 

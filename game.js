@@ -39,17 +39,17 @@ MC.config = {
   seedBase: 1005
 };
 
-// Meta/version display (Phase 11).
+// Meta/version display.
 MC.config.meta = {
   version: "MVP v0.15"
 };
 
-// Debug/dev knobs (Phase 03b+). Keep these centralized so we can disable later.
+// Debug/dev knobs. Keep these centralized so we can disable later.
 MC.config.debug = {
   enabled: true
 };
 
-// Controller UX knobs (Phase 04+). All values are in frames (TIC runs at 60fps).
+// Controller UX knobs. All values are in frames (TIC runs at 60fps).
 MC.config.controls = {
   // D-pad repeat: start repeating after delay, then pulse every period.
   dpadRepeatDelayFrames: 12,
@@ -63,7 +63,7 @@ MC.config.controls = {
   xInspectDelayFrames: 6
 };
 
-// UI/navigation tuning (Phase 04+).
+// UI/navigation tuning.
 MC.config.ui = {
   // Directional navigation cone penalty multiplier (per-axis):
   // used by MC.ui.navPickInDirection scoring:
@@ -77,41 +77,36 @@ MC.config.ui = {
   navConeKLeftRight: 18,
   navConeKUpDown: 6,
 
-  // Phase 05c+: animation timings (frames at 60fps).
-  // Debug aid: multiply animation timings for slow-motion debugging (1 = normal speed).
+  // Timings are in frames (TIC runs at 60fps).
+  // Debug aid: multiply timings for slow-motion debugging (1 = normal speed).
   animSpeedMult: 3,
   dealFramesPerCard: 8,
   dealGapFrames: 2,
-  // Phase 15: transfer animations (frames at 60fps).
   xferFramesPerCard: 8,
   xferGapFrames: 2,
-  // Phase 15 polish: hold at the source before motion when AI chose the card/target.
   xferHoldFromFrames: 18,
-  // Phase 15 polish: pause after the final payment selection before draining transfers.
   xferHoldFrames: 12,
-  // Phase 15: game-start toast hold (frames at 60fps).
   gameStartToastFrames: 60,
   // Shuffle: default includes ~1 extra 1→2→3 loop for readability.
   shuffleAnimFrames: 42,
   shuffleToastFrames: 42,
 
-  // Phase 07: AI pacing (frames at 60fps).
   aiStepDelayFrames: 60,
   aiNarrateToastFrames: 60,
 
-  // Toast timings (frames at 60fps). Central inventory for future time-scale work.
+  // Toast timings.
   toast: {
     infoFrames: 90,
     errorFrames: 90
   },
 
-  // Phase 08: Sly Deal targeting presentation.
+  // Sly Deal targeting presentation.
   // If true: show ghost outlines for non-selected Sly targets while targeting.
   slyShowTargetGhosts: false
  
 };
 
-// Title screen knobs (Phase 12). Keep numeric/layout values here for easy iteration.
+// Title screen knobs. Keep numeric/layout values here for easy iteration.
 MC.config.title = {
   // Right panel width (menu area).
   menuW: 90,
@@ -146,27 +141,19 @@ MC.config.title = {
   // Defaults to the card-back TL sprite, which should exist in the cart.
   bgTileEnabled: true,
   bgTileSprId: 34,
-  bgTileColorkey: 15,
-
-  // 0 disables blink; otherwise, show/hide on half-period.
-  pressAnyBlinkPeriodFrames: 60
+  bgTileColorkey: 15
 };
 
-// AI policy knobs (Phase 07+).
+// AI policy knobs.
 MC.config.ai = {
   // Per-player policy IDs (0=player, 1=opponent by default).
   policyByP: ["defaultHeuristic", "defaultHeuristic"],
 
-  // Weight multiplier for "place property into an existing set" moves.
-  // 1 means no bias (equivalent to uniform random).
+  // Policy weight multipliers; 1 means neutral (equivalent to uniform random).
   biasExistingSetK: 8,
-
-  // Phase 11: soft bias toward paying debts from bank before transferring properties.
-  // 1 means no bias (equivalent to uniform random).
   biasPayDebtFromBankK: 8,
 
-  // Phase 11: early-turn discipline.
-  // Simple goal: avoid immediately banking valuable actions when options are limited.
+  // Early-turn discipline.
   earlyBankBufferTarget: 3,
   earlyEmptyHandKeepActionsMaxHand: 2,
   biasEarlyBankMoneyK: 6,
@@ -174,24 +161,13 @@ MC.config.ai = {
   biasEarlyPlayRentIfPayableK: 3,
   biasEarlyPlaceWhenHoldingRentK: 2,
 
-  // Weight multiplier for "play Rent" moves (bias asking for rent over banking Rent).
-  // 1 means no bias (equivalent to uniform random).
   biasPlayRentK: 4,
-
-  // Phase 11: weight multiplier for "play Sly Deal" moves (bias stealing over banking Sly).
-  // 1 means no bias (equivalent to uniform random).
   biasPlaySlyDealK: 8,
-
-  // Phase 08: weight multiplier for "play Just Say No" response moves.
-  // 1 means no bias (equivalent to uniform random).
   biasPlayJustSayNoK: 8,
-
-  // Phase 10: weight multiplier for "moveWild" replace-window moves (AI willingness).
-  // 1 means no bias (equivalent to uniform random).
   biasMoveWildK: 8
 };
 
-// Rule-note IDs (Phase 05+). These are small display-only annotations in Inspect.
+// Rule-note IDs. These are small display-only annotations in Inspect.
 MC.RuleNote = {
   // MVP1 rule constraints.
   SlyDeal_NotFromFullSet: 1,
@@ -201,7 +177,7 @@ MC.RuleNote = {
   JSN_Chain: 3
 };
 
-// Rules display knobs (Phase 05+).
+// Rules display knobs.
 MC.config.rules = {
   // List of enabled RuleNote IDs to show in Inspect.
   // Note: keep this intentionally small; it's easy to mislead players with future-rule text.
@@ -231,7 +207,7 @@ MC.Pal = {
   DarkGrey: 15,   // #333c57
 };
 
-// How-to-play screen knobs (Phase 14). Keep layout/typography here for easy tuning.
+// How-to-play screen knobs. Keep layout/typography here for easy tuning.
 MC.config.howto = {
   padX: 8,
   padY: 6,
@@ -298,22 +274,22 @@ MC.config.render = {
     hudLineX: 6,
     hudLineY: 74,
 
-    // Center row (Phase 03b+)
+    // Center row
     centerTopInsetY: 4,
     centerDeckX: 6,
     centerPileGapX: 6,
-    // Phase 15: payment/transfer buffer anchor (screen-space x).
+    // Payment/transfer buffer anchor (screen-space x).
     // Y uses rowY[ROW_CENTER] + centerTopInsetY to match deck/discard.
     centerPayBufX: 48,
     centerPreviewX: 70,
     centerPreviewGapX: 8,
     centerDescDy: 8,
 
-    // Center row button strip (Phase 04+).
+    // Center row button strip.
     centerBtnStripW: 39,
     centerBtnStripPadRight: 1,
 
-    // Inspect panel (Phase 05): screen-space panel bounds.
+    // Inspect panel: screen-space panel bounds.
     // These are absolute so we can tune without coupling to centerPreviewX.
     inspectPanelX0: 48,
     inspectPanelY0: 35,
@@ -368,24 +344,18 @@ MC.config.render = {
     colHighlight: MC.Pal.Yellow,
     colCenterPanel: MC.Pal.DarkBlue,
     colCenterPanelBorder: MC.Pal.White,
-    colValuePatch: MC.Pal.White,
-    colValuePatchBorder: MC.Pal.Black,
     hudLineCol: MC.Pal.White,
     colToastBgAi: MC.Pal.DarkBlue,
 
-    // Center pile depth outlines (Phase 03b polish)
+    // Center pile depth outlines
     pileShadowOutlineCol: MC.Pal.Black,
-    // Under-layer outline colors (screen-space depth):
-    // - under1: the closer (smaller offset) layer
-    // - under2: the deeper (larger offset) layer
-    // Deeper is intentionally darker.
     pileOutlineUnder1Col: MC.Pal.LightGrey,
     pileOutlineUnder2Col: MC.Pal.Grey,
 
-    // Inspect panel colors (Phase 05).
+    // Inspect panel colors.
     inspectPanelFillCol: MC.Pal.DarkGreen,
 
-    // Deck/Discard pile count digit offset (Phase 05).
+    // Deck/Discard pile count digit offset.
     pileCountDx: 1,
     pileCountDy: 1
   },
@@ -396,7 +366,7 @@ MC.config.render = {
     digit0: 1, // digit sprite IDs are digit0 + n
 
     // Card back (top-left tile id of a 2x3 sprite = 16x24).
-    // Art convention for Phase 03b: last column + last row are color 15 (colorkey),
+    // Art convention: last column + last row are color 15 (colorkey),
     // yielding an effective 15x23 interior when drawn at xFace+1,yFace+1.
     cardBackTL: 32,
 
@@ -437,10 +407,6 @@ MC.util.bankValueTotal = function (state, p) {
 
 // ---- src/15_rng.js ----
 // MC.rng: deterministic PRNG helpers (bitwise coercion stays localized here).
-MC.rng.u32 = function (n) {
-  return (n >>> 0);
-};
-
 MC.rng.u32NonZero = function (n) {
   var x = (n >>> 0);
   return x ? x : 1;
@@ -474,15 +440,11 @@ MC.rng.RNG.prototype.nextInt = function (n) {
 };
 
 // RNG-in-state helpers (store evolving state in `state.rngS`).
-MC.rng.nextU32InState = function (state) {
-  state.rngS = MC.rng.xorshift32Step(state.rngS >>> 0);
-  return state.rngS >>> 0;
-};
-
 MC.rng.nextIntInState = function (state, n) {
   n = n | 0;
   if (n <= 0) return 0;
-  return (MC.rng.nextU32InState(state) % n) | 0;
+  state.rngS = MC.rng.xorshift32Step(state.rngS >>> 0);
+  return ((state.rngS >>> 0) % n) | 0;
 };
 
 // ---- src/20_seed.js ----
@@ -494,7 +456,6 @@ MC.seed.computeSeedU32 = function () {
   var toolsOn = !!(MC.debug && MC.debug.toolsOn);
   if (toolsOn) return MC.rng.u32NonZero(seedBase);
 
-  // TIC-80: `tstamp()` is available and per-second resolution is sufficient here.
   var t = Math.floor(tstamp());
   return MC.rng.u32NonZero(seedBase + t);
 };
@@ -662,24 +623,26 @@ MC.controls.actions = function (st, raw, cfg) {
 
 // ---- src/30_shuffle.js ----
 // MC.shuffle: deterministic shuffling helpers (seeded RNG / state RNG).
-MC.shuffle.byNextInt = function (arr, nextInt) {
-  var i;
-  for (i = arr.length - 1; i > 0; i--) {
-    var j = nextInt(i + 1);
-    var tmp = arr[i];
-    arr[i] = arr[j];
-    arr[j] = tmp;
+(function initShuffleModule() {
+  function byNextInt(arr, nextInt) {
+    var i;
+    for (i = arr.length - 1; i > 0; i--) {
+      var j = nextInt(i + 1);
+      var tmp = arr[i];
+      arr[i] = arr[j];
+      arr[j] = tmp;
+    }
+    return arr;
   }
-  return arr;
-};
 
-MC.shuffle.inPlaceWithRng = function (arr, rng) {
-  return MC.shuffle.byNextInt(arr, function (n) { return rng.nextInt(n); });
-};
+  MC.shuffle.inPlaceWithRng = function (arr, rng) {
+    return byNextInt(arr, function (n) { return rng.nextInt(n); });
+  };
 
-MC.shuffle.inPlaceWithStateRng = function (state, arr) {
-  return MC.shuffle.byNextInt(arr, function (n) { return MC.rng.nextIntInState(state, n); });
-};
+  MC.shuffle.inPlaceWithStateRng = function (state, arr) {
+    return byNextInt(arr, function (n) { return MC.rng.nextIntInState(state, n); });
+  };
+})();
 
 // ---- src/35_defs.js ----
 // Card/game definitions: enums + static data tables (treated as read-only).
@@ -703,7 +666,7 @@ MC.ActionKind = {
   JustSayNo: 2,
 };
 
-// Rule note display text (Phase 05+). These are appended in Inspect when enabled by config.
+// Rule note display text. These are appended in Inspect when enabled by config.
 MC.ruleNoteTextById = [];
 MC.ruleNoteTextById[MC.RuleNote.SlyDeal_NotFromFullSet] = "(Cannot be part of a full set)";
 MC.ruleNoteTextById[MC.RuleNote.House_StationsUtilities] = "(Except stations & utilities)";
@@ -947,7 +910,7 @@ MC.state.setPrompt = function (state, prompt) {
   }
 
   if (k === "respondAction") {
-    // Generic response window prompt (Phase 08+).
+    // Generic response window prompt.
     // Keep payload minimal and validate via tests (avoid runtime shape asserts).
     var src2 = prompt.srcAction;
     var srcAction2 = src2 ? { kind: String(src2.kind || ""), fromP: src2.fromP, actionUid: Math.floor(src2.actionUid) } : null;
@@ -972,7 +935,7 @@ MC.state.setPrompt = function (state, prompt) {
   }
 
   if (k === "replaceWindow") {
-    // Phase 10: Wild replace-window (optional reposition after property placement).
+    // Wild replace-window (optional reposition after property placement).
     // Keep payload minimal; validate shape via tests (avoid runtime asserts/fallbacks).
     var resume = prompt.resume;
     var resumeObj = null;
@@ -1249,7 +1212,7 @@ MC.rules.rentAmountForSet = function (state, p, setI) {
 };
 
 MC.rules.replaceWindowEligibleWildLocs = function (state, p, srcSetI, excludeUid) {
-  // Phase 10: replace-window is offered only when we can remove exactly 1 Wild from
+  // Replace-window is offered only when we can remove exactly 1 Wild from
   // the just-played-into set while keeping that source set complete.
   if (!(p === 0 || p === 1)) return [];
   var sets = state.players[p] ? state.players[p].sets : null;
@@ -1428,7 +1391,7 @@ MC.engine.applyCommand = function (state, cmd) {
   }
 
   function tryBeginReplaceWindow(actorP, srcSetI, excludeUid, resume) {
-    // Phase 10: after placing a property into a set, optionally allow moving one Wild
+    // After placing a property into a set, optionally allow moving one Wild
     // out of that same set (excluding the just-played card), but only if the source
     // set remains complete after removal.
     if (state.winnerP !== MC.state.NO_WINNER) return false;
@@ -1688,7 +1651,7 @@ MC.engine.applyCommand = function (state, cmd) {
         return;
       }
 
-      // Phase 10: offer replace-window after each received placement (then resume).
+      // Offer replace-window after each received placement (then resume).
       var resume = (prompt.uids.length > 0) ? { kind: "placeReceived", uids: prompt.uids.slice() } : null;
       var started = tryBeginReplaceWindow(p, setI, uid, resume);
       if (started) return;
@@ -1856,7 +1819,7 @@ MC.engine.applyCommand = function (state, cmd) {
       return;
     }
 
-    // Phase 10: offer replace-window after each property play into a set.
+    // Offer replace-window after each property play into a set.
     tryBeginReplaceWindow(p, setI, uid, null);
   }
 
@@ -2094,7 +2057,7 @@ MC.engine.legalMoves = function (state) {
         }
       }
       if (pr.srcAction && pr.buf && pr.buf.length === 0) {
-        // Allow JSN response before any payment (Phase 08+).
+        // Allow JSN response before any payment.
         var handJ = state.players[pPay].hand;
         var hj;
         for (hj = 0; hj < handJ.length; hj++) {
@@ -2317,19 +2280,19 @@ MC.scenarios.applyScenario = function (state, scenarioId) {
 
 // Scenario registry (single source of truth).
 MC.scenarios.IDS = [
-  // Phase 10
+  // Replace-window + placement basics
   "replaceWindow",
   "placeBasic",
   "wildBasic",
   "houseBasic",
   "winCheck",
   "bankScrollShuffle",
-  // Phase 06
+  // Prompt-driven debt + recipient placement
   "debtHouseFirst",
   "placeReceived",
-  // Phase 07+: move generation smoke / AI policy stress
+  // Move generation smoke / AI policy stress
   "moveStress",
-  // Phase 08+: actions + responses
+  // Actions + responses
   "slyJSN",
   // Anim edge cases
   "payDebtShuffleDeal"
@@ -2337,7 +2300,7 @@ MC.scenarios.IDS = [
 
 // Optional metadata for debug UI / docs.
 MC.scenarios.INFO = {
-  replaceWindow: { title: "Replace-window", desc: "Phase 10: play into an overfill-complete set so the replace-window prompt is offered (move a Wild out of the just-played-into set)." },
+  replaceWindow: { title: "Replace-window", desc: "Play into an overfill-complete set so the replace-window prompt is offered (move a Wild out of the just-played-into set)." },
   placeBasic: { title: "Place (basic)", desc: "Fixed property placement + Rent play-test (opponent has a small bank payable)." },
   wildBasic: { title: "Wild (basic)", desc: "Wild property placement + discard depth demo." },
   houseBasic: { title: "House (basic)", desc: "Build House on complete set only." },
@@ -2488,7 +2451,6 @@ MC.scenarios._applyById = {
     state.winnerP = MC.state.NO_WINNER;
   },
 
-  // Phase 06: prompt-driven debt payment where House must be paid first.
   // Goal: exercise prompt actor separation + house-first redirect + overpay allowed.
   debtHouseFirst: function (state) {
     // P0: complete Cyan set with a House.
@@ -2511,7 +2473,6 @@ MC.scenarios._applyById = {
     MC.state.setPrompt(state, { kind: "payDebt", p: 0, toP: 1, rem: 1, buf: [], srcAction: { kind: "rent", fromP: 1, actionUid: rentUid } });
   },
 
-  // Phase 06: recipient faux-turn placement buffer (received properties).
   placeReceived: function (state) {
     // P0 has an existing Orange set to allow placing into existing sets.
     var setO = MC.state.newEmptySet();
@@ -2529,7 +2490,6 @@ MC.scenarios._applyById = {
     state.players[0].hand.push(MC.state.takeUid(state, "rent_mo"));
   },
 
-  // Phase 07+: maximize legalMoves fanout for smoke testing + AI policy tuning.
   moveStress: function (state) {
     // Board: P0 has many partial sets so properties/wilds have multiple existing destinations.
     // Hand: 9 cards including wilds + rent-any + house, so move list gets large.
@@ -2590,7 +2550,6 @@ MC.scenarios._applyById = {
     state.players[0].hand.push(MC.state.takeUid(state, "sly_deal"));
   },
 
-  // Phase 08: Sly Deal respondAction prompt (Allow vs JSN).
   slyJSN: function (state) {
     // P0 has a stealable (incomplete) set with a single property.
     var setO = MC.state.newEmptySet();
@@ -2895,7 +2854,7 @@ MC.ai.policies = {
   biasPayDebtFromBank: {
     id: "biasPayDebtFromBank",
     weight: function (state, move) {
-      // Phase 11: prefer paying debts from bank to reduce surprise property transfers.
+      // Prefer paying debts from bank to reduce surprise property transfers.
       // Tuning knob lives in config.
       var k = MC.config.ai.biasPayDebtFromBankK;
       if (!move || move.kind !== "payDebt") return 1;
@@ -2909,7 +2868,7 @@ MC.ai.policies = {
   earlyTurnDiscipline: {
     id: "earlyTurnDiscipline",
     weight: function (state, move, moves) {
-      // Phase 11: simple “don’t play dumb early” heuristic.
+      // Simple “don’t play dumb early” heuristic.
       // Keep this broad but low-spike: prefer banking real money to reach a small buffer,
       // avoid wasting Rent when opponent can't pay, and avoid banking multiple valuable actions
       // when there are no other ways to spend plays (unless we're about to empty hand for draw-5).
@@ -2990,7 +2949,7 @@ MC.ai.policies = {
     id: "biasPlayRent",
     weight: function (state, move) {
       // Soft bias: prefer asking for rent rather than banking the Rent card.
-      // Phase 11 tweak: avoid wasting Rent when the opponent has nothing payable.
+      // Avoid wasting Rent when the opponent has nothing payable.
       // Tuning knob lives in config.
       var k = MC.config.ai.biasPlayRentK;
       if (!move || move.kind !== "playRent") return 1;
@@ -3008,7 +2967,7 @@ MC.ai.policies = {
   biasPlaySlyDeal: {
     id: "biasPlaySlyDeal",
     weight: function (state, move) {
-      // Phase 11: prefer stealing a property rather than banking Sly Deal when a target exists.
+      // Prefer stealing a property rather than banking Sly Deal when a target exists.
       // Tuning knob lives in config.
       var k = MC.config.ai.biasPlaySlyDealK;
       if (!move || move.kind !== "playSlyDeal") return 1;
@@ -3031,7 +2990,7 @@ MC.ai.policies = {
   biasMoveWild: {
     id: "biasMoveWild",
     weight: function (state, move) {
-      // Phase 10: simple heuristic for replace-window Wild repositioning.
+      // Simple heuristic for replace-window Wild repositioning.
       // Prefer moves that complete a set, then maximize rent delta on existing sets.
       // Tuning knob lives in config.
       var k = MC.config.ai.biasMoveWildK;
@@ -3527,7 +3486,6 @@ MC.fmt.errorMessage = function (code) {
   if (code === "wild_color_illegal") return "Wild color illegal";
   if (code === "no_targets") return "No valid destination";
   if (code === "house_pay_first") return "House must be paid first";
-  // Phase 08+
   if (code === "not_sly") return "Not a Sly Deal";
   if (code === "sly_full_set") return "Can't steal from a complete set";
   if (code === "not_jsn") return "Not Just Say No";
@@ -3662,14 +3620,6 @@ MC.fmt.targetingHelp = function (targeting) {
 // ---- src/56_layout.js ----
 // MC.layout: shared layout/geometry helpers (UI + renderer). Pure; reads MC.config.
 
-MC.layout.rowY0 = function (row) {
-  return MC.config.render.layout.rowY[row];
-};
-
-MC.layout.rowH = function (row) {
-  return MC.config.render.layout.rowH[row];
-};
-
 MC.layout.faceYForRow = function (row) {
   var L = MC.config.render.layout;
   if (row === 0) {
@@ -3715,8 +3665,7 @@ MC.layout.playerForRow = function (row) {
   R.spr = renderCfg.spr;
   R.moneyBgByValue = renderCfg.moneyBgByValue;
   R.center = null;
-
-  function initCenterFromLayout() {
+  R.center = (function () {
     var cfg = R.cfg;
     var row = R.ROW_CENTER;
     var y0 = cfg.rowY[row];
@@ -3734,9 +3683,7 @@ MC.layout.playerForRow = function (row) {
       title: { x: prevX + cfg.faceW + prevGapX, y: top },
       desc: { x: prevX + cfg.faceW + prevGapX, y: top + cfg.centerDescDy }
     };
-  }
-
-  R.center = initCenterFromLayout();
+  })();
 
   // Property bar palette (placeholder; tweak later).
   R.propBarColByColor = [];
@@ -3767,12 +3714,9 @@ MC.layout.playerForRow = function (row) {
   }
 
   function rowY0(row) { return R.cfg.rowY[row]; }
-  function rowH(row) { return R.cfg.rowH[row]; }
-  function rowY1(row) { return rowY0(row) + rowH(row) - 1; }
+  function rowY1(row) { return rowY0(row) + R.cfg.rowH[row] - 1; }
 
   // Row policy lives in MC.layout; renderer uses it for flip decisions.
-  function isOpponentRow(row) { return MC.layout.isOpponentRow(row); }
-
   function cardLocalRectToScreen(xFace, yFace, lx, ly, w, h, flip180) {
     if (!flip180) {
       return { x: xFace + lx, y: yFace + ly, w: w, h: h };
@@ -3870,13 +3814,9 @@ MC.layout.playerForRow = function (row) {
     );
   }
 
-  function digitSpriteId(n) {
-    return R.spr.digit0 + n;
-  }
-
   function drawDigitGlyph(n, xGlyphTL, yGlyphTL, flip180) {
     if (n < 0 || n > 9) return;
-    var id = digitSpriteId(n);
+    var id = R.spr.digit0 + n;
     var ck = R.cfg.glyphColorkey;
     var insetX = R.cfg.glyphInsetX;
     var insetY = R.cfg.glyphInsetY;
@@ -3899,19 +3839,6 @@ MC.layout.playerForRow = function (row) {
       1,
       1
     );
-  }
-
-  function drawRentRow(xFace, yFace, rentArr, flip180) {
-    if (!rentArr || rentArr.length <= 0) return;
-    var i;
-    for (i = 0; i < rentArr.length; i++) {
-      var v = rentArr[i];
-      if (v < 0 || v > 9) continue;
-      var lx = R.cfg.propRentX + i * R.cfg.propRentDx;
-      var ly = R.cfg.propRentY;
-      var p = cardLocalRectToScreen(xFace, yFace, lx, ly, R.cfg.digitGlyphW, R.cfg.digitGlyphH, flip180);
-      drawDigitGlyph(v, p.x, p.y, flip180);
-    }
   }
 
   function drawDualPropHalf(xFace, yFace, color, cardValue, flip180) {
@@ -3937,7 +3864,17 @@ MC.layout.playerForRow = function (row) {
 
     // Rent row (rent table)
     var rent = (MC.SET_RULES && MC.SET_RULES[color]) ? MC.SET_RULES[color].rent : null;
-    drawRentRow(xFace, yFace, rent, flip180);
+    if (rent && rent.length > 0) {
+      var i;
+      for (i = 0; i < rent.length; i++) {
+        var v = rent[i];
+        if (v < 0 || v > 9) continue;
+        var lx = R.cfg.propRentX + i * R.cfg.propRentDx;
+        var ly = R.cfg.propRentY;
+        var p = cardLocalRectToScreen(xFace, yFace, lx, ly, R.cfg.digitGlyphW, R.cfg.digitGlyphH, flip180);
+        drawDigitGlyph(v, p.x, p.y, flip180);
+      }
+    }
   }
 
   function iconForDef(def) {
@@ -3954,20 +3891,6 @@ MC.layout.playerForRow = function (row) {
     return 0;
   }
 
-  function rentColorsForDef(def) {
-    if (!def || def.actionKind !== MC.ActionKind.Rent) return null;
-    var a = def.rentAllowedColors;
-    if (a && a.length) return a;
-    // rent_any: treat as 4 colors in a stable order.
-    return [MC.Color.Cyan, MC.Color.Black, MC.Color.Magenta, MC.Color.Orange];
-  }
-
-  function rentBarColForColor(color) {
-    if (color === MC.Color.Black) return MC.Pal.Black;
-    var c = R.propBarColByColor[color];
-    return c != null ? c : R.cfg.colText;
-  }
-
   function drawRentBars(xFace, yFace, colors, flip180) {
     if (!colors || colors.length <= 0) return;
     var barH = 2;
@@ -3982,7 +3905,11 @@ MC.layout.playerForRow = function (row) {
     for (i = 0; i < count; i++) {
       var ly = bottomY - i * barH;
       var p = cardLocalRectToScreen(xFace, yFace, lx, ly, w, barH, flip180);
-      rectSafe(p.x, p.y, p.w, p.h, rentBarColForColor(colors[i]));
+      var color = colors[i];
+      var c;
+      if (color === MC.Color.Black) c = MC.Pal.Black;
+      else c = R.propBarColByColor[color];
+      rectSafe(p.x, p.y, p.w, p.h, c != null ? c : R.cfg.colText);
     }
   }
 
@@ -4036,7 +3963,11 @@ MC.layout.playerForRow = function (row) {
 
     if (def.kind === MC.CardKind.Action && def.actionKind === MC.ActionKind.Rent) {
       drawCardFaceBase(xFace, yFace, R.cfg.colCardInterior);
-      drawRentBars(xFace, yFace, rentColorsForDef(def), !!flip180);
+      var colors = def.rentAllowedColors;
+      if (!(colors && colors.length)) {
+        colors = [MC.Color.Cyan, MC.Color.Black, MC.Color.Magenta, MC.Color.Orange];
+      }
+      drawRentBars(xFace, yFace, colors, !!flip180);
       var rv = def.bankValue;
       drawValueDigit(xFace, yFace, rv, !!flip180);
       var rIcon = iconForDef(def);
@@ -4061,7 +3992,7 @@ MC.layout.playerForRow = function (row) {
     var id = (R.spr && R.spr.cardBackTL != null) ? R.spr.cardBackTL : 0;
 
     if (id) {
-      // Phase 03b back: 2x3 sprite (16x24) drawn inside the 1px border.
+      // Card back: 2x3 sprite (16x24) drawn inside the 1px border.
       // Art convention: last col + last row are colorkey (15) so the effective area is 15x23.
       drawCardFaceBase(xFace, yFace, cfg.colCardInterior);
       // When rotated 180°, the padded colorkey row/col becomes the top/left edge.
@@ -4080,9 +4011,6 @@ MC.layout.playerForRow = function (row) {
     rectSafe(p2.x, p2.y, p2.w, p2.h, 12);
   }
 
-  // Phase 04: renderer no longer computes row models/navigation/cameras.
-  // UI owns selection + cameras via MC.ui, and passes computed models in.
-
   function drawCenter(opts) {
     if (!opts || !opts.state || !opts.view || !opts.computed) return;
     var s = opts.state;
@@ -4100,7 +4028,7 @@ MC.layout.playerForRow = function (row) {
     var dbgEnabled = !!(MC.config.debug.enabled && MC.debug.toolsOn);
     var hlCol = (opts.highlightCol != null) ? opts.highlightCol : cfg.colHighlight;
 
-    // Header: removed (Phase 04). Plays indicator is drawn in screen-space.
+    // Plays indicator is drawn in screen-space.
 
     function drawCountDigits(n, xFace, yFace) {
       var sN = String(n);
@@ -4202,7 +4130,7 @@ MC.layout.playerForRow = function (row) {
       }
     }
 
-    // Phase 15: non-selectable center overlays (e.g. payDebt buffer stack).
+    // Non-selectable center overlays (e.g. payDebt buffer stack).
     if (rowM && rowM.overlayItems) {
       for (i = 0; i < rowM.overlayItems.length; i++) {
         var itO = rowM.overlayItems[i];
@@ -4232,7 +4160,7 @@ MC.layout.playerForRow = function (row) {
     var xDesc = C.desc.x;
     var yDesc = C.desc.y;
 
-    // Phase 05: Inspect uses a screen-space panel with panel-driven anchors.
+    // Inspect uses a screen-space panel with panel-driven anchors.
     var panel = null;
     if (view.inspectActive) {
       var Lp = MC.config.render.layout;
@@ -4508,71 +4436,6 @@ MC.layout.playerForRow = function (row) {
   // Expose toast renderer so non-game modes (e.g. Title) can reuse it.
   R.drawToasts = drawToasts;
 
-  function drawTopLeftStatus(debug, selectedItem) {
-    var cfg = R.cfg;
-    if (!debug || !debug.state) return;
-
-    var s = debug.state;
-    var x0 = (cfg.topStatusX != null) ? cfg.topStatusX : 0;
-    var y0 = (cfg.topStatusY != null) ? cfg.topStatusY : 0;
-    var step = (cfg.topStatusLineStep != null) ? cfg.topStatusLineStep : 7;
-    if (cfg.topStatusEnabled === false) return;
-
-    var lines = [];
-    lines.push("Phase 03 Render");
-    lines.push("Scenario:" + String(debug.scenarios[debug.scenarioI]));
-    lines.push("Active:P" + s.activeP + " Plays:" + s.playsLeft);
-
-    if (selectedItem && selectedItem.row === R.ROW_CENTER) {
-      var k = selectedItem.kind;
-      if (k === "deck") {
-        lines.push("Sel:Deck");
-        lines.push("Cards:" + s.deck.length);
-      } else if (k === "discard") {
-        lines.push("Sel:Disc");
-        lines.push("Cards:" + s.discard.length);
-      } else if (k === "bank0") {
-        lines.push("Sel:B0");
-        lines.push("Total:" + MC.util.bankValueTotal(s, 0));
-      } else if (k === "bank1") {
-        lines.push("Sel:B1");
-        lines.push("Total:" + MC.util.bankValueTotal(s, 1));
-      } else {
-        lines.push("Sel:" + String(k || "?"));
-        lines.push("");
-      }
-    } else if (selectedItem && selectedItem.uid) {
-      var uid = selectedItem.uid;
-      var def = MC.state.defByUid(s, uid);
-      var defId = def ? def.id : "?";
-      lines.push("Sel:" + defId + " uid:" + uid);
-
-      var detail = "";
-      if (def && def.kind === MC.CardKind.Property) {
-        if (MC.rules.isWildDef(def)) {
-          detail = "Wild:" + def.wildColors[0] + "/" + def.wildColors[1];
-          if (selectedItem && selectedItem.color != null && selectedItem.color !== MC.state.NO_COLOR) {
-            detail += " As:c" + selectedItem.color;
-          }
-        }
-        else detail = "Prop:c" + def.propertyColor;
-      } else if (def && def.bankValue != null) {
-        detail = "Value:" + def.bankValue;
-      } else {
-        detail = "(no detail)";
-      }
-      lines.push(detail);
-    } else {
-      lines.push("Sel:(none)");
-      lines.push("");
-    }
-
-    var i;
-    for (i = 0; i < 5; i++) {
-      printSafe(lines[i] || "", x0, y0 + i * step, cfg.colText);
-    }
-  }
-
   function groupStacksByKey(items, camX) {
     var byKey = {};
     var keys = [];
@@ -4615,7 +4478,7 @@ MC.layout.playerForRow = function (row) {
     var cfg = R.cfg;
     if (cam == null) cam = 0;
     if (highlightCol == null) highlightCol = cfg.colHighlight;
-    var flipCards = isOpponentRow(row);
+    var flipCards = MC.layout.isOpponentRow(row);
     var i;
 
     var overlayItems = rowModel && rowModel.overlayItems ? rowModel.overlayItems : null;
@@ -4790,7 +4653,7 @@ MC.layout.playerForRow = function (row) {
     return ["Sel:" + String(it.kind || "?"), ""];
   };
 
-  // Phase 05c: shuffle + deal animations (render-only visuals).
+  // Shuffle + deal animations (render-only visuals).
   // Renderer is oblivious to `view.anim`; UI/anim modules provide presentation in `computed`.
   function drawAnimOverlay(state, view, computed) {
     if (!state || !view || !computed) return;
@@ -4853,7 +4716,7 @@ MC.layout.playerForRow = function (row) {
     // Center panel last (so text overlays are readable).
     drawCenter({ state: state, view: view, computed: computed, selected: sel, highlightCol: hlCol });
 
-    // Phase 05c: animations on top of scene (but under toasts).
+    // Animations on top of scene (but under toasts).
     drawAnimOverlay(state, view, computed);
 
     // Highlight center widgets if selected.
@@ -4902,7 +4765,7 @@ MC.ui.newView = function () {
       cmds: [],
       cmdI: 0,
 
-      // Hold-A chain (Phase 09+): compose multiple targeting kinds (e.g. Sly→Bank→Source)
+      // Hold-A chain: compose multiple targeting kinds (e.g. Sly→Bank→Source)
       // so cursor-mode targeting doesn't have to impersonate preview-mode destinations.
       chainActive: false,
       chainSegs: [],
@@ -4914,22 +4777,22 @@ MC.ui.newView = function () {
     // Inspect (hold X with delay)
     inspectActive: false,
 
-    // Toasts (Phase 05b+): stacked notifications at screen top.
+    // Toasts: stacked notifications at screen top.
     // Each toast: { id?, kind?, text, frames?, persistent? }
     toasts: [],
 
-    // Animations (Phase 05c+): shuffle + staged dealing. Purely view-owned.
+    // Animations: shuffle + staged dealing. Purely view-owned.
     anim: {
       q: [],
       active: null,
       lock: false,
       // hiddenByP[p][uid] = true means uid is in-hand but not yet revealed.
       hiddenByP: [{}, {}],
-      // Phase 15: hide cards that are mid-transfer (any zone, any player).
+      // Hide cards that are mid-transfer (any zone, any player).
       hiddenByUid: {},
-      // Phase 15: last seen screen-space face origins by uid (for transfer animations).
+      // Last seen screen-space face origins by uid (for transfer animations).
       lastPosByUid: {},
-      // Phase 15: visual list of cards in the pay/transfer buffer stack (center row).
+      // Visual list of cards in the pay/transfer buffer stack (center row).
       // Used to keep the buffer visible while promptBuf-sourced transfers drain after the prompt clears.
       payBufUids: []
     },
@@ -4950,7 +4813,6 @@ MC.ui.newView = function () {
       lastWinnerP: MC.state.NO_WINNER,
       lastPromptKind: "",
       lastPromptForP0: false,
-      lastCenterBtnPressedId: "",
       lastFocusRuleId: "",
       pendingFocusErrorCode: "",
       autoFocusPausedByDebug: false,
@@ -5019,7 +4881,7 @@ MC.ui.syncPromptToast = function (state, view) {
     var over = state.players[0].hand.length - MC.state.HAND_MAX;
     txt = "Too many cards. Discard " + over;
   } else if (pr.kind === "payDebt") {
-    // Phase 08+: if action-sourced debt and JSN is available, teach the response window.
+    // If action-sourced debt and JSN is available, teach the response window.
     var jsnAvail = !!(pr.srcAction && pr.buf && pr.buf.length === 0 && MC.rules.handHasActionKind(state, 0, MC.ActionKind.JustSayNo));
     if (jsnAvail && pr.srcAction && String(pr.srcAction.kind || "") === "rent") {
       txt = "Rent: Pay $" + pr.rem + " or Just Say No";
@@ -5033,7 +4895,6 @@ MC.ui.syncPromptToast = function (state, view) {
   } else if (pr.kind === "replaceWindow") {
     txt = "Move a Wild? A:move B:skip";
   } else if (pr.kind === "respondAction") {
-    // Phase 08: Sly Deal response prompt.
     var col = MC.state.NO_COLOR;
     if (pr.target && pr.target.loc && pr.target.loc.zone === "setProps") {
       var tp = pr.target.loc.p;
@@ -5163,22 +5024,7 @@ MC.ui.cursorMoveTo = function (view, pick) {
   view.cursor.i = pick.i;
 };
 
-MC.ui.nearestByX = function (items, xCenter) {
-  if (!items || items.length === 0) return 0;
-  var bestI = 0;
-  var bestD = 999999;
-  var i;
-  for (i = 0; i < items.length; i++) {
-    var it = items[i];
-    var cx = it.x + (it.w / 2);
-    var d = cx - xCenter;
-    if (d < 0) d = -d;
-    if (d < bestD) { bestD = d; bestI = i; }
-  }
-  return bestI;
-};
-
-// Directional navigation (Phase 04 polish): pick closest selectable in a direction,
+// Directional navigation: pick closest selectable in a direction,
 // based on screen-space geometry (includes row camera offsets).
 
 MC.ui.itemScreenCenter = function (view, item) {
@@ -5657,9 +5503,9 @@ MC.ui.buildRowItems = function (state, view, row, hint) {
     if (!overlayActive) {
       // Right-side vertical strip.
       //
-      // Original layout (Phase 04 era): End/Step/Reset/Next were 10px tall with 1px gaps
-      // and filled the full center row. Phase 13 adds Menu below End; in dev mode this
-      // intentionally spills below the center row band (acceptable dev-only overlap).
+      // Original layout: End/Step/Reset/Next were 10px tall with 1px gaps and filled the full
+      // center row. Menu is below End; in dev mode this intentionally spills below the center
+      // row band (acceptable dev-only overlap).
       var stripW = C.centerBtnStripW;
       var stripH = 10;
       var stripX = C.screenW - C.centerBtnStripPadRight - stripW;
@@ -6068,7 +5914,7 @@ MC.ui.computeRowModels = function (state, view) {
     }
   }
 
-  // Phase 15: visualize the pay/transfer buffer as a non-selectable center-row stack.
+  // Visualize the pay/transfer buffer as a non-selectable center-row stack.
   // - During payDebt: show prompt.buf (what has been committed so far).
   // - While draining: show view.anim.payBufUids even after the prompt clears.
   var payBufUids = null;
@@ -6099,7 +5945,7 @@ MC.ui.computeRowModels = function (state, view) {
   var computed = { models: models, selected: sel, meta: meta };
   computed = MC.anim.present(state, view, computed) || computed;
 
-  // Phase 15: snapshot last-seen screen-space positions for transfer animations.
+  // Snapshot last-seen screen-space positions for transfer animations.
   if (view && view.anim && view.anim.lastPosByUid && computed && computed.models) {
     var posByUid = view.anim.lastPosByUid;
     var k;
@@ -6256,7 +6102,7 @@ MC.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
     return;
   }
 
-  // Phase 11: if the only legal destination is Source/cancel, disallow entering targeting.
+  // If the only legal destination is Source/cancel, disallow entering targeting.
   if (MC.moves.cmdsWithoutSource(t.cmds).length === 0) {
     MC.anim.feedbackError(view, "no_actions", "No actions");
     t.active = false;
@@ -6290,7 +6136,6 @@ MC.ui.targetingEnterHoldChain = function (state, view, kinds, uid, loc) {
   var chain = MC.cmd.buildHoldChain(state, uid, t.card ? t.card.loc : null, kinds);
   if (chain && chain.segs) t.chainSegs = chain.segs;
 
-  // Phase 11: disallow entering a Source-only targeting flow.
   if (!t.chainSegs || t.chainSegs.length === 0) {
     MC.anim.feedbackError(view, "no_actions", "No actions");
     t.active = false;
@@ -6415,13 +6260,12 @@ MC.ui.step = function (state, view, actions) {
     view.mode = "browse";
   }
 
-  // Prompt mode sync (Phase 05b+): prompts are rules-owned, UI adopts a dedicated mode.
+  // Prompt mode sync: prompts are rules-owned, UI adopts a dedicated mode.
   var pr = state.prompt;
   var hasPrompt = !!pr;
   var promptForP0 = !!(hasPrompt && pr.p === 0);
   if (!gameOver && promptForP0) {
     var k = pr && pr.kind ? String(pr.kind) : "";
-    // Phase 06: allow overlays during recipient placement prompt.
     var allowOverlays = (k === "placeReceived" || k === "replaceWindow");
     if (!allowOverlays) {
       // Prompts override overlays.
@@ -6453,7 +6297,7 @@ MC.ui.step = function (state, view, actions) {
     computed = MC.ui.computeRowModels(state, view);
     MC.ui.updateCameras(state, view, computed);
 
-    // Phase 15 polish: during deal animations, keep cursor stable by anchored uid so
+    // During deal animations, keep cursor stable by anchored uid so
     // the selection highlight doesn't drift through the bank as new hand cards appear.
     if (view.anim.active && view.anim.active.kind === "deal" && view.ux && view.ux.selAnchor && view.ux.selAnchor.uid && view.ux.selAnchor.loc) {
       var a = view.ux.selAnchor;
@@ -6482,7 +6326,7 @@ MC.ui.step = function (state, view, actions) {
       }
     }
 
-    // Phase 15 polish: during non-deal animation locks (notably xfer), refresh the selection
+    // During non-deal animation locks (notably xfer), refresh the selection
     // anchor so focus preservation doesn't "snap" when the lock clears after list splices
     // (e.g., paying with a mid-stack bank card).
     if (!(view.anim.active && view.anim.active.kind === "deal")) {
@@ -6523,7 +6367,6 @@ MC.ui.step = function (state, view, actions) {
   }
 
   function setAutoFocusPauseForCenterBtn(id) {
-    view.ux.lastCenterBtnPressedId = id;
     if (id === "step" || id === "nextScenario" || id === "reset") {
       view.ux.autoFocusPausedByDebug = true;
     }
@@ -6842,7 +6685,7 @@ MC.ui.step = function (state, view, actions) {
   // Browse mode
   if (view.mode !== "prompt") view.mode = "browse";
 
-  // Prompt mode (Phase 05b+): rules-owned prompts.
+  // Prompt mode: rules-owned prompts.
   if (view.mode === "prompt") {
     var prompt = state.prompt;
     if (!prompt || prompt.p !== 0) {
@@ -6950,7 +6793,6 @@ MC.ui.step = function (state, view, actions) {
       return null;
     }
 
-    // For Phase 06 prompts, allow normal directional navigation (screen-space).
     applyPromptNav();
     computed = MC.ui.computeRowModels(state, view);
     MC.ui.updateCameras(state, view, computed);
@@ -6984,7 +6826,6 @@ MC.ui.step = function (state, view, actions) {
         }
         if (!selD || !selD.loc) { MC.anim.feedbackError(view, "no_actions", "No actions"); return null; }
 
-        // Phase 08+: JSN response for action-sourced debt before any payment is made.
         if (selD.loc.zone === "hand" && selD.loc.p === 0) {
           var canJsn = !!(prompt.srcAction && prompt.buf && prompt.buf.length === 0);
           if (canJsn) {
@@ -7799,7 +7640,7 @@ MC.anim.onEvents = function (state, view, events) {
       var isPromptBufIn = (tz === "promptBuf");
       var isSlySteal = (fz === "setProps" && tz === "recvProps");
 
-      // Curated transfer animations for MVP polish (Phase 15).
+      // Curated transfer animations for MVP polish.
       var animate = false;
       if (isPromptBufIn) {
         // payDebt selection into the buffer: animate only when AI chose it.
@@ -7902,7 +7743,7 @@ MC.anim.onEvents = function (state, view, events) {
   anim.lock = !!(anim.active || (anim.q && anim.q.length));
 };
 
-// Phase 15: game-start animation orchestration.
+// Game-start animation orchestration.
 // Default newGame mutates directly into the final 5/7 start state; this function hides cards
 // and schedules synthetic draw events to make the start readable.
 MC.anim.beginGameStart = function (state, view) {
@@ -8100,7 +7941,7 @@ MC.anim.tick = function (state, view) {
   anim.lock = !!(anim.q && anim.q.length);
 };
 
-// Phase 05c+: treat cursor-flash feedback as an animation/fx owned here.
+// Treat cursor-flash feedback as an animation/fx owned here.
 MC.anim.feedbackError = function (view, code, msg) {
   if (!view || !view.feedback) return;
   code = String(code || "error");
@@ -8144,7 +7985,7 @@ MC.anim.feedbackTick = function (view) {
   }
 };
 
-// Phase 05c: presentation (render-facing view of state/models).
+// Presentation (render-facing view of state/models).
 // Renderer should not depend on `view.anim`; instead, UI calls this after building models.
 MC.anim.present = function (state, view, computed) {
   if (!state || !view || !computed || !computed.models) return computed;
@@ -8163,7 +8004,7 @@ MC.anim.present = function (state, view, computed) {
   }
   computed.highlightCol = hl;
 
-  // Phase 05c: hide in-flight dealt cards until revealed (presentation-only).
+  // Hide in-flight dealt cards until revealed (presentation-only).
   if (anim && anim.hiddenByP) {
     var rowPH = MC.render.ROW_P_HAND;
     var rowOH = MC.render.ROW_OP_HAND;
@@ -8199,7 +8040,7 @@ MC.anim.present = function (state, view, computed) {
     }
   }
 
-  // Phase 15: hide in-flight transfer cards until they “land” (presentation-only).
+  // Hide in-flight transfer cards until they “land” (presentation-only).
   if (anim && anim.hiddenByUid) {
     var hidU = anim.hiddenByUid;
     var rowH;
@@ -8230,7 +8071,7 @@ MC.anim.present = function (state, view, computed) {
     }
   }
 
-  // Phase 15: avoid duplicating in-flight cards in the center buffer stack.
+  // Avoid duplicating in-flight cards in the center buffer stack.
   // - promptBuf->dest: remove the leaving card from the stack during flight
   // - src->promptBuf (AI selection): don't show the card in the stack until its flight lands
   var hidePayBufByUid = {};
@@ -8281,7 +8122,7 @@ MC.anim.present = function (state, view, computed) {
 
   if (!a || !a.kind) return computed;
 
-  // Phase 15 polish: when AI selects a payment card (xfer-to-promptBuf), keep the source
+  // When AI selects a payment card (xfer-to-promptBuf), keep the source
   // stack visually stable during the hold-at-source so it doesn't collapse under the highlight.
   if (a.kind === "xfer" && a.phase === "holdFrom" && String(a.to.zone || "") === "promptBuf") {
     var rowF = a.fromRow;
@@ -8511,24 +8352,14 @@ MC.anim.present = function (state, view, computed) {
 };
 
 // ---- src/80_title.js ----
-// MC.title: boot title screen (Phase 12).
+// MC.title: boot title screen.
 (function initTitleModule() {
   var T = MC.title;
 
   // Local state (kept minimal for now).
-  T.st = { frame: 0, menuI: 0, confirm: null };
+  T.st = { menuI: 0, confirm: null };
   T.ctrl = MC.controls.newState();
   T.toastView = { toasts: [] };
-
-  function anyPressed(raw) {
-    if (!raw || !raw.pressed) return false;
-    var p = raw.pressed;
-    var i;
-    for (i = 0; i < 8; i++) if (p[i]) return true;
-    return false;
-  }
-
-  T.anyPressed = anyPressed;
 
   function printShadow(txt, x, y, col, opts) {
     txt = String(txt);
@@ -8591,28 +8422,15 @@ MC.anim.present = function (state, view, computed) {
     return i;
   }
 
-  var CONFIRM_OVERWRITE_NEW_GAME = "overwriteNewGame";
-
-  function titleToastId(text) {
-    return "title:" + String(text || "");
-  }
-
-  function titleToastFrames(cfg, kind) {
-    return (kind === "error") ? cfg.ui.toast.errorFrames : cfg.ui.toast.infoFrames;
-  }
-
   function titleClearToasts(toastView) {
     toastView.toasts = [];
   }
 
   function titlePushToast(toastView, cfg, kind, text) {
     text = String(text || "");
-    MC.ui.toastPush(toastView, { id: titleToastId(text), kind: kind, text: text, frames: titleToastFrames(cfg, kind) });
-  }
-
-  function titlePushPrompt(toastView, text) {
-    text = String(text || "");
-    MC.ui.toastPush(toastView, { id: titleToastId(text), kind: "prompt", text: text, persistent: true });
+    var id = "title:" + text;
+    var frames = (kind === "error") ? cfg.ui.toast.errorFrames : cfg.ui.toast.infoFrames;
+    MC.ui.toastPush(toastView, { id: id, kind: kind, text: text, frames: frames });
   }
 
   function titleBuildMenuItems(hasSession, devAvail, toolsOn) {
@@ -8628,13 +8446,10 @@ MC.anim.present = function (state, view, computed) {
   }
 
   function titleEnterConfirmOverwrite(st, toastView) {
-    st.confirm = CONFIRM_OVERWRITE_NEW_GAME;
+    st.confirm = "overwriteNewGame";
     titleClearToasts(toastView);
-    titlePushPrompt(toastView, "Overwrite current game?\nA:Confirm  B:Cancel");
-  }
-
-  function titleConfirmActive(st) {
-    return String(st.confirm || "") === CONFIRM_OVERWRITE_NEW_GAME;
+    var text = "Overwrite current game?\nA:Confirm  B:Cancel";
+    MC.ui.toastPush(toastView, { id: "title:" + text, kind: "prompt", text: text, persistent: true });
   }
 
   function titleStep(st, cfg, actions, toastView, menuItems, hasSession) {
@@ -8643,7 +8458,7 @@ MC.anim.present = function (state, view, computed) {
     st.menuI = wrapI(st.menuI, nItems);
 
     // Confirm state: ignore nav and interpret A/B as confirm/cancel.
-    if (titleConfirmActive(st)) {
+    if (String(st.confirm || "") === "overwriteNewGame") {
       if (actions.b && actions.b.pressed) {
         st.confirm = null;
         titleClearToasts(toastView);
@@ -8723,7 +8538,7 @@ MC.anim.present = function (state, view, computed) {
     var leftW = W - menuW;
 
     // Background.
-    // Render title into vbank(1) so it can use a distinct palette (Phase 12).
+    // Render title into vbank(1) so it can use a distinct palette.
     // vbank(1) overlays vbank(0); OVR transparency index lives at 0x03FF8 on vbank(1).
     var hasVbank = (typeof vbank === "function");
     if (hasVbank) {
@@ -8776,7 +8591,7 @@ MC.anim.present = function (state, view, computed) {
       drawMenuItem(tc, Pal, leftW, menuW, mxA, mxT, my0, dy, gap, mi, it.text, (mi === st.menuI), !!it.enabled);
     }
 
-    // Version (Phase 13: moved from in-game HUD to title screen).
+    // Version.
     var ver = String(cfg.meta.version || "");
     if (ver) {
       var xVer = W + 3 - ver.length * 4;
@@ -8810,14 +8625,12 @@ MC.anim.present = function (state, view, computed) {
     var intent = titleStep(T.st, cfg, actions, toastView, menuItems, hasSession);
     drawTitle(cfg, T.st, menuItems, toastView);
 
-    T.st.frame += 1;
-
     return intent;
   };
 })();
 
 // ---- src/81_howto.js ----
-// MC.howto: in-game How to Play screen (Phase 14).
+// MC.howto: in-game How to Play screen.
 (function initHowtoModule() {
   var H = MC.howto;
 
@@ -9368,7 +9181,7 @@ MC.anim.present = function (state, view, computed) {
 })();
 
 // ---- src/82_howto_content.js ----
-// How-to-Play content (Phase 14).
+// How-to-Play content.
 // Intended workflow: humans edit strings; small demo draw() blocks are optional.
 (function initHowtoContent() {
   var H = MC.howto;
@@ -9560,7 +9373,6 @@ MC.debug.ai = { wait: 0 };
 MC.debug.lastCmd = "";
 MC.debug.lastEvents = [];
 MC.debug.lastRaw = null;
-MC.debug.lastUiActions = null;
 MC.debug.lastUiIntentSummary = "";
 
 MC.debug.reset = function (opts) {
@@ -9578,7 +9390,7 @@ MC.debug.reset = function (opts) {
   }
   d.view = MC.ui.newView();
   if (shouldPause) d.view.ux.autoFocusPausedByDebug = true;
-  // Phase 15: default newGame starts in the final 5/7 state; animate the initial deal.
+  // Default newGame starts in the final 5/7 state; animate the initial deal.
   // Skip scenarios so resets stay fast and deterministic for debugging.
   if (scenarioId === "default" && !skipGameStartAnim) MC.anim.beginGameStart(d.state, d.view);
   d.ctrl = MC.controls.newState();
@@ -9586,7 +9398,6 @@ MC.debug.reset = function (opts) {
   d.lastCmd = "";
   d.lastEvents = [];
   d.lastRaw = null;
-  d.lastUiActions = null;
   d.lastUiIntentSummary = "";
 };
 
@@ -9659,39 +9470,30 @@ MC.debug.tickTextMode = function () {
 
   function bool01(v) { return v ? 1 : 0; }
 
-  function wrapLines(txt, maxChars) {
-    txt = String(txt || "");
-    maxChars = maxChars || 55;
-    if (!txt) return [];
+  cls(0);
+  var x = 0;
+  var y = 6;
+  var step = 6;
+  var xR = 120;
 
-    // Preserve explicit newlines, but word-wrap within each paragraph.
-    var paras = txt.split("\n");
-    var out = [];
-    var pi;
-    for (pi = 0; pi < paras.length; pi++) {
-      var p = String(paras[pi] || "").trim();
-      if (!p) { out.push(""); continue; }
+  printSmall("Debug", x, y, 12); y += step;
+  var sid = d.scenarios[d.scenarioI];
+  var info = (MC.scenarios.INFO && sid) ? MC.scenarios.INFO[String(sid)] : null;
+  var title = (info && info.title) ? String(info.title) : String(sid);
+  printSmall("Scn:" + title, x, y, 12); y += step;
+  var pendingDesc = (info && info.desc) ? String(info.desc) : "";
+  printSmall("Seed:" + MC.seed.computeSeedU32(), x, y, 12); y += step;
 
-      var words = p.split(/\s+/);
-      var line = "";
-      var wi;
-      for (wi = 0; wi < words.length; wi++) {
-        var w = words[wi];
-        if (!w) continue;
-        if (!line) { line = w; continue; }
-        if ((line.length + 1 + w.length) <= maxChars) {
-          line += " " + w;
-        } else {
-          out.push(line);
-          line = w;
-        }
-      }
-      if (line) out.push(line);
+  if (MC.render && MC.render.debug && typeof MC.render.debug.selectedLines === "function") {
+    var sel = MC.render.debug.selectedLines(d);
+    if (sel && sel.length) {
+      printSmall(sel[0] || "", x, y, 12); y += step;
+      if (sel[1]) { printSmall(sel[1], x, y, 12); y += step; }
     }
-    return out;
   }
 
-  function promptLine(state) {
+  printSmall("Active:P" + s.activeP + " Plays:" + s.playsLeft, x, y, 12); y += step;
+  printSmall((function (state) {
     if (!state) return "Prompt:(none)";
     var pr = state.prompt;
     if (!pr || !pr.kind) return "Prompt:(none)";
@@ -9722,32 +9524,7 @@ MC.debug.tickTextMode = function () {
     }
 
     return "Prompt:" + k;
-  }
-
-  cls(0);
-  var x = 0;
-  var y = 6;
-  var step = 6;
-  var xR = 120;
-
-  printSmall("Phase 02 Debug", x, y, 12); y += step;
-  var sid = d.scenarios[d.scenarioI];
-  var info = (MC.scenarios.INFO && sid) ? MC.scenarios.INFO[String(sid)] : null;
-  var title = (info && info.title) ? String(info.title) : String(sid);
-  printSmall("Scn:" + title, x, y, 12); y += step;
-  var pendingDesc = (info && info.desc) ? String(info.desc) : "";
-  printSmall("Seed:" + MC.seed.computeSeedU32(), x, y, 12); y += step;
-
-  if (MC.render && MC.render.debug && typeof MC.render.debug.selectedLines === "function") {
-    var sel = MC.render.debug.selectedLines(d);
-    if (sel && sel.length) {
-      printSmall(sel[0] || "", x, y, 12); y += step;
-      if (sel[1]) { printSmall(sel[1], x, y, 12); y += step; }
-    }
-  }
-
-  printSmall("Active:P" + s.activeP + " Plays:" + s.playsLeft, x, y, 12); y += step;
-  printSmall(promptLine(s), x, y, 12); y += step;
+  })(s), x, y, 12); y += step;
   var w = s.winnerP;
   if (w !== MC.state.NO_WINNER) { printSmall("Winner:P" + w, x, y, 11); y += step; }
 
@@ -9776,7 +9553,37 @@ MC.debug.tickTextMode = function () {
 
   // Render scenario description after Events so it doesn't overlap the right UI column.
   if (pendingDesc) {
-    var lines = wrapLines(pendingDesc, 55);
+    var lines = (function (txt, maxChars) {
+      txt = String(txt || "");
+      maxChars = maxChars || 55;
+      if (!txt) return [];
+
+      // Preserve explicit newlines, but word-wrap within each paragraph.
+      var paras = txt.split("\n");
+      var out = [];
+      var pi;
+      for (pi = 0; pi < paras.length; pi++) {
+        var p = String(paras[pi] || "").trim();
+        if (!p) { out.push(""); continue; }
+
+        var words = p.split(/\s+/);
+        var line = "";
+        var wi;
+        for (wi = 0; wi < words.length; wi++) {
+          var w = words[wi];
+          if (!w) continue;
+          if (!line) { line = w; continue; }
+          if ((line.length + 1 + w.length) <= maxChars) {
+            line += " " + w;
+          } else {
+            out.push(line);
+            line = w;
+          }
+        }
+        if (line) out.push(line);
+      }
+      return out;
+    })(pendingDesc, 55);
     var li;
     for (li = 0; li < lines.length; li++) {
       if (lines[li]) printSmall(lines[li], x, y, 13);
@@ -9881,7 +9688,7 @@ MC.mainTick = function () {
     }
   }
 
-  // Title mode: main entry point (Phase 13).
+  // Title mode: main entry point.
   if (MC._mainMode === 2) {
     var rawT = MC.controls.pollGlobals();
     var intentT = null;
@@ -9913,7 +9720,7 @@ MC.mainTick = function () {
     return;
   }
 
-  // How-to-Play mode (Phase 14).
+  // How-to-Play mode.
   if (MC._mainMode === 3) {
     var rawH = MC.controls.pollGlobals();
     var intentH = null;
@@ -9942,25 +9749,25 @@ MC.mainTick = function () {
   if (d.state == null) { MC._mainMode = 2; return; }
 
   {
-    function summarizeUiIntent(intent) {
-      if (!intent || !intent.kind) return "(none)";
-      if (intent.kind === "applyCmd" && intent.cmd && intent.cmd.kind) return "applyCmd:" + String(intent.cmd.kind);
-      if (intent.kind === "debug" && intent.action) return "debug:" + String(intent.action);
-      return String(intent.kind);
-    }
-
     var raw = MC.controls.pollGlobals();
     d.lastRaw = raw;
     var actions = MC.controls.actions(d.ctrl, raw, MC.config.controls);
-    d.lastUiActions = actions;
 
-    // Phase 07: AI acts for actor=1 (activeP or prompt.p). While AI is acting, suppress player input.
+    // AI acts for actor=1 (activeP or prompt.p). While AI is acting, suppress player input.
     var actor = MC.ai.actor(d.state);
     var gameOver = (d.state.winnerP !== MC.state.NO_WINNER);
     if (actor !== 0 && !gameOver) actions = {};
 
     var intent = MC.ui.step(d.state, d.view, actions);
-    d.lastUiIntentSummary = summarizeUiIntent(intent);
+    {
+      var sum = "(none)";
+      if (intent && intent.kind) {
+        if (intent.kind === "applyCmd" && intent.cmd && intent.cmd.kind) sum = "applyCmd:" + String(intent.cmd.kind);
+        else if (intent.kind === "debug" && intent.action) sum = "debug:" + String(intent.action);
+        else sum = String(intent.kind);
+      }
+      d.lastUiIntentSummary = sum;
+    }
 
     if (intent && intent.kind === "mainMenu") {
       MC._mainMode = 2;
@@ -9989,7 +9796,7 @@ MC.mainTick = function () {
       else if (intent.action === "nextScenario") MC.debug.nextScenario();
     }
 
-    // Phase 07: AI pacing loop (one command per step, with fixed delay).
+    // AI pacing loop (one command per step, with fixed delay).
     if (!gameOver && actor !== 0 && !(d.view && d.view.anim && d.view.anim.lock)) {
       if (d.ai.wait > 0) {
         d.ai.wait -= 1;

@@ -1,8 +1,4 @@
 // MC.rng: deterministic PRNG helpers (bitwise coercion stays localized here).
-MC.rng.u32 = function (n) {
-  return (n >>> 0);
-};
-
 MC.rng.u32NonZero = function (n) {
   var x = (n >>> 0);
   return x ? x : 1;
@@ -36,14 +32,10 @@ MC.rng.RNG.prototype.nextInt = function (n) {
 };
 
 // RNG-in-state helpers (store evolving state in `state.rngS`).
-MC.rng.nextU32InState = function (state) {
-  state.rngS = MC.rng.xorshift32Step(state.rngS >>> 0);
-  return state.rngS >>> 0;
-};
-
 MC.rng.nextIntInState = function (state, n) {
   n = n | 0;
   if (n <= 0) return 0;
-  return (MC.rng.nextU32InState(state) % n) | 0;
+  state.rngS = MC.rng.xorshift32Step(state.rngS >>> 0);
+  return ((state.rngS >>> 0) % n) | 0;
 };
 

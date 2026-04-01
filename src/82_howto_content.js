@@ -1,4 +1,4 @@
-// How-to-Play content (Phase 14).
+// How-to-Play content.
 // Intended workflow: humans edit strings; small demo draw() blocks are optional.
 (function initHowtoContent() {
   var H = MC.howto;

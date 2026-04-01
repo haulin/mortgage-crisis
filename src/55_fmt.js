@@ -27,7 +27,6 @@ MC.fmt.errorMessage = function (code) {
   if (code === "wild_color_illegal") return "Wild color illegal";
   if (code === "no_targets") return "No valid destination";
   if (code === "house_pay_first") return "House must be paid first";
-  // Phase 08+
   if (code === "not_sly") return "Not a Sly Deal";
   if (code === "sly_full_set") return "Can't steal from a complete set";
   if (code === "not_jsn") return "Not Just Say No";

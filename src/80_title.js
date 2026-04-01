@@ -1,21 +1,11 @@
-// MC.title: boot title screen (Phase 12).
+// MC.title: boot title screen.
 (function initTitleModule() {
   var T = MC.title;
 
   // Local state (kept minimal for now).
-  T.st = { frame: 0, menuI: 0, confirm: null };
+  T.st = { menuI: 0, confirm: null };
   T.ctrl = MC.controls.newState();
   T.toastView = { toasts: [] };
-
-  function anyPressed(raw) {
-    if (!raw || !raw.pressed) return false;
-    var p = raw.pressed;
-    var i;
-    for (i = 0; i < 8; i++) if (p[i]) return true;
-    return false;
-  }
-
-  T.anyPressed = anyPressed;
 
   function printShadow(txt, x, y, col, opts) {
     txt = String(txt);
@@ -78,28 +68,15 @@
     return i;
   }
 
-  var CONFIRM_OVERWRITE_NEW_GAME = "overwriteNewGame";
-
-  function titleToastId(text) {
-    return "title:" + String(text || "");
-  }
-
-  function titleToastFrames(cfg, kind) {
-    return (kind === "error") ? cfg.ui.toast.errorFrames : cfg.ui.toast.infoFrames;
-  }
-
   function titleClearToasts(toastView) {
     toastView.toasts = [];
   }
 
   function titlePushToast(toastView, cfg, kind, text) {
     text = String(text || "");
-    MC.ui.toastPush(toastView, { id: titleToastId(text), kind: kind, text: text, frames: titleToastFrames(cfg, kind) });
-  }
-
-  function titlePushPrompt(toastView, text) {
-    text = String(text || "");
-    MC.ui.toastPush(toastView, { id: titleToastId(text), kind: "prompt", text: text, persistent: true });
+    var id = "title:" + text;
+    var frames = (kind === "error") ? cfg.ui.toast.errorFrames : cfg.ui.toast.infoFrames;
+    MC.ui.toastPush(toastView, { id: id, kind: kind, text: text, frames: frames });
   }
 
   function titleBuildMenuItems(hasSession, devAvail, toolsOn) {
@@ -115,13 +92,10 @@
   }
 
   function titleEnterConfirmOverwrite(st, toastView) {
-    st.confirm = CONFIRM_OVERWRITE_NEW_GAME;
+    st.confirm = "overwriteNewGame";
     titleClearToasts(toastView);
-    titlePushPrompt(toastView, "Overwrite current game?\nA:Confirm  B:Cancel");
-  }
-
-  function titleConfirmActive(st) {
-    return String(st.confirm || "") === CONFIRM_OVERWRITE_NEW_GAME;
+    var text = "Overwrite current game?\nA:Confirm  B:Cancel";
+    MC.ui.toastPush(toastView, { id: "title:" + text, kind: "prompt", text: text, persistent: true });
   }
 
   function titleStep(st, cfg, actions, toastView, menuItems, hasSession) {
@@ -130,7 +104,7 @@
     st.menuI = wrapI(st.menuI, nItems);
 
     // Confirm state: ignore nav and interpret A/B as confirm/cancel.
-    if (titleConfirmActive(st)) {
+    if (String(st.confirm || "") === "overwriteNewGame") {
       if (actions.b && actions.b.pressed) {
         st.confirm = null;
         titleClearToasts(toastView);
@@ -210,7 +184,7 @@
     var leftW = W - menuW;
 
     // Background.
-    // Render title into vbank(1) so it can use a distinct palette (Phase 12).
+    // Render title into vbank(1) so it can use a distinct palette.
     // vbank(1) overlays vbank(0); OVR transparency index lives at 0x03FF8 on vbank(1).
     var hasVbank = (typeof vbank === "function");
     if (hasVbank) {
@@ -263,7 +237,7 @@
       drawMenuItem(tc, Pal, leftW, menuW, mxA, mxT, my0, dy, gap, mi, it.text, (mi === st.menuI), !!it.enabled);
     }
 
-    // Version (Phase 13: moved from in-game HUD to title screen).
+    // Version.
     var ver = String(cfg.meta.version || "");
     if (ver) {
       var xVer = W + 3 - ver.length * 4;
@@ -296,8 +270,6 @@
 
     var intent = titleStep(T.st, cfg, actions, toastView, menuItems, hasSession);
     drawTitle(cfg, T.st, menuItems, toastView);
-
-    T.st.frame += 1;
 
     return intent;
   };

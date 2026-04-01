@@ -99,7 +99,7 @@ MC.anim.onEvents = function (state, view, events) {
       var isPromptBufIn = (tz === "promptBuf");
       var isSlySteal = (fz === "setProps" && tz === "recvProps");
 
-      // Curated transfer animations for MVP polish (Phase 15).
+      // Curated transfer animations for MVP polish.
       var animate = false;
       if (isPromptBufIn) {
         // payDebt selection into the buffer: animate only when AI chose it.
@@ -202,7 +202,7 @@ MC.anim.onEvents = function (state, view, events) {
   anim.lock = !!(anim.active || (anim.q && anim.q.length));
 };
 
-// Phase 15: game-start animation orchestration.
+// Game-start animation orchestration.
 // Default newGame mutates directly into the final 5/7 start state; this function hides cards
 // and schedules synthetic draw events to make the start readable.
 MC.anim.beginGameStart = function (state, view) {
@@ -400,7 +400,7 @@ MC.anim.tick = function (state, view) {
   anim.lock = !!(anim.q && anim.q.length);
 };
 
-// Phase 05c+: treat cursor-flash feedback as an animation/fx owned here.
+// Treat cursor-flash feedback as an animation/fx owned here.
 MC.anim.feedbackError = function (view, code, msg) {
   if (!view || !view.feedback) return;
   code = String(code || "error");
@@ -444,7 +444,7 @@ MC.anim.feedbackTick = function (view) {
   }
 };
 
-// Phase 05c: presentation (render-facing view of state/models).
+// Presentation (render-facing view of state/models).
 // Renderer should not depend on `view.anim`; instead, UI calls this after building models.
 MC.anim.present = function (state, view, computed) {
   if (!state || !view || !computed || !computed.models) return computed;
@@ -463,7 +463,7 @@ MC.anim.present = function (state, view, computed) {
   }
   computed.highlightCol = hl;
 
-  // Phase 05c: hide in-flight dealt cards until revealed (presentation-only).
+  // Hide in-flight dealt cards until revealed (presentation-only).
   if (anim && anim.hiddenByP) {
     var rowPH = MC.render.ROW_P_HAND;
     var rowOH = MC.render.ROW_OP_HAND;
@@ -499,7 +499,7 @@ MC.anim.present = function (state, view, computed) {
     }
   }
 
-  // Phase 15: hide in-flight transfer cards until they “land” (presentation-only).
+  // Hide in-flight transfer cards until they “land” (presentation-only).
   if (anim && anim.hiddenByUid) {
     var hidU = anim.hiddenByUid;
     var rowH;
@@ -530,7 +530,7 @@ MC.anim.present = function (state, view, computed) {
     }
   }
 
-  // Phase 15: avoid duplicating in-flight cards in the center buffer stack.
+  // Avoid duplicating in-flight cards in the center buffer stack.
   // - promptBuf->dest: remove the leaving card from the stack during flight
   // - src->promptBuf (AI selection): don't show the card in the stack until its flight lands
   var hidePayBufByUid = {};
@@ -581,7 +581,7 @@ MC.anim.present = function (state, view, computed) {
 
   if (!a || !a.kind) return computed;
 
-  // Phase 15 polish: when AI selects a payment card (xfer-to-promptBuf), keep the source
+  // When AI selects a payment card (xfer-to-promptBuf), keep the source
   // stack visually stable during the hold-at-source so it doesn't collapse under the highlight.
   if (a.kind === "xfer" && a.phase === "holdFrom" && String(a.to.zone || "") === "promptBuf") {
     var rowF = a.fromRow;

@@ -5,17 +5,17 @@ MC.config = {
   seedBase: 1005
 };
 
-// Meta/version display (Phase 11).
+// Meta/version display.
 MC.config.meta = {
   version: "MVP v0.15"
 };
 
-// Debug/dev knobs (Phase 03b+). Keep these centralized so we can disable later.
+// Debug/dev knobs. Keep these centralized so we can disable later.
 MC.config.debug = {
   enabled: true
 };
 
-// Controller UX knobs (Phase 04+). All values are in frames (TIC runs at 60fps).
+// Controller UX knobs. All values are in frames (TIC runs at 60fps).
 MC.config.controls = {
   // D-pad repeat: start repeating after delay, then pulse every period.
   dpadRepeatDelayFrames: 12,
@@ -29,7 +29,7 @@ MC.config.controls = {
   xInspectDelayFrames: 6
 };
 
-// UI/navigation tuning (Phase 04+).
+// UI/navigation tuning.
 MC.config.ui = {
   // Directional navigation cone penalty multiplier (per-axis):
   // used by MC.ui.navPickInDirection scoring:
@@ -43,41 +43,36 @@ MC.config.ui = {
   navConeKLeftRight: 18,
   navConeKUpDown: 6,
 
-  // Phase 05c+: animation timings (frames at 60fps).
-  // Debug aid: multiply animation timings for slow-motion debugging (1 = normal speed).
+  // Timings are in frames (TIC runs at 60fps).
+  // Debug aid: multiply timings for slow-motion debugging (1 = normal speed).
   animSpeedMult: 3,
   dealFramesPerCard: 8,
   dealGapFrames: 2,
-  // Phase 15: transfer animations (frames at 60fps).
   xferFramesPerCard: 8,
   xferGapFrames: 2,
-  // Phase 15 polish: hold at the source before motion when AI chose the card/target.
   xferHoldFromFrames: 18,
-  // Phase 15 polish: pause after the final payment selection before draining transfers.
   xferHoldFrames: 12,
-  // Phase 15: game-start toast hold (frames at 60fps).
   gameStartToastFrames: 60,
   // Shuffle: default includes ~1 extra 1→2→3 loop for readability.
   shuffleAnimFrames: 42,
   shuffleToastFrames: 42,
 
-  // Phase 07: AI pacing (frames at 60fps).
   aiStepDelayFrames: 60,
   aiNarrateToastFrames: 60,
 
-  // Toast timings (frames at 60fps). Central inventory for future time-scale work.
+  // Toast timings.
   toast: {
     infoFrames: 90,
     errorFrames: 90
   },
 
-  // Phase 08: Sly Deal targeting presentation.
+  // Sly Deal targeting presentation.
   // If true: show ghost outlines for non-selected Sly targets while targeting.
   slyShowTargetGhosts: false
  
 };
 
-// Title screen knobs (Phase 12). Keep numeric/layout values here for easy iteration.
+// Title screen knobs. Keep numeric/layout values here for easy iteration.
 MC.config.title = {
   // Right panel width (menu area).
   menuW: 90,
@@ -112,27 +107,19 @@ MC.config.title = {
   // Defaults to the card-back TL sprite, which should exist in the cart.
   bgTileEnabled: true,
   bgTileSprId: 34,
-  bgTileColorkey: 15,
-
-  // 0 disables blink; otherwise, show/hide on half-period.
-  pressAnyBlinkPeriodFrames: 60
+  bgTileColorkey: 15
 };
 
-// AI policy knobs (Phase 07+).
+// AI policy knobs.
 MC.config.ai = {
   // Per-player policy IDs (0=player, 1=opponent by default).
   policyByP: ["defaultHeuristic", "defaultHeuristic"],
 
-  // Weight multiplier for "place property into an existing set" moves.
-  // 1 means no bias (equivalent to uniform random).
+  // Policy weight multipliers; 1 means neutral (equivalent to uniform random).
   biasExistingSetK: 8,
-
-  // Phase 11: soft bias toward paying debts from bank before transferring properties.
-  // 1 means no bias (equivalent to uniform random).
   biasPayDebtFromBankK: 8,
 
-  // Phase 11: early-turn discipline.
-  // Simple goal: avoid immediately banking valuable actions when options are limited.
+  // Early-turn discipline.
   earlyBankBufferTarget: 3,
   earlyEmptyHandKeepActionsMaxHand: 2,
   biasEarlyBankMoneyK: 6,
@@ -140,24 +127,13 @@ MC.config.ai = {
   biasEarlyPlayRentIfPayableK: 3,
   biasEarlyPlaceWhenHoldingRentK: 2,
 
-  // Weight multiplier for "play Rent" moves (bias asking for rent over banking Rent).
-  // 1 means no bias (equivalent to uniform random).
   biasPlayRentK: 4,
-
-  // Phase 11: weight multiplier for "play Sly Deal" moves (bias stealing over banking Sly).
-  // 1 means no bias (equivalent to uniform random).
   biasPlaySlyDealK: 8,
-
-  // Phase 08: weight multiplier for "play Just Say No" response moves.
-  // 1 means no bias (equivalent to uniform random).
   biasPlayJustSayNoK: 8,
-
-  // Phase 10: weight multiplier for "moveWild" replace-window moves (AI willingness).
-  // 1 means no bias (equivalent to uniform random).
   biasMoveWildK: 8
 };
 
-// Rule-note IDs (Phase 05+). These are small display-only annotations in Inspect.
+// Rule-note IDs. These are small display-only annotations in Inspect.
 MC.RuleNote = {
   // MVP1 rule constraints.
   SlyDeal_NotFromFullSet: 1,
@@ -167,7 +143,7 @@ MC.RuleNote = {
   JSN_Chain: 3
 };
 
-// Rules display knobs (Phase 05+).
+// Rules display knobs.
 MC.config.rules = {
   // List of enabled RuleNote IDs to show in Inspect.
   // Note: keep this intentionally small; it's easy to mislead players with future-rule text.
@@ -197,7 +173,7 @@ MC.Pal = {
   DarkGrey: 15,   // #333c57
 };
 
-// How-to-play screen knobs (Phase 14). Keep layout/typography here for easy tuning.
+// How-to-play screen knobs. Keep layout/typography here for easy tuning.
 MC.config.howto = {
   padX: 8,
   padY: 6,
@@ -264,22 +240,22 @@ MC.config.render = {
     hudLineX: 6,
     hudLineY: 74,
 
-    // Center row (Phase 03b+)
+    // Center row
     centerTopInsetY: 4,
     centerDeckX: 6,
     centerPileGapX: 6,
-    // Phase 15: payment/transfer buffer anchor (screen-space x).
+    // Payment/transfer buffer anchor (screen-space x).
     // Y uses rowY[ROW_CENTER] + centerTopInsetY to match deck/discard.
     centerPayBufX: 48,
     centerPreviewX: 70,
     centerPreviewGapX: 8,
     centerDescDy: 8,
 
-    // Center row button strip (Phase 04+).
+    // Center row button strip.
     centerBtnStripW: 39,
     centerBtnStripPadRight: 1,
 
-    // Inspect panel (Phase 05): screen-space panel bounds.
+    // Inspect panel: screen-space panel bounds.
     // These are absolute so we can tune without coupling to centerPreviewX.
     inspectPanelX0: 48,
     inspectPanelY0: 35,
@@ -334,24 +310,18 @@ MC.config.render = {
     colHighlight: MC.Pal.Yellow,
     colCenterPanel: MC.Pal.DarkBlue,
     colCenterPanelBorder: MC.Pal.White,
-    colValuePatch: MC.Pal.White,
-    colValuePatchBorder: MC.Pal.Black,
     hudLineCol: MC.Pal.White,
     colToastBgAi: MC.Pal.DarkBlue,
 
-    // Center pile depth outlines (Phase 03b polish)
+    // Center pile depth outlines
     pileShadowOutlineCol: MC.Pal.Black,
-    // Under-layer outline colors (screen-space depth):
-    // - under1: the closer (smaller offset) layer
-    // - under2: the deeper (larger offset) layer
-    // Deeper is intentionally darker.
     pileOutlineUnder1Col: MC.Pal.LightGrey,
     pileOutlineUnder2Col: MC.Pal.Grey,
 
-    // Inspect panel colors (Phase 05).
+    // Inspect panel colors.
     inspectPanelFillCol: MC.Pal.DarkGreen,
 
-    // Deck/Discard pile count digit offset (Phase 05).
+    // Deck/Discard pile count digit offset.
     pileCountDx: 1,
     pileCountDy: 1
   },
@@ -362,7 +332,7 @@ MC.config.render = {
     digit0: 1, // digit sprite IDs are digit0 + n
 
     // Card back (top-left tile id of a 2x3 sprite = 16x24).
-    // Art convention for Phase 03b: last column + last row are color 15 (colorkey),
+    // Art convention: last column + last row are color 15 (colorkey),
     // yielding an effective 15x23 interior when drawn at xFace+1,yFace+1.
     cardBackTL: 32,
 

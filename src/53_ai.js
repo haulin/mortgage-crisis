@@ -20,7 +20,7 @@ MC.ai.policies = {
   biasPayDebtFromBank: {
     id: "biasPayDebtFromBank",
     weight: function (state, move) {
-      // Phase 11: prefer paying debts from bank to reduce surprise property transfers.
+      // Prefer paying debts from bank to reduce surprise property transfers.
       // Tuning knob lives in config.
       var k = MC.config.ai.biasPayDebtFromBankK;
       if (!move || move.kind !== "payDebt") return 1;
@@ -34,7 +34,7 @@ MC.ai.policies = {
   earlyTurnDiscipline: {
     id: "earlyTurnDiscipline",
     weight: function (state, move, moves) {
-      // Phase 11: simple “don’t play dumb early” heuristic.
+      // Simple “don’t play dumb early” heuristic.
       // Keep this broad but low-spike: prefer banking real money to reach a small buffer,
       // avoid wasting Rent when opponent can't pay, and avoid banking multiple valuable actions
       // when there are no other ways to spend plays (unless we're about to empty hand for draw-5).
@@ -115,7 +115,7 @@ MC.ai.policies = {
     id: "biasPlayRent",
     weight: function (state, move) {
       // Soft bias: prefer asking for rent rather than banking the Rent card.
-      // Phase 11 tweak: avoid wasting Rent when the opponent has nothing payable.
+      // Avoid wasting Rent when the opponent has nothing payable.
       // Tuning knob lives in config.
       var k = MC.config.ai.biasPlayRentK;
       if (!move || move.kind !== "playRent") return 1;
@@ -133,7 +133,7 @@ MC.ai.policies = {
   biasPlaySlyDeal: {
     id: "biasPlaySlyDeal",
     weight: function (state, move) {
-      // Phase 11: prefer stealing a property rather than banking Sly Deal when a target exists.
+      // Prefer stealing a property rather than banking Sly Deal when a target exists.
       // Tuning knob lives in config.
       var k = MC.config.ai.biasPlaySlyDealK;
       if (!move || move.kind !== "playSlyDeal") return 1;
@@ -156,7 +156,7 @@ MC.ai.policies = {
   biasMoveWild: {
     id: "biasMoveWild",
     weight: function (state, move) {
-      // Phase 10: simple heuristic for replace-window Wild repositioning.
+      // Simple heuristic for replace-window Wild repositioning.
       // Prefer moves that complete a set, then maximize rent delta on existing sets.
       // Tuning knob lives in config.
       var k = MC.config.ai.biasMoveWildK;

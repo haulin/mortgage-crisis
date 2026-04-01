@@ -1,13 +1,5 @@
 // MC.layout: shared layout/geometry helpers (UI + renderer). Pure; reads MC.config.
 
-MC.layout.rowY0 = function (row) {
-  return MC.config.render.layout.rowY[row];
-};
-
-MC.layout.rowH = function (row) {
-  return MC.config.render.layout.rowH[row];
-};
-
 MC.layout.faceYForRow = function (row) {
   var L = MC.config.render.layout;
   if (row === 0) {

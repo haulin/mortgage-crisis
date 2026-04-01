@@ -31,7 +31,7 @@ MC.ui.newView = function () {
       cmds: [],
       cmdI: 0,
 
-      // Hold-A chain (Phase 09+): compose multiple targeting kinds (e.g. Sly→Bank→Source)
+      // Hold-A chain: compose multiple targeting kinds (e.g. Sly→Bank→Source)
       // so cursor-mode targeting doesn't have to impersonate preview-mode destinations.
       chainActive: false,
       chainSegs: [],
@@ -43,22 +43,22 @@ MC.ui.newView = function () {
     // Inspect (hold X with delay)
     inspectActive: false,
 
-    // Toasts (Phase 05b+): stacked notifications at screen top.
+    // Toasts: stacked notifications at screen top.
     // Each toast: { id?, kind?, text, frames?, persistent? }
     toasts: [],
 
-    // Animations (Phase 05c+): shuffle + staged dealing. Purely view-owned.
+    // Animations: shuffle + staged dealing. Purely view-owned.
     anim: {
       q: [],
       active: null,
       lock: false,
       // hiddenByP[p][uid] = true means uid is in-hand but not yet revealed.
       hiddenByP: [{}, {}],
-      // Phase 15: hide cards that are mid-transfer (any zone, any player).
+      // Hide cards that are mid-transfer (any zone, any player).
       hiddenByUid: {},
-      // Phase 15: last seen screen-space face origins by uid (for transfer animations).
+      // Last seen screen-space face origins by uid (for transfer animations).
       lastPosByUid: {},
-      // Phase 15: visual list of cards in the pay/transfer buffer stack (center row).
+      // Visual list of cards in the pay/transfer buffer stack (center row).
       // Used to keep the buffer visible while promptBuf-sourced transfers drain after the prompt clears.
       payBufUids: []
     },
@@ -79,7 +79,6 @@ MC.ui.newView = function () {
       lastWinnerP: MC.state.NO_WINNER,
       lastPromptKind: "",
       lastPromptForP0: false,
-      lastCenterBtnPressedId: "",
       lastFocusRuleId: "",
       pendingFocusErrorCode: "",
       autoFocusPausedByDebug: false,
@@ -148,7 +147,7 @@ MC.ui.syncPromptToast = function (state, view) {
     var over = state.players[0].hand.length - MC.state.HAND_MAX;
     txt = "Too many cards. Discard " + over;
   } else if (pr.kind === "payDebt") {
-    // Phase 08+: if action-sourced debt and JSN is available, teach the response window.
+    // If action-sourced debt and JSN is available, teach the response window.
     var jsnAvail = !!(pr.srcAction && pr.buf && pr.buf.length === 0 && MC.rules.handHasActionKind(state, 0, MC.ActionKind.JustSayNo));
     if (jsnAvail && pr.srcAction && String(pr.srcAction.kind || "") === "rent") {
       txt = "Rent: Pay $" + pr.rem + " or Just Say No";
@@ -162,7 +161,6 @@ MC.ui.syncPromptToast = function (state, view) {
   } else if (pr.kind === "replaceWindow") {
     txt = "Move a Wild? A:move B:skip";
   } else if (pr.kind === "respondAction") {
-    // Phase 08: Sly Deal response prompt.
     var col = MC.state.NO_COLOR;
     if (pr.target && pr.target.loc && pr.target.loc.zone === "setProps") {
       var tp = pr.target.loc.p;
@@ -292,22 +290,7 @@ MC.ui.cursorMoveTo = function (view, pick) {
   view.cursor.i = pick.i;
 };
 
-MC.ui.nearestByX = function (items, xCenter) {
-  if (!items || items.length === 0) return 0;
-  var bestI = 0;
-  var bestD = 999999;
-  var i;
-  for (i = 0; i < items.length; i++) {
-    var it = items[i];
-    var cx = it.x + (it.w / 2);
-    var d = cx - xCenter;
-    if (d < 0) d = -d;
-    if (d < bestD) { bestD = d; bestI = i; }
-  }
-  return bestI;
-};
-
-// Directional navigation (Phase 04 polish): pick closest selectable in a direction,
+// Directional navigation: pick closest selectable in a direction,
 // based on screen-space geometry (includes row camera offsets).
 
 MC.ui.itemScreenCenter = function (view, item) {
@@ -786,9 +769,9 @@ MC.ui.buildRowItems = function (state, view, row, hint) {
     if (!overlayActive) {
       // Right-side vertical strip.
       //
-      // Original layout (Phase 04 era): End/Step/Reset/Next were 10px tall with 1px gaps
-      // and filled the full center row. Phase 13 adds Menu below End; in dev mode this
-      // intentionally spills below the center row band (acceptable dev-only overlap).
+      // Original layout: End/Step/Reset/Next were 10px tall with 1px gaps and filled the full
+      // center row. Menu is below End; in dev mode this intentionally spills below the center
+      // row band (acceptable dev-only overlap).
       var stripW = C.centerBtnStripW;
       var stripH = 10;
       var stripX = C.screenW - C.centerBtnStripPadRight - stripW;
@@ -1197,7 +1180,7 @@ MC.ui.computeRowModels = function (state, view) {
     }
   }
 
-  // Phase 15: visualize the pay/transfer buffer as a non-selectable center-row stack.
+  // Visualize the pay/transfer buffer as a non-selectable center-row stack.
   // - During payDebt: show prompt.buf (what has been committed so far).
   // - While draining: show view.anim.payBufUids even after the prompt clears.
   var payBufUids = null;
@@ -1228,7 +1211,7 @@ MC.ui.computeRowModels = function (state, view) {
   var computed = { models: models, selected: sel, meta: meta };
   computed = MC.anim.present(state, view, computed) || computed;
 
-  // Phase 15: snapshot last-seen screen-space positions for transfer animations.
+  // Snapshot last-seen screen-space positions for transfer animations.
   if (view && view.anim && view.anim.lastPosByUid && computed && computed.models) {
     var posByUid = view.anim.lastPosByUid;
     var k;
@@ -1385,7 +1368,7 @@ MC.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
     return;
   }
 
-  // Phase 11: if the only legal destination is Source/cancel, disallow entering targeting.
+  // If the only legal destination is Source/cancel, disallow entering targeting.
   if (MC.moves.cmdsWithoutSource(t.cmds).length === 0) {
     MC.anim.feedbackError(view, "no_actions", "No actions");
     t.active = false;
@@ -1419,7 +1402,6 @@ MC.ui.targetingEnterHoldChain = function (state, view, kinds, uid, loc) {
   var chain = MC.cmd.buildHoldChain(state, uid, t.card ? t.card.loc : null, kinds);
   if (chain && chain.segs) t.chainSegs = chain.segs;
 
-  // Phase 11: disallow entering a Source-only targeting flow.
   if (!t.chainSegs || t.chainSegs.length === 0) {
     MC.anim.feedbackError(view, "no_actions", "No actions");
     t.active = false;
@@ -1544,13 +1526,12 @@ MC.ui.step = function (state, view, actions) {
     view.mode = "browse";
   }
 
-  // Prompt mode sync (Phase 05b+): prompts are rules-owned, UI adopts a dedicated mode.
+  // Prompt mode sync: prompts are rules-owned, UI adopts a dedicated mode.
   var pr = state.prompt;
   var hasPrompt = !!pr;
   var promptForP0 = !!(hasPrompt && pr.p === 0);
   if (!gameOver && promptForP0) {
     var k = pr && pr.kind ? String(pr.kind) : "";
-    // Phase 06: allow overlays during recipient placement prompt.
     var allowOverlays = (k === "placeReceived" || k === "replaceWindow");
     if (!allowOverlays) {
       // Prompts override overlays.
@@ -1582,7 +1563,7 @@ MC.ui.step = function (state, view, actions) {
     computed = MC.ui.computeRowModels(state, view);
     MC.ui.updateCameras(state, view, computed);
 
-    // Phase 15 polish: during deal animations, keep cursor stable by anchored uid so
+    // During deal animations, keep cursor stable by anchored uid so
     // the selection highlight doesn't drift through the bank as new hand cards appear.
     if (view.anim.active && view.anim.active.kind === "deal" && view.ux && view.ux.selAnchor && view.ux.selAnchor.uid && view.ux.selAnchor.loc) {
       var a = view.ux.selAnchor;
@@ -1611,7 +1592,7 @@ MC.ui.step = function (state, view, actions) {
       }
     }
 
-    // Phase 15 polish: during non-deal animation locks (notably xfer), refresh the selection
+    // During non-deal animation locks (notably xfer), refresh the selection
     // anchor so focus preservation doesn't "snap" when the lock clears after list splices
     // (e.g., paying with a mid-stack bank card).
     if (!(view.anim.active && view.anim.active.kind === "deal")) {
@@ -1652,7 +1633,6 @@ MC.ui.step = function (state, view, actions) {
   }
 
   function setAutoFocusPauseForCenterBtn(id) {
-    view.ux.lastCenterBtnPressedId = id;
     if (id === "step" || id === "nextScenario" || id === "reset") {
       view.ux.autoFocusPausedByDebug = true;
     }
@@ -1971,7 +1951,7 @@ MC.ui.step = function (state, view, actions) {
   // Browse mode
   if (view.mode !== "prompt") view.mode = "browse";
 
-  // Prompt mode (Phase 05b+): rules-owned prompts.
+  // Prompt mode: rules-owned prompts.
   if (view.mode === "prompt") {
     var prompt = state.prompt;
     if (!prompt || prompt.p !== 0) {
@@ -2079,7 +2059,6 @@ MC.ui.step = function (state, view, actions) {
       return null;
     }
 
-    // For Phase 06 prompts, allow normal directional navigation (screen-space).
     applyPromptNav();
     computed = MC.ui.computeRowModels(state, view);
     MC.ui.updateCameras(state, view, computed);
@@ -2113,7 +2092,6 @@ MC.ui.step = function (state, view, actions) {
         }
         if (!selD || !selD.loc) { MC.anim.feedbackError(view, "no_actions", "No actions"); return null; }
 
-        // Phase 08+: JSN response for action-sourced debt before any payment is made.
         if (selD.loc.zone === "hand" && selD.loc.p === 0) {
           var canJsn = !!(prompt.srcAction && prompt.buf && prompt.buf.length === 0);
           if (canJsn) {
