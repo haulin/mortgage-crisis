@@ -33,8 +33,8 @@ async function loadSrcFilesIntoVm(fileNames) {
 }
 
 test("config sanity: render.layout/style/spr/moneyBgByValue shape", async () => {
-  // Load only prelude+config so this test can't be masked by later modules.
-  const ctx = await loadSrcFilesIntoVm(["00_prelude.js", "05_config.js"]);
+  // Load only prelude+defs+config so this test can't be masked by later modules.
+  const ctx = await loadSrcFilesIntoVm(["00_prelude.js", "04_defs.js", "05_config.js"]);
   const { MC } = ctx;
   assert.equal(typeof MC, "object", "expected MC object");
   assert.equal(typeof MC.config, "object", "expected MC.config");
@@ -99,7 +99,7 @@ test("config sanity: render.layout/style/spr/moneyBgByValue shape", async () => 
     "digitTile",
     "glyphInsetX",
     "glyphInsetY",
-    "glyphColorkey",
+    "sprColorkey",
     "propValueX",
     "propValueY",
     "propBarX",
@@ -121,12 +121,12 @@ test("config sanity: render.layout/style/spr/moneyBgByValue shape", async () => 
     "colHighlight",
     "colCenterPanel",
     "colCenterPanelBorder",
-    "hudLineCol",
+    "colHudLine",
     "colToastBgAi",
-    "pileShadowOutlineCol",
-    "pileOutlineUnder1Col",
-    "pileOutlineUnder2Col",
-    "inspectPanelFillCol",
+    "colPileShadowOutline",
+    "colPileOutlineUnder1",
+    "colPileOutlineUnder2",
+    "colInspectPanelFill",
     "pileCountDx",
     "pileCountDy"
   ].forEach((k) => requireNum(S, k));
@@ -136,8 +136,8 @@ test("config sanity: render.layout/style/spr/moneyBgByValue shape", async () => 
 });
 
 test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async () => {
-  // Load only prelude+config so we validate what ships in the cartridge.
-  const ctx = await loadSrcFilesIntoVm(["00_prelude.js", "05_config.js"]);
+  // Load only prelude+defs+config so we validate what ships in the cartridge.
+  const ctx = await loadSrcFilesIntoVm(["00_prelude.js", "04_defs.js", "05_config.js"]);
   const { MC } = ctx;
 
   assert.equal(typeof MC.config.meta, "object", "expected MC.config.meta");
@@ -214,9 +214,7 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   requireNum(MC.config.title, "menuItemGapY");
   requirePosNum(MC.config.title, "menuItemBoxPadX");
   requirePosNum(MC.config.title, "menuItemBoxPadY");
-  assert.equal(typeof MC.config.title.bgTileEnabled, "boolean", "expected bgTileEnabled boolean");
   requireNum(MC.config.title, "bgTileSprId");
-  requireNum(MC.config.title, "bgTileColorkey");
 
   // How-to-play screen knobs.
   requirePosNum(MC.config.howto, "padX");
@@ -231,14 +229,14 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   requirePosNum(MC.config.howto, "demoGapX");
   requirePosNum(MC.config.howto, "demoGapY");
   requirePosNum(MC.config.howto, "scrollStepPx");
-  requireNum(MC.config.howto, "bgCol");
-  requireNum(MC.config.howto, "panelCol");
-  requireNum(MC.config.howto, "borderCol");
-  requireNum(MC.config.howto, "titleCol");
-  requireNum(MC.config.howto, "headingCol");
-  requireNum(MC.config.howto, "textCol");
-  requireNum(MC.config.howto, "mutedCol");
-  requireNum(MC.config.howto, "accentCol");
+  requireNum(MC.config.howto, "colBg");
+  requireNum(MC.config.howto, "colPanel");
+  requireNum(MC.config.howto, "colBorder");
+  requireNum(MC.config.howto, "colTitle");
+  requireNum(MC.config.howto, "colHeading");
+  requireNum(MC.config.howto, "colText");
+  requireNum(MC.config.howto, "colMuted");
+  requireNum(MC.config.howto, "colAccent");
 
   // AI policy knobs.
   assert.ok(Array.isArray(MC.config.ai.policyByP), "expected MC.config.ai.policyByP array");
@@ -249,8 +247,8 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   assert.ok(MC.config.ai.policyByP[1].length > 0);
   requirePosNum(MC.config.ai, "biasExistingSetK");
   requirePosNum(MC.config.ai, "biasPayDebtFromBankK");
-  requirePosNum(MC.config.ai, "earlyBankBufferTarget");
-  requirePosNum(MC.config.ai, "earlyEmptyHandKeepActionsMaxHand");
+  requirePosNum(MC.config.ai, "biasEarlyBankBufferTarget");
+  requirePosNum(MC.config.ai, "biasEarlyEmptyHandKeepActionsMaxHand");
   requirePosNum(MC.config.ai, "biasEarlyBankMoneyK");
   requirePosNum(MC.config.ai, "biasEarlyEndTurnOverBankActionsK");
   requirePosNum(MC.config.ai, "biasEarlyPlayRentIfPayableK");
@@ -262,7 +260,7 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
 });
 
 test("config sanity: rule notes are configured", async () => {
-  const ctx = await loadSrcFilesIntoVm(["00_prelude.js", "05_config.js"]);
+  const ctx = await loadSrcFilesIntoVm(["00_prelude.js", "04_defs.js", "05_config.js"]);
   const { MC } = ctx;
 
   assert.equal(typeof MC.RuleNote, "object", "expected MC.RuleNote");

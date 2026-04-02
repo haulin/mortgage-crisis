@@ -172,7 +172,7 @@
   function drawDigitGlyph(n, xGlyphTL, yGlyphTL, flip180) {
     if (n < 0 || n > 9) return;
     var id = R.spr.digit0 + n;
-    var ck = R.cfg.glyphColorkey;
+    var ck = R.cfg.sprColorkey;
     var insetX = R.cfg.glyphInsetX;
     var insetY = R.cfg.glyphInsetY;
     var tile = R.cfg.digitTile;
@@ -277,7 +277,7 @@
 
   function drawCenterIcon(xFace, yFace, iconId, flip180) {
     if (!iconId) return;
-    var ck = R.cfg.glyphColorkey;
+    var ck = R.cfg.sprColorkey;
     // Icon sprites are assumed full 8x8; no anchor offsets needed.
     var p = cardLocalRectToScreen(xFace, yFace, R.cfg.iconX, R.cfg.iconY, 8, 8, flip180);
     sprSafe(iconId, p.x, p.y, ck, 1, 0, flip180 ? 2 : 0, 1, 1);
@@ -354,7 +354,7 @@
       // Shift origin so the visible pattern still starts at (1,1) inside the border.
       var sx = flip180 ? xFace : (xFace + 1);
       var sy = flip180 ? yFace : (yFace + 1);
-      sprSafe(id, sx, sy, cfg.glyphColorkey, 1, 0, flip180 ? 2 : 0, 2, 3);
+      sprSafe(id, sx, sy, cfg.sprColorkey, 1, 0, flip180 ? 2 : 0, 2, 3);
       return;
     }
 
@@ -401,9 +401,9 @@
     }
 
     function drawUnderLayerOutline(xFace, yFace, dx, dy) {
-      var colMain = cfg.pileOutlineUnder1Col;
-      if (dx === cfg.pileUnderDx2 && dy === cfg.pileUnderDy2) colMain = cfg.pileOutlineUnder2Col;
-      rectbSafe(xFace + dx - 1, yFace + dy - 1, cfg.faceW, cfg.faceH, cfg.pileShadowOutlineCol);
+      var colMain = cfg.colPileOutlineUnder1;
+      if (dx === cfg.pileUnderDx2 && dy === cfg.pileUnderDy2) colMain = cfg.colPileOutlineUnder2;
+      rectbSafe(xFace + dx - 1, yFace + dy - 1, cfg.faceW, cfg.faceH, cfg.colPileShadowOutline);
       rectbSafe(xFace + dx, yFace + dy, cfg.faceW, cfg.faceH, colMain);
     }
 
@@ -526,7 +526,7 @@
         y1: Lp.inspectPanelY1
       };
       // Backing panel behind preview+title+desc.
-      rectSafe(panel.x0, panel.y0, panel.x1 - panel.x0 + 1, panel.y1 - panel.y0 + 1, cfg.inspectPanelFillCol);
+      rectSafe(panel.x0, panel.y0, panel.x1 - panel.x0 + 1, panel.y1 - panel.y0 + 1, cfg.colInspectPanelFill);
       rectbSafe(panel.x0, panel.y0, panel.x1 - panel.x0 + 1, panel.y1 - panel.y0 + 1, cfg.colCenterPanelBorder);
 
       var padX = Lp.inspectPanelPadX;
@@ -730,7 +730,7 @@
     var x = minBtnX - 52;
     if (x < cfg.rowPadX) x = cfg.rowPadX;
     var y = maxBtnY - 7; // 6px font + 1
-    printSafe("Y:Mode", x, y, cfg.hudLineCol);
+    printSafe("Y:Mode", x, y, cfg.colHudLine);
   }
 
   function drawToasts(view) {

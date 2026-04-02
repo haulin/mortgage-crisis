@@ -30,7 +30,7 @@ Inspect descriptions automatically include:
 
 We add a tiny rule-note mechanism for short constraints/notes that should appear in Inspect:
 
-- `MC.RuleNote.`* enum IDs
+- `MC.RuleNote.*` enum IDs
 - `def.ruleNotes: [...]` on card defs
 - `MC.ruleNoteTextById[id] = "..."`
 - `MC.config.rules.enabledRuleNotes = [...]`

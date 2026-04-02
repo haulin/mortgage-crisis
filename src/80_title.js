@@ -20,11 +20,10 @@
     return print(txt, x, y, col, false, scale, small);
   }
 
-  function drawTiledBg(tc, W, H) {
-    if (!tc || !tc.bgTileEnabled) return;
-    if (typeof spr !== "function") return;
+  function drawTiledBg(cfg, W, H) {
+    var tc = cfg.title;
     var tid = tc.bgTileSprId;
-    var ck = tc.bgTileColorkey;
+    var ck = cfg.render.style.sprColorkey;
     var xT, yT;
     for (yT = 0; yT < H; yT += 16) {
       for (xT = 0; xT < W; xT += 16) {
@@ -197,7 +196,7 @@
       if (typeof poke === "function") poke(0x03FF8, 15);
     }
     cls(Pal.DarkBlue);
-    drawTiledBg(tc, W, H);
+    drawTiledBg(cfg, W, H);
 
     // Logo (placeholder text).
     var logoScale = tc.logoScale;

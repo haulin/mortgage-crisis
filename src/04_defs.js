@@ -19,6 +19,16 @@ MC.ActionKind = {
   JustSayNo: 2,
 };
 
+// Rule-note IDs. These are small display-only annotations in Inspect.
+MC.RuleNote = {
+  // MVP1 rule constraints.
+  SlyDeal_NotFromFullSet: 1,
+
+  // Optional / other-version rules (not enabled in MVP1).
+  House_StationsUtilities: 2,
+  JSN_Chain: 3
+};
+
 // Rule note display text. These are appended in Inspect when enabled by config.
 MC.ruleNoteTextById = [];
 MC.ruleNoteTextById[MC.RuleNote.SlyDeal_NotFromFullSet] = "(Cannot be part of a full set)";

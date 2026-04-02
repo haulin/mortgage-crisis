@@ -5,27 +5,19 @@ MC.config = {
   seedBase: 1005
 };
 
-// Meta/version display.
 MC.config.meta = {
   version: "MVP v0.15"
 };
 
-// Debug/dev knobs. Keep these centralized so we can disable later.
 MC.config.debug = {
   enabled: true
 };
 
 // Controller UX knobs. All values are in frames (TIC runs at 60fps).
 MC.config.controls = {
-  // D-pad repeat: start repeating after delay, then pulse every period.
   dpadRepeatDelayFrames: 12,
   dpadRepeatPeriodFrames: 4,
-
-  // Hold-A grab: if you hold A without moving, enter grab after this fallback threshold.
-  // (Hold+move enters immediately.)
   aHoldFallbackFrames: 18,
-
-  // Inspect overlay becomes active after holding X this long.
   xInspectDelayFrames: 6
 };
 
@@ -43,7 +35,6 @@ MC.config.ui = {
   navConeKLeftRight: 18,
   navConeKUpDown: 6,
 
-  // Timings are in frames (TIC runs at 60fps).
   // Debug aid: multiply timings for slow-motion debugging (1 = normal speed).
   animSpeedMult: 3,
   dealFramesPerCard: 8,
@@ -53,47 +44,36 @@ MC.config.ui = {
   xferHoldFromFrames: 18,
   xferHoldFrames: 12,
   gameStartToastFrames: 60,
-  // Shuffle: default includes ~1 extra 1→2→3 loop for readability.
   shuffleAnimFrames: 42,
   shuffleToastFrames: 42,
 
   aiStepDelayFrames: 60,
   aiNarrateToastFrames: 60,
 
-  // Toast timings.
   toast: {
     infoFrames: 90,
     errorFrames: 90
   },
 
-  // Sly Deal targeting presentation.
-  // If true: show ghost outlines for non-selected Sly targets while targeting.
   slyShowTargetGhosts: false
- 
 };
 
-// Title screen knobs. Keep numeric/layout values here for easy iteration.
 MC.config.title = {
-  // Right panel width (menu area).
   menuW: 90,
 
-  // Logo text scale (TIC-80 print scale).
   logoScale: 3,
   logoX: 10,
   logoY: 18,
 
-  // Subtitle (small).
   subtitleText: "Inspired by Monopoly Deal",
   subtitleX: 34,
   subtitleY: 69,
 
-  // Controls panel (bottom-left).
   controlsX: 20,
   controlsW: 117,
   controlsH: 40,
   controlsBottomY: 8,
 
-  // Menu layout (right panel).
   menuY: 50,
   menuDy: 12,
   menuArrowX: 6,
@@ -103,14 +83,9 @@ MC.config.title = {
   menuItemBoxPadX: 6,
   menuItemBoxPadY: 4,
 
-  // Background tiling (optional): sprite id is top-left of a 2x2 block (16x16).
-  // Defaults to the card-back TL sprite, which should exist in the cart.
-  bgTileEnabled: true,
-  bgTileSprId: 34,
-  bgTileColorkey: 15
+  bgTileSprId: 34
 };
 
-// AI policy knobs.
 MC.config.ai = {
   // Per-player policy IDs (0=player, 1=opponent by default).
   policyByP: ["defaultHeuristic", "defaultHeuristic"],
@@ -119,9 +94,8 @@ MC.config.ai = {
   biasExistingSetK: 8,
   biasPayDebtFromBankK: 8,
 
-  // Early-turn discipline.
-  earlyBankBufferTarget: 3,
-  earlyEmptyHandKeepActionsMaxHand: 2,
+  biasEarlyBankBufferTarget: 3,
+  biasEarlyEmptyHandKeepActionsMaxHand: 2,
   biasEarlyBankMoneyK: 6,
   biasEarlyEndTurnOverBankActionsK: 6,
   biasEarlyPlayRentIfPayableK: 3,
@@ -133,17 +107,6 @@ MC.config.ai = {
   biasMoveWildK: 8
 };
 
-// Rule-note IDs. These are small display-only annotations in Inspect.
-MC.RuleNote = {
-  // MVP1 rule constraints.
-  SlyDeal_NotFromFullSet: 1,
-
-  // Optional / other-version rules (not enabled in MVP1).
-  House_StationsUtilities: 2,
-  JSN_Chain: 3
-};
-
-// Rules display knobs.
 MC.config.rules = {
   // List of enabled RuleNote IDs to show in Inspect.
   // Note: keep this intentionally small; it's easy to mislead players with future-rule text.
@@ -173,7 +136,6 @@ MC.Pal = {
   DarkGrey: 15,   // #333c57
 };
 
-// How-to-play screen knobs. Keep layout/typography here for easy tuning.
 MC.config.howto = {
   padX: 8,
   padY: 6,
@@ -192,18 +154,16 @@ MC.config.howto = {
   demoGapX: 6,
   demoGapY: 3,
 
-  // Scrolling.
   scrollStepPx: 6,
 
-  // Colors (Sweetie-16 indices).
-  bgCol: MC.Pal.Black,
-  panelCol: MC.Pal.DarkBlue,
-  borderCol: MC.Pal.Grey,
-  titleCol: MC.Pal.White,
-  headingCol: MC.Pal.White,
-  textCol: MC.Pal.LightGrey,
-  mutedCol: MC.Pal.LightGrey,
-  accentCol: MC.Pal.Yellow,
+  colBg: MC.Pal.Black,
+  colPanel: MC.Pal.DarkBlue,
+  colBorder: MC.Pal.Grey,
+  colTitle: MC.Pal.White,
+  colHeading: MC.Pal.White,
+  colText: MC.Pal.LightGrey,
+  colMuted: MC.Pal.LightGrey,
+  colAccent: MC.Pal.Yellow,
 };
 
 MC.config.render = {
@@ -238,7 +198,7 @@ MC.config.render = {
     // Controls line (simple single print)
     hudLineEnabled: true,
     hudLineX: 6,
-    hudLineY: 74,
+    hudLineY: 90,
 
     // Center row
     centerTopInsetY: 4,
@@ -282,7 +242,7 @@ MC.config.render = {
     digitTile: 8,
     glyphInsetX: 1, // inner glyph top-left in the 8x8 tile
     glyphInsetY: 1,
-    glyphColorkey: 15,
+    sprColorkey: 15,
 
     // Dual-color property anchors (0-based, card-local).
     propValueX: 1,
@@ -301,7 +261,6 @@ MC.config.render = {
     iconX: 4,
     iconY: 9,
 
-    // Colors (Sweetie-16 indices).
     colBg: MC.Pal.Black,
     colText: MC.Pal.White,
     colCardBorder: MC.Pal.White,
@@ -310,16 +269,15 @@ MC.config.render = {
     colHighlight: MC.Pal.Yellow,
     colCenterPanel: MC.Pal.DarkBlue,
     colCenterPanelBorder: MC.Pal.White,
-    hudLineCol: MC.Pal.White,
+    colHudLine: MC.Pal.White,
     colToastBgAi: MC.Pal.DarkBlue,
 
     // Center pile depth outlines
-    pileShadowOutlineCol: MC.Pal.Black,
-    pileOutlineUnder1Col: MC.Pal.LightGrey,
-    pileOutlineUnder2Col: MC.Pal.Grey,
+    colPileShadowOutline: MC.Pal.Black,
+    colPileOutlineUnder1: MC.Pal.LightGrey,
+    colPileOutlineUnder2: MC.Pal.Grey,
 
-    // Inspect panel colors.
-    inspectPanelFillCol: MC.Pal.DarkGreen,
+    colInspectPanelFill: MC.Pal.DarkGreen,
 
     // Deck/Discard pile count digit offset.
     pileCountDx: 1,
@@ -344,7 +302,6 @@ MC.config.render = {
     iconHouse: 17
   },
 
-  // Money/value palette mapping from docs/session01.md: 1→4, 2→2, 3→5, 4→10, 5→1
   moneyBgByValue: [
     0,
     MC.Pal.Yellow,     // 1

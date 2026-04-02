@@ -49,8 +49,8 @@ MC.ai.policies = {
       var opPayable = MC.state.hasAnyPayables(state, op);
 
       var cfg = MC.config.ai;
-      var bufferTarget = cfg.earlyBankBufferTarget;
-      var keepActionsMaxHand = cfg.earlyEmptyHandKeepActionsMaxHand;
+      var bufferTarget = cfg.biasEarlyBankBufferTarget;
+      var keepActionsMaxHand = cfg.biasEarlyEmptyHandKeepActionsMaxHand;
 
       var hasNonBankNonEnd = false;
       var hasBankMoneyHouse = false;

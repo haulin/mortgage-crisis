@@ -31,6 +31,239 @@ MC.debug.toolsOn = false;
 MC.title = {};
 MC.howto = {};
 
+// ---- src/04_defs.js ----
+// Card/game definitions: enums + static data tables (treated as read-only).
+MC.Color = {
+  Cyan: 0,
+  Magenta: 1,
+  Orange: 2,
+  Black: 3,
+};
+
+MC.CardKind = {
+  Money: 0,
+  Action: 1,
+  Property: 2,
+  House: 3,
+};
+
+MC.ActionKind = {
+  Rent: 0,
+  SlyDeal: 1,
+  JustSayNo: 2,
+};
+
+// Rule-note IDs. These are small display-only annotations in Inspect.
+MC.RuleNote = {
+  // MVP1 rule constraints.
+  SlyDeal_NotFromFullSet: 1,
+
+  // Optional / other-version rules (not enabled in MVP1).
+  House_StationsUtilities: 2,
+  JSN_Chain: 3
+};
+
+// Rule note display text. These are appended in Inspect when enabled by config.
+MC.ruleNoteTextById = [];
+MC.ruleNoteTextById[MC.RuleNote.SlyDeal_NotFromFullSet] = "(Cannot be part of a full set)";
+MC.ruleNoteTextById[MC.RuleNote.House_StationsUtilities] = "(Except stations & utilities)";
+MC.ruleNoteTextById[MC.RuleNote.JSN_Chain] = "(You can say No to a No)";
+
+MC.SET_RULES = [];
+MC.SET_RULES[MC.Color.Cyan] = {
+  requiredSize: 2,
+  rent: [1, 3],
+};
+MC.SET_RULES[MC.Color.Magenta] = {
+  requiredSize: 3,
+  rent: [1, 2, 4],
+};
+MC.SET_RULES[MC.Color.Orange] = {
+  requiredSize: 3,
+  rent: [2, 3, 5],
+};
+MC.SET_RULES[MC.Color.Black] = {
+  requiredSize: 4,
+  rent: [1, 2, 3, 6],
+};
+
+MC.HOUSE_RENT_BONUS = 3;
+
+MC.CARD_DEFS = [
+  // Money (10)
+  {
+    id: "money_1",
+    name: "Money",
+    desc: "Spend to pay debts.\nBank as money.",
+    kind: MC.CardKind.Money,
+    count: 3,
+    bankValue: 1,
+  },
+  {
+    id: "money_2",
+    name: "Money",
+    desc: "Spend to pay debts.\nBank as money.",
+    kind: MC.CardKind.Money,
+    count: 3,
+    bankValue: 2,
+  },
+  {
+    id: "money_3",
+    name: "Money",
+    desc: "Spend to pay debts.\nBank as money.",
+    kind: MC.CardKind.Money,
+    count: 2,
+    bankValue: 3,
+  },
+  {
+    id: "money_4",
+    name: "Money",
+    desc: "Spend to pay debts.\nBank as money.",
+    kind: MC.CardKind.Money,
+    count: 1,
+    bankValue: 4,
+  },
+  {
+    id: "money_5",
+    name: "Money",
+    desc: "Spend to pay debts.\nBank as money.",
+    kind: MC.CardKind.Money,
+    count: 1,
+    bankValue: 5,
+  },
+
+  // Properties (12 fixed + 2 wild = 14)
+  {
+    id: "prop_cyan",
+    name: "Property Cyan",
+    desc: "Full set: 2 required.\nRent for 1 property: $1\nRent for 2 properties: $3",
+    kind: MC.CardKind.Property,
+    count: 2,
+    propertyColor: MC.Color.Cyan,
+    propertyPayValue: 3,
+  },
+  {
+    id: "prop_magenta",
+    name: "Property Magenta",
+    desc: "Full set: 3 required.\nRent for 1 property: $1\nRent for 2 properties: $2\nRent for 3 properties: $4",
+    kind: MC.CardKind.Property,
+    count: 3,
+    propertyColor: MC.Color.Magenta,
+    propertyPayValue: 2,
+  },
+  {
+    id: "prop_orange",
+    name: "Property Orange",
+    desc: "Full set: 3 required.\nRent for 1 property: $2\nRent for 2 properties: $3\nRent for 3 properties: $5",
+    kind: MC.CardKind.Property,
+    count: 3,
+    propertyColor: MC.Color.Orange,
+    propertyPayValue: 2,
+  },
+  {
+    id: "prop_black",
+    name: "Property Black",
+    desc: "Full set: 4 required.\nRent for 1 property: $1\nRent for 2 properties: $2\nRent for 3 properties: $3\nRent for 4 properties: $6",
+    kind: MC.CardKind.Property,
+    count: 4,
+    propertyColor: MC.Color.Black,
+    propertyPayValue: 1,
+  },
+  {
+    id: "wild_mo",
+    name: "Wild Magenta/Orange",
+    desc: "Orange rent: $2/$3/$5\nMagenta rent: $1/$2/$4",
+    kind: MC.CardKind.Property,
+    count: 1,
+    wildColors: [MC.Color.Magenta, MC.Color.Orange],
+    propertyPayValue: 2,
+  },
+  {
+    id: "wild_cb",
+    name: "Wild Cyan/Black",
+    desc: "Cyan rent: $1/$3\nBlack rent: $1/$2/$3/$6",
+    kind: MC.CardKind.Property,
+    count: 1,
+    wildColors: [MC.Color.Cyan, MC.Color.Black],
+    propertyPayValue: 2,
+  },
+
+  // Buildings (2)
+  {
+    id: "house",
+    name: "House",
+    desc: "Action card. Add onto any\nfull set you own to add\n$3 to the rent value.",
+    kind: MC.CardKind.House,
+    count: 2,
+    bankValue: 3,
+    ruleNotes: [MC.RuleNote.House_StationsUtilities]
+  },
+
+  // Actions (9)
+  {
+    id: "rent_mo",
+    name: "Rent Magenta/Orange",
+    desc: "Action card. Your opponent\npays you rent for your\nMagenta or Orange sets.\n(Play into center to use)",
+    kind: MC.CardKind.Action,
+    actionKind: MC.ActionKind.Rent,
+    count: 2,
+    bankValue: 1,
+    rentAllowedColors: [MC.Color.Magenta, MC.Color.Orange],
+  },
+  {
+    id: "rent_cb",
+    name: "Rent Cyan/Black",
+    desc: "Action card. Your opponent\npays you rent for your\nCyan or Black sets.\n(Play into center to use)",
+    kind: MC.CardKind.Action,
+    actionKind: MC.ActionKind.Rent,
+    count: 2,
+    bankValue: 1,
+    rentAllowedColors: [MC.Color.Cyan, MC.Color.Black],
+  },
+  {
+    id: "rent_any",
+    name: "Rent Any",
+    desc: "Action card. Your opponent\npays you rent for one set\nof your choice.\n(Play into center to use)",
+    kind: MC.CardKind.Action,
+    actionKind: MC.ActionKind.Rent,
+    count: 1,
+    bankValue: 1,
+    rentAllowedColors: null,
+  },
+  {
+    id: "sly_deal",
+    name: "Sly Deal",
+    desc: "Action card. Steal 1 property\nfrom your opponent.\n(Play into center to use)",
+    kind: MC.CardKind.Action,
+    actionKind: MC.ActionKind.SlyDeal,
+    count: 2,
+    bankValue: 3,
+    ruleNotes: [MC.RuleNote.SlyDeal_NotFromFullSet]
+  },
+  {
+    id: "just_say_no",
+    name: "Just Say No",
+    desc: "Action card. Use any time\nwhen an action is played\nagainst you.\n(Play into center to use)",
+    kind: MC.CardKind.Action,
+    actionKind: MC.ActionKind.JustSayNo,
+    count: 2,
+    bankValue: 4,
+    ruleNotes: [MC.RuleNote.JSN_Chain]
+  },
+];
+
+MC.DEF_INDEX_BY_ID = {};
+(function initDefIndexById() {
+  var i;
+  for (i = 0; i < MC.CARD_DEFS.length; i++) {
+    var id = MC.CARD_DEFS[i].id;
+    if (MC.DEF_INDEX_BY_ID[id] != null) {
+      throw new Error("duplicate card def id: " + id);
+    }
+    MC.DEF_INDEX_BY_ID[id] = i;
+  }
+})();
+
 // ---- src/05_config.js ----
 // MC.config: central gameplay/UI/render tuning knobs (validated in tests; avoid runtime fallbacks).
 MC.config = {
@@ -39,27 +272,19 @@ MC.config = {
   seedBase: 1005
 };
 
-// Meta/version display.
 MC.config.meta = {
   version: "MVP v0.15"
 };
 
-// Debug/dev knobs. Keep these centralized so we can disable later.
 MC.config.debug = {
   enabled: true
 };
 
 // Controller UX knobs. All values are in frames (TIC runs at 60fps).
 MC.config.controls = {
-  // D-pad repeat: start repeating after delay, then pulse every period.
   dpadRepeatDelayFrames: 12,
   dpadRepeatPeriodFrames: 4,
-
-  // Hold-A grab: if you hold A without moving, enter grab after this fallback threshold.
-  // (Hold+move enters immediately.)
   aHoldFallbackFrames: 18,
-
-  // Inspect overlay becomes active after holding X this long.
   xInspectDelayFrames: 6
 };
 
@@ -77,7 +302,6 @@ MC.config.ui = {
   navConeKLeftRight: 18,
   navConeKUpDown: 6,
 
-  // Timings are in frames (TIC runs at 60fps).
   // Debug aid: multiply timings for slow-motion debugging (1 = normal speed).
   animSpeedMult: 3,
   dealFramesPerCard: 8,
@@ -87,47 +311,36 @@ MC.config.ui = {
   xferHoldFromFrames: 18,
   xferHoldFrames: 12,
   gameStartToastFrames: 60,
-  // Shuffle: default includes ~1 extra 1→2→3 loop for readability.
   shuffleAnimFrames: 42,
   shuffleToastFrames: 42,
 
   aiStepDelayFrames: 60,
   aiNarrateToastFrames: 60,
 
-  // Toast timings.
   toast: {
     infoFrames: 90,
     errorFrames: 90
   },
 
-  // Sly Deal targeting presentation.
-  // If true: show ghost outlines for non-selected Sly targets while targeting.
   slyShowTargetGhosts: false
- 
 };
 
-// Title screen knobs. Keep numeric/layout values here for easy iteration.
 MC.config.title = {
-  // Right panel width (menu area).
   menuW: 90,
 
-  // Logo text scale (TIC-80 print scale).
   logoScale: 3,
   logoX: 10,
   logoY: 18,
 
-  // Subtitle (small).
   subtitleText: "Inspired by Monopoly Deal",
   subtitleX: 34,
   subtitleY: 69,
 
-  // Controls panel (bottom-left).
   controlsX: 20,
   controlsW: 117,
   controlsH: 40,
   controlsBottomY: 8,
 
-  // Menu layout (right panel).
   menuY: 50,
   menuDy: 12,
   menuArrowX: 6,
@@ -137,14 +350,9 @@ MC.config.title = {
   menuItemBoxPadX: 6,
   menuItemBoxPadY: 4,
 
-  // Background tiling (optional): sprite id is top-left of a 2x2 block (16x16).
-  // Defaults to the card-back TL sprite, which should exist in the cart.
-  bgTileEnabled: true,
-  bgTileSprId: 34,
-  bgTileColorkey: 15
+  bgTileSprId: 34
 };
 
-// AI policy knobs.
 MC.config.ai = {
   // Per-player policy IDs (0=player, 1=opponent by default).
   policyByP: ["defaultHeuristic", "defaultHeuristic"],
@@ -153,9 +361,8 @@ MC.config.ai = {
   biasExistingSetK: 8,
   biasPayDebtFromBankK: 8,
 
-  // Early-turn discipline.
-  earlyBankBufferTarget: 3,
-  earlyEmptyHandKeepActionsMaxHand: 2,
+  biasEarlyBankBufferTarget: 3,
+  biasEarlyEmptyHandKeepActionsMaxHand: 2,
   biasEarlyBankMoneyK: 6,
   biasEarlyEndTurnOverBankActionsK: 6,
   biasEarlyPlayRentIfPayableK: 3,
@@ -167,17 +374,6 @@ MC.config.ai = {
   biasMoveWildK: 8
 };
 
-// Rule-note IDs. These are small display-only annotations in Inspect.
-MC.RuleNote = {
-  // MVP1 rule constraints.
-  SlyDeal_NotFromFullSet: 1,
-
-  // Optional / other-version rules (not enabled in MVP1).
-  House_StationsUtilities: 2,
-  JSN_Chain: 3
-};
-
-// Rules display knobs.
 MC.config.rules = {
   // List of enabled RuleNote IDs to show in Inspect.
   // Note: keep this intentionally small; it's easy to mislead players with future-rule text.
@@ -207,7 +403,6 @@ MC.Pal = {
   DarkGrey: 15,   // #333c57
 };
 
-// How-to-play screen knobs. Keep layout/typography here for easy tuning.
 MC.config.howto = {
   padX: 8,
   padY: 6,
@@ -226,18 +421,16 @@ MC.config.howto = {
   demoGapX: 6,
   demoGapY: 3,
 
-  // Scrolling.
   scrollStepPx: 6,
 
-  // Colors (Sweetie-16 indices).
-  bgCol: MC.Pal.Black,
-  panelCol: MC.Pal.DarkBlue,
-  borderCol: MC.Pal.Grey,
-  titleCol: MC.Pal.White,
-  headingCol: MC.Pal.White,
-  textCol: MC.Pal.LightGrey,
-  mutedCol: MC.Pal.LightGrey,
-  accentCol: MC.Pal.Yellow,
+  colBg: MC.Pal.Black,
+  colPanel: MC.Pal.DarkBlue,
+  colBorder: MC.Pal.Grey,
+  colTitle: MC.Pal.White,
+  colHeading: MC.Pal.White,
+  colText: MC.Pal.LightGrey,
+  colMuted: MC.Pal.LightGrey,
+  colAccent: MC.Pal.Yellow,
 };
 
 MC.config.render = {
@@ -272,7 +465,7 @@ MC.config.render = {
     // Controls line (simple single print)
     hudLineEnabled: true,
     hudLineX: 6,
-    hudLineY: 74,
+    hudLineY: 90,
 
     // Center row
     centerTopInsetY: 4,
@@ -316,7 +509,7 @@ MC.config.render = {
     digitTile: 8,
     glyphInsetX: 1, // inner glyph top-left in the 8x8 tile
     glyphInsetY: 1,
-    glyphColorkey: 15,
+    sprColorkey: 15,
 
     // Dual-color property anchors (0-based, card-local).
     propValueX: 1,
@@ -335,7 +528,6 @@ MC.config.render = {
     iconX: 4,
     iconY: 9,
 
-    // Colors (Sweetie-16 indices).
     colBg: MC.Pal.Black,
     colText: MC.Pal.White,
     colCardBorder: MC.Pal.White,
@@ -344,16 +536,15 @@ MC.config.render = {
     colHighlight: MC.Pal.Yellow,
     colCenterPanel: MC.Pal.DarkBlue,
     colCenterPanelBorder: MC.Pal.White,
-    hudLineCol: MC.Pal.White,
+    colHudLine: MC.Pal.White,
     colToastBgAi: MC.Pal.DarkBlue,
 
     // Center pile depth outlines
-    pileShadowOutlineCol: MC.Pal.Black,
-    pileOutlineUnder1Col: MC.Pal.LightGrey,
-    pileOutlineUnder2Col: MC.Pal.Grey,
+    colPileShadowOutline: MC.Pal.Black,
+    colPileOutlineUnder1: MC.Pal.LightGrey,
+    colPileOutlineUnder2: MC.Pal.Grey,
 
-    // Inspect panel colors.
-    inspectPanelFillCol: MC.Pal.DarkGreen,
+    colInspectPanelFill: MC.Pal.DarkGreen,
 
     // Deck/Discard pile count digit offset.
     pileCountDx: 1,
@@ -378,7 +569,6 @@ MC.config.render = {
     iconHouse: 17
   },
 
-  // Money/value palette mapping from docs/session01.md: 1→4, 2→2, 3→5, 4→10, 5→1
   moneyBgByValue: [
     0,
     MC.Pal.Yellow,     // 1
@@ -642,229 +832,6 @@ MC.controls.actions = function (st, raw, cfg) {
   MC.shuffle.inPlaceWithStateRng = function (state, arr) {
     return byNextInt(arr, function (n) { return MC.rng.nextIntInState(state, n); });
   };
-})();
-
-// ---- src/35_defs.js ----
-// Card/game definitions: enums + static data tables (treated as read-only).
-MC.Color = {
-  Cyan: 0,
-  Magenta: 1,
-  Orange: 2,
-  Black: 3,
-};
-
-MC.CardKind = {
-  Money: 0,
-  Action: 1,
-  Property: 2,
-  House: 3,
-};
-
-MC.ActionKind = {
-  Rent: 0,
-  SlyDeal: 1,
-  JustSayNo: 2,
-};
-
-// Rule note display text. These are appended in Inspect when enabled by config.
-MC.ruleNoteTextById = [];
-MC.ruleNoteTextById[MC.RuleNote.SlyDeal_NotFromFullSet] = "(Cannot be part of a full set)";
-MC.ruleNoteTextById[MC.RuleNote.House_StationsUtilities] = "(Except stations & utilities)";
-MC.ruleNoteTextById[MC.RuleNote.JSN_Chain] = "(You can say No to a No)";
-
-MC.SET_RULES = [];
-MC.SET_RULES[MC.Color.Cyan] = {
-  requiredSize: 2,
-  rent: [1, 3],
-};
-MC.SET_RULES[MC.Color.Magenta] = {
-  requiredSize: 3,
-  rent: [1, 2, 4],
-};
-MC.SET_RULES[MC.Color.Orange] = {
-  requiredSize: 3,
-  rent: [2, 3, 5],
-};
-MC.SET_RULES[MC.Color.Black] = {
-  requiredSize: 4,
-  rent: [1, 2, 3, 6],
-};
-
-MC.HOUSE_RENT_BONUS = 3;
-
-MC.CARD_DEFS = [
-  // Money (10)
-  {
-    id: "money_1",
-    name: "Money",
-    desc: "Spend to pay debts.\nBank as money.",
-    kind: MC.CardKind.Money,
-    count: 3,
-    bankValue: 1,
-  },
-  {
-    id: "money_2",
-    name: "Money",
-    desc: "Spend to pay debts.\nBank as money.",
-    kind: MC.CardKind.Money,
-    count: 3,
-    bankValue: 2,
-  },
-  {
-    id: "money_3",
-    name: "Money",
-    desc: "Spend to pay debts.\nBank as money.",
-    kind: MC.CardKind.Money,
-    count: 2,
-    bankValue: 3,
-  },
-  {
-    id: "money_4",
-    name: "Money",
-    desc: "Spend to pay debts.\nBank as money.",
-    kind: MC.CardKind.Money,
-    count: 1,
-    bankValue: 4,
-  },
-  {
-    id: "money_5",
-    name: "Money",
-    desc: "Spend to pay debts.\nBank as money.",
-    kind: MC.CardKind.Money,
-    count: 1,
-    bankValue: 5,
-  },
-
-  // Properties (12 fixed + 2 wild = 14)
-  {
-    id: "prop_cyan",
-    name: "Property Cyan",
-    desc: "Full set: 2 required.\nRent for 1 property: $1\nRent for 2 properties: $3",
-    kind: MC.CardKind.Property,
-    count: 2,
-    propertyColor: MC.Color.Cyan,
-    propertyPayValue: 3,
-  },
-  {
-    id: "prop_magenta",
-    name: "Property Magenta",
-    desc: "Full set: 3 required.\nRent for 1 property: $1\nRent for 2 properties: $2\nRent for 3 properties: $4",
-    kind: MC.CardKind.Property,
-    count: 3,
-    propertyColor: MC.Color.Magenta,
-    propertyPayValue: 2,
-  },
-  {
-    id: "prop_orange",
-    name: "Property Orange",
-    desc: "Full set: 3 required.\nRent for 1 property: $2\nRent for 2 properties: $3\nRent for 3 properties: $5",
-    kind: MC.CardKind.Property,
-    count: 3,
-    propertyColor: MC.Color.Orange,
-    propertyPayValue: 2,
-  },
-  {
-    id: "prop_black",
-    name: "Property Black",
-    desc: "Full set: 4 required.\nRent for 1 property: $1\nRent for 2 properties: $2\nRent for 3 properties: $3\nRent for 4 properties: $6",
-    kind: MC.CardKind.Property,
-    count: 4,
-    propertyColor: MC.Color.Black,
-    propertyPayValue: 1,
-  },
-  {
-    id: "wild_mo",
-    name: "Wild Magenta/Orange",
-    desc: "Orange rent: $2/$3/$5\nMagenta rent: $1/$2/$4",
-    kind: MC.CardKind.Property,
-    count: 1,
-    wildColors: [MC.Color.Magenta, MC.Color.Orange],
-    propertyPayValue: 2,
-  },
-  {
-    id: "wild_cb",
-    name: "Wild Cyan/Black",
-    desc: "Cyan rent: $1/$3\nBlack rent: $1/$2/$3/$6",
-    kind: MC.CardKind.Property,
-    count: 1,
-    wildColors: [MC.Color.Cyan, MC.Color.Black],
-    propertyPayValue: 2,
-  },
-
-  // Buildings (2)
-  {
-    id: "house",
-    name: "House",
-    desc: "Action card. Add onto any\nfull set you own to add\n$3 to the rent value.",
-    kind: MC.CardKind.House,
-    count: 2,
-    bankValue: 3,
-    ruleNotes: [MC.RuleNote.House_StationsUtilities]
-  },
-
-  // Actions (9)
-  {
-    id: "rent_mo",
-    name: "Rent Magenta/Orange",
-    desc: "Action card. Your opponent\npays you rent for your\nMagenta or Orange sets.\n(Play into center to use)",
-    kind: MC.CardKind.Action,
-    actionKind: MC.ActionKind.Rent,
-    count: 2,
-    bankValue: 1,
-    rentAllowedColors: [MC.Color.Magenta, MC.Color.Orange],
-  },
-  {
-    id: "rent_cb",
-    name: "Rent Cyan/Black",
-    desc: "Action card. Your opponent\npays you rent for your\nCyan or Black sets.\n(Play into center to use)",
-    kind: MC.CardKind.Action,
-    actionKind: MC.ActionKind.Rent,
-    count: 2,
-    bankValue: 1,
-    rentAllowedColors: [MC.Color.Cyan, MC.Color.Black],
-  },
-  {
-    id: "rent_any",
-    name: "Rent Any",
-    desc: "Action card. Your opponent\npays you rent for one set\nof your choice.\n(Play into center to use)",
-    kind: MC.CardKind.Action,
-    actionKind: MC.ActionKind.Rent,
-    count: 1,
-    bankValue: 1,
-    rentAllowedColors: null,
-  },
-  {
-    id: "sly_deal",
-    name: "Sly Deal",
-    desc: "Action card. Steal 1 property\nfrom your opponent.\n(Play into center to use)",
-    kind: MC.CardKind.Action,
-    actionKind: MC.ActionKind.SlyDeal,
-    count: 2,
-    bankValue: 3,
-    ruleNotes: [MC.RuleNote.SlyDeal_NotFromFullSet]
-  },
-  {
-    id: "just_say_no",
-    name: "Just Say No",
-    desc: "Action card. Use any time\nwhen an action is played\nagainst you.\n(Play into center to use)",
-    kind: MC.CardKind.Action,
-    actionKind: MC.ActionKind.JustSayNo,
-    count: 2,
-    bankValue: 4,
-    ruleNotes: [MC.RuleNote.JSN_Chain]
-  },
-];
-
-MC.DEF_INDEX_BY_ID = {};
-(function initDefIndexById() {
-  var i;
-  for (i = 0; i < MC.CARD_DEFS.length; i++) {
-    var id = MC.CARD_DEFS[i].id;
-    if (MC.DEF_INDEX_BY_ID[id] != null) {
-      throw new Error("duplicate card def id: " + id);
-    }
-    MC.DEF_INDEX_BY_ID[id] = i;
-  }
 })();
 
 // ---- src/40_state.js ----
@@ -2883,8 +2850,8 @@ MC.ai.policies = {
       var opPayable = MC.state.hasAnyPayables(state, op);
 
       var cfg = MC.config.ai;
-      var bufferTarget = cfg.earlyBankBufferTarget;
-      var keepActionsMaxHand = cfg.earlyEmptyHandKeepActionsMaxHand;
+      var bufferTarget = cfg.biasEarlyBankBufferTarget;
+      var keepActionsMaxHand = cfg.biasEarlyEmptyHandKeepActionsMaxHand;
 
       var hasNonBankNonEnd = false;
       var hasBankMoneyHouse = false;
@@ -3817,7 +3784,7 @@ MC.layout.playerForRow = function (row) {
   function drawDigitGlyph(n, xGlyphTL, yGlyphTL, flip180) {
     if (n < 0 || n > 9) return;
     var id = R.spr.digit0 + n;
-    var ck = R.cfg.glyphColorkey;
+    var ck = R.cfg.sprColorkey;
     var insetX = R.cfg.glyphInsetX;
     var insetY = R.cfg.glyphInsetY;
     var tile = R.cfg.digitTile;
@@ -3922,7 +3889,7 @@ MC.layout.playerForRow = function (row) {
 
   function drawCenterIcon(xFace, yFace, iconId, flip180) {
     if (!iconId) return;
-    var ck = R.cfg.glyphColorkey;
+    var ck = R.cfg.sprColorkey;
     // Icon sprites are assumed full 8x8; no anchor offsets needed.
     var p = cardLocalRectToScreen(xFace, yFace, R.cfg.iconX, R.cfg.iconY, 8, 8, flip180);
     sprSafe(iconId, p.x, p.y, ck, 1, 0, flip180 ? 2 : 0, 1, 1);
@@ -3999,7 +3966,7 @@ MC.layout.playerForRow = function (row) {
       // Shift origin so the visible pattern still starts at (1,1) inside the border.
       var sx = flip180 ? xFace : (xFace + 1);
       var sy = flip180 ? yFace : (yFace + 1);
-      sprSafe(id, sx, sy, cfg.glyphColorkey, 1, 0, flip180 ? 2 : 0, 2, 3);
+      sprSafe(id, sx, sy, cfg.sprColorkey, 1, 0, flip180 ? 2 : 0, 2, 3);
       return;
     }
 
@@ -4046,9 +4013,9 @@ MC.layout.playerForRow = function (row) {
     }
 
     function drawUnderLayerOutline(xFace, yFace, dx, dy) {
-      var colMain = cfg.pileOutlineUnder1Col;
-      if (dx === cfg.pileUnderDx2 && dy === cfg.pileUnderDy2) colMain = cfg.pileOutlineUnder2Col;
-      rectbSafe(xFace + dx - 1, yFace + dy - 1, cfg.faceW, cfg.faceH, cfg.pileShadowOutlineCol);
+      var colMain = cfg.colPileOutlineUnder1;
+      if (dx === cfg.pileUnderDx2 && dy === cfg.pileUnderDy2) colMain = cfg.colPileOutlineUnder2;
+      rectbSafe(xFace + dx - 1, yFace + dy - 1, cfg.faceW, cfg.faceH, cfg.colPileShadowOutline);
       rectbSafe(xFace + dx, yFace + dy, cfg.faceW, cfg.faceH, colMain);
     }
 
@@ -4171,7 +4138,7 @@ MC.layout.playerForRow = function (row) {
         y1: Lp.inspectPanelY1
       };
       // Backing panel behind preview+title+desc.
-      rectSafe(panel.x0, panel.y0, panel.x1 - panel.x0 + 1, panel.y1 - panel.y0 + 1, cfg.inspectPanelFillCol);
+      rectSafe(panel.x0, panel.y0, panel.x1 - panel.x0 + 1, panel.y1 - panel.y0 + 1, cfg.colInspectPanelFill);
       rectbSafe(panel.x0, panel.y0, panel.x1 - panel.x0 + 1, panel.y1 - panel.y0 + 1, cfg.colCenterPanelBorder);
 
       var padX = Lp.inspectPanelPadX;
@@ -4375,7 +4342,7 @@ MC.layout.playerForRow = function (row) {
     var x = minBtnX - 52;
     if (x < cfg.rowPadX) x = cfg.rowPadX;
     var y = maxBtnY - 7; // 6px font + 1
-    printSafe("Y:Mode", x, y, cfg.hudLineCol);
+    printSafe("Y:Mode", x, y, cfg.colHudLine);
   }
 
   function drawToasts(view) {
@@ -8374,11 +8341,10 @@ MC.anim.present = function (state, view, computed) {
     return print(txt, x, y, col, false, scale, small);
   }
 
-  function drawTiledBg(tc, W, H) {
-    if (!tc || !tc.bgTileEnabled) return;
-    if (typeof spr !== "function") return;
+  function drawTiledBg(cfg, W, H) {
+    var tc = cfg.title;
     var tid = tc.bgTileSprId;
-    var ck = tc.bgTileColorkey;
+    var ck = cfg.render.style.sprColorkey;
     var xT, yT;
     for (yT = 0; yT < H; yT += 16) {
       for (xT = 0; xT < W; xT += 16) {
@@ -8551,7 +8517,7 @@ MC.anim.present = function (state, view, computed) {
       if (typeof poke === "function") poke(0x03FF8, 15);
     }
     cls(Pal.DarkBlue);
-    drawTiledBg(tc, W, H);
+    drawTiledBg(cfg, W, H);
 
     // Logo (placeholder text).
     var logoScale = tc.logoScale;
@@ -8963,7 +8929,7 @@ MC.anim.present = function (state, view, computed) {
     var layouts = [];
     var i;
     for (i = 0; i < n; i++) {
-      layouts[i] = layoutPage(pages[i], perCfg, hc.textCol, hc.headingCol);
+      layouts[i] = layoutPage(pages[i], perCfg, hc.colText, hc.colHeading);
     }
     st.layoutByPage = layouts;
     st.layoutForN = n;
@@ -9007,7 +8973,7 @@ MC.anim.present = function (state, view, computed) {
     var Hh = cfg.screenH;
 
     // Background (blue-only; no inner panel).
-    cls(hc.bgCol);
+    cls(hc.colBg);
 
     var headerH = hc.headerH;
     var footerH = hc.footerH;
@@ -9050,14 +9016,14 @@ MC.anim.present = function (state, view, computed) {
 
       if (it.kind === "text") {
         if (it.prefix) {
-          printExSafe("- ", contentX0 + it.prefixX, yScreen, hc.textCol, false, true);
+          printExSafe("- ", contentX0 + it.prefixX, yScreen, hc.colText, false, true);
         }
 
         var xx = contentX0 + it.x;
         var charW = it.small ? hc.bodyCharW : hc.headingCharW;
         var toks = it.tokens;
         if (toks && toks.length) {
-          drawTokensLine(toks, xx, yScreen, charW, false, !!it.small, hc.textCol);
+          drawTokensLine(toks, xx, yScreen, charW, false, !!it.small, hc.colText);
         }
       }
     }
@@ -9070,26 +9036,26 @@ MC.anim.present = function (state, view, computed) {
       if (trackX < W - 2) {
         var trackY0 = contentY0;
         var trackH = viewH;
-        rectSafe(trackX, trackY0, 2, trackH, hc.borderCol);
+        rectSafe(trackX, trackY0, 2, trackH, hc.colBorder);
         var maxScroll = contentH - viewH;
         var thumbH = Math.floor((viewH * viewH) / contentH);
         if (thumbH < 6) thumbH = 6;
         if (thumbH > trackH) thumbH = trackH;
         var thumbY = trackY0 + Math.floor((scrollY * (trackH - thumbH)) / maxScroll);
-        rectSafe(trackX, thumbY, 2, thumbH, hc.accentCol);
+        rectSafe(trackX, thumbY, 2, thumbH, hc.colAccent);
       }
     }
 
     // Header/footer masks (to hide any demo overdraw in the margins).
-    if (headerH > 0) rectSafe(0, 0, W, headerH, hc.panelCol);
-    if (footerH > 0) rectSafe(0, Hh - footerH, W, footerH, hc.panelCol);
-    if (footerH > 0) rectSafe(0, Hh - footerH - 1, W, 1, hc.bgCol);
+    if (headerH > 0) rectSafe(0, 0, W, headerH, hc.colPanel);
+    if (footerH > 0) rectSafe(0, Hh - footerH, W, footerH, hc.colPanel);
+    if (footerH > 0) rectSafe(0, Hh - footerH - 1, W, 1, hc.colBg);
 
     // Single-line header: "How to play (1/3): Quick Start" + controls on the right.
     if (headerH > 0) {
       // Separator line under the header bar.
-      rectSafe(0, headerH - 1, W, 1, hc.borderCol);
-      rectSafe(0, headerH, W, 1, hc.bgCol);
+      rectSafe(0, headerH - 1, W, 1, hc.colBorder);
+      rectSafe(0, headerH, W, 1, hc.colBg);
 
       var controls = "B:Back L/R:Page U/D:Scroll";
       var charW = hc.bodyCharW;
@@ -9098,12 +9064,12 @@ MC.anim.present = function (state, view, computed) {
 
       var xCtrl = W - hc.padX - controls.length * charW;
       if (xCtrl < hc.padX) xCtrl = hc.padX;
-      printExSafe(controls, xCtrl, yH, hc.mutedCol, true, true);
+      printExSafe(controls, xCtrl, yH, hc.colMuted, true, true);
 
       var prefix = "How to Play (" + (pageI + 1) + "/" + pages.length + "): ";
       var x0 = hc.padX;
       var gapPx = 2 * charW;
-      var wPrefix = printExSafe(prefix, x0, yH, hc.mutedCol, false, true);
+      var wPrefix = printExSafe(prefix, x0, yH, hc.colMuted, false, true);
       var hasPrefixW = (typeof wPrefix === "number" && Number.isFinite(wPrefix));
       if (!hasPrefixW) wPrefix = prefix.length * charW;
 
@@ -9123,7 +9089,7 @@ MC.anim.present = function (state, view, computed) {
       }
 
       if (titleDraw) {
-        printExSafe(titleDraw, xTitle, yH, hc.titleCol, false, true);
+        printExSafe(titleDraw, xTitle, yH, hc.colTitle, false, true);
       }
     }
   }

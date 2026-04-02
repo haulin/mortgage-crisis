@@ -331,7 +331,7 @@
     var layouts = [];
     var i;
     for (i = 0; i < n; i++) {
-      layouts[i] = layoutPage(pages[i], perCfg, hc.textCol, hc.headingCol);
+      layouts[i] = layoutPage(pages[i], perCfg, hc.colText, hc.colHeading);
     }
     st.layoutByPage = layouts;
     st.layoutForN = n;
@@ -375,7 +375,7 @@
     var Hh = cfg.screenH;
 
     // Background (blue-only; no inner panel).
-    cls(hc.bgCol);
+    cls(hc.colBg);
 
     var headerH = hc.headerH;
     var footerH = hc.footerH;
@@ -418,14 +418,14 @@
 
       if (it.kind === "text") {
         if (it.prefix) {
-          printExSafe("- ", contentX0 + it.prefixX, yScreen, hc.textCol, false, true);
+          printExSafe("- ", contentX0 + it.prefixX, yScreen, hc.colText, false, true);
         }
 
         var xx = contentX0 + it.x;
         var charW = it.small ? hc.bodyCharW : hc.headingCharW;
         var toks = it.tokens;
         if (toks && toks.length) {
-          drawTokensLine(toks, xx, yScreen, charW, false, !!it.small, hc.textCol);
+          drawTokensLine(toks, xx, yScreen, charW, false, !!it.small, hc.colText);
         }
       }
     }
@@ -438,26 +438,26 @@
       if (trackX < W - 2) {
         var trackY0 = contentY0;
         var trackH = viewH;
-        rectSafe(trackX, trackY0, 2, trackH, hc.borderCol);
+        rectSafe(trackX, trackY0, 2, trackH, hc.colBorder);
         var maxScroll = contentH - viewH;
         var thumbH = Math.floor((viewH * viewH) / contentH);
         if (thumbH < 6) thumbH = 6;
         if (thumbH > trackH) thumbH = trackH;
         var thumbY = trackY0 + Math.floor((scrollY * (trackH - thumbH)) / maxScroll);
-        rectSafe(trackX, thumbY, 2, thumbH, hc.accentCol);
+        rectSafe(trackX, thumbY, 2, thumbH, hc.colAccent);
       }
     }
 
     // Header/footer masks (to hide any demo overdraw in the margins).
-    if (headerH > 0) rectSafe(0, 0, W, headerH, hc.panelCol);
-    if (footerH > 0) rectSafe(0, Hh - footerH, W, footerH, hc.panelCol);
-    if (footerH > 0) rectSafe(0, Hh - footerH - 1, W, 1, hc.bgCol);
+    if (headerH > 0) rectSafe(0, 0, W, headerH, hc.colPanel);
+    if (footerH > 0) rectSafe(0, Hh - footerH, W, footerH, hc.colPanel);
+    if (footerH > 0) rectSafe(0, Hh - footerH - 1, W, 1, hc.colBg);
 
     // Single-line header: "How to play (1/3): Quick Start" + controls on the right.
     if (headerH > 0) {
       // Separator line under the header bar.
-      rectSafe(0, headerH - 1, W, 1, hc.borderCol);
-      rectSafe(0, headerH, W, 1, hc.bgCol);
+      rectSafe(0, headerH - 1, W, 1, hc.colBorder);
+      rectSafe(0, headerH, W, 1, hc.colBg);
 
       var controls = "B:Back L/R:Page U/D:Scroll";
       var charW = hc.bodyCharW;
@@ -466,12 +466,12 @@
 
       var xCtrl = W - hc.padX - controls.length * charW;
       if (xCtrl < hc.padX) xCtrl = hc.padX;
-      printExSafe(controls, xCtrl, yH, hc.mutedCol, true, true);
+      printExSafe(controls, xCtrl, yH, hc.colMuted, true, true);
 
       var prefix = "How to Play (" + (pageI + 1) + "/" + pages.length + "): ";
       var x0 = hc.padX;
       var gapPx = 2 * charW;
-      var wPrefix = printExSafe(prefix, x0, yH, hc.mutedCol, false, true);
+      var wPrefix = printExSafe(prefix, x0, yH, hc.colMuted, false, true);
       var hasPrefixW = (typeof wPrefix === "number" && Number.isFinite(wPrefix));
       if (!hasPrefixW) wPrefix = prefix.length * charW;
 
@@ -491,7 +491,7 @@
       }
 
       if (titleDraw) {
-        printExSafe(titleDraw, xTitle, yH, hc.titleCol, false, true);
+        printExSafe(titleDraw, xTitle, yH, hc.colTitle, false, true);
       }
     }
   }
