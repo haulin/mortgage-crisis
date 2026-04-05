@@ -166,7 +166,7 @@ test("engine-created prompts always satisfy prompt shape contract", async () => 
     assert.equal(s.prompt.kind, "discardDown");
   }
 
-  // payDebt + placeReceived via scenarios (Phase 06)
+  // payDebt + placeReceived via scenarios.
   {
     const s = ctx.MC.state.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
     assert.ok(s.prompt);
@@ -183,7 +183,7 @@ test("engine-created prompts always satisfy prompt shape contract", async () => 
     assert.ok(s.prompt.uids.length > 0);
   }
 
-  // replaceWindow via Phase 09 scenario (after a property play)
+  // replaceWindow via scenario (after a property play)
   {
     const s = ctx.MC.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
     const mv = ctx.MC.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);

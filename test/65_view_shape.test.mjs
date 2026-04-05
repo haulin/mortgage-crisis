@@ -30,7 +30,7 @@ test("ui.newView returns canonical view shape (no runtime fallbacks)", async () 
   assert.equal(typeof v.anim.hiddenByP[0], "object");
   assert.equal(typeof v.anim.hiddenByP[1], "object");
 
-  // Phase 15 additions (no runtime fallbacks).
+  // Animation fields (no runtime fallbacks).
   assert.equal(typeof v.anim.hiddenByUid, "object");
   assert.equal(typeof v.anim.lastPosByUid, "object");
   assert.ok(Array.isArray(v.anim.payBufUids));

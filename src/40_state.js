@@ -41,7 +41,6 @@ MC.state.setPrompt = function (state, prompt) {
 
   if (k === "respondAction") {
     // Generic response window prompt.
-    // Keep payload minimal and validate via tests (avoid runtime shape asserts).
     var src2 = prompt.srcAction;
     var srcAction2 = src2 ? { kind: String(src2.kind || ""), fromP: src2.fromP, actionUid: Math.floor(src2.actionUid) } : null;
     var tgt = prompt.target;
@@ -66,7 +65,6 @@ MC.state.setPrompt = function (state, prompt) {
 
   if (k === "replaceWindow") {
     // Wild replace-window (optional reposition after property placement).
-    // Keep payload minimal; validate shape via tests (avoid runtime asserts/fallbacks).
     var resume = prompt.resume;
     var resumeObj = null;
     if (resume && String(resume.kind || "") === "placeReceived") {

@@ -10,7 +10,6 @@ MC.ai.policies = {
     id: "biasExistingSet",
     weight: function (state, move) {
       // Soft bias: prefer placing properties into existing sets, but still allow anything.
-      // Tuning knob lives in config.
       var k = MC.config.ai.biasExistingSetK;
       if (move && move.kind === "playProp" && move.dest && move.dest.setI != null) return k;
       return 1;
@@ -21,7 +20,6 @@ MC.ai.policies = {
     id: "biasPayDebtFromBank",
     weight: function (state, move) {
       // Prefer paying debts from bank to reduce surprise property transfers.
-      // Tuning knob lives in config.
       var k = MC.config.ai.biasPayDebtFromBankK;
       if (!move || move.kind !== "payDebt") return 1;
       if (!(k > 1)) k = 1;
@@ -116,7 +114,6 @@ MC.ai.policies = {
     weight: function (state, move) {
       // Soft bias: prefer asking for rent rather than banking the Rent card.
       // Avoid wasting Rent when the opponent has nothing payable.
-      // Tuning knob lives in config.
       var k = MC.config.ai.biasPlayRentK;
       if (!move || move.kind !== "playRent") return 1;
       if (!(k > 1)) k = 1;
@@ -134,7 +131,6 @@ MC.ai.policies = {
     id: "biasPlaySlyDeal",
     weight: function (state, move) {
       // Prefer stealing a property rather than banking Sly Deal when a target exists.
-      // Tuning knob lives in config.
       var k = MC.config.ai.biasPlaySlyDealK;
       if (!move || move.kind !== "playSlyDeal") return 1;
       if (!(k > 1)) k = 1;
@@ -146,7 +142,6 @@ MC.ai.policies = {
     id: "biasPlayJustSayNo",
     weight: function (state, move) {
       // Soft bias: prefer canceling negative actions when a response window exists.
-      // Tuning knob lives in config.
       var k = MC.config.ai.biasPlayJustSayNoK;
       if (move && move.kind === "playJustSayNo") return k;
       return 1;
@@ -158,7 +153,6 @@ MC.ai.policies = {
     weight: function (state, move) {
       // Simple heuristic for replace-window Wild repositioning.
       // Prefer moves that complete a set, then maximize rent delta on existing sets.
-      // Tuning knob lives in config.
       var k = MC.config.ai.biasMoveWildK;
       if (!move || move.kind !== "moveWild") return 1;
       if (!(k > 1)) k = 1;

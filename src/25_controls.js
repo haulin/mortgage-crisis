@@ -1,8 +1,6 @@
 // MC.controls: input state machine (injected/pollable controls with repeat + hold/tap detection).
 MC.controls.newState = function () {
   return {
-    frame: 0,
-
     // Previous raw button-down state (0..7).
     prevDown: [false, false, false, false, false, false, false, false],
 
@@ -48,8 +46,6 @@ MC.controls.actions = function (st, raw, cfg) {
   var grabFallback = cfg.aHoldFallbackFrames;
 
   var inspectDelay = cfg.xInspectDelayFrames;
-
-  st.frame += 1;
 
   var i;
   for (i = 0; i < 8; i++) {

@@ -2,7 +2,6 @@
 (function initTitleModule() {
   var T = MC.title;
 
-  // Local state (kept minimal for now).
   T.st = { menuI: 0, confirm: null };
   T.ctrl = MC.controls.newState();
   T.toastView = { toasts: [] };
@@ -15,7 +14,6 @@
     var shadowCol = (opts.shadowCol == null) ? MC.Pal.Black : opts.shadowCol;
     var dx = (opts.dx == null) ? 1 : opts.dx;
     var dy = (opts.dy == null) ? 1 : opts.dy;
-    // fixed=false => proportional font (better kerning than fixed-width).
     print(txt, x + dx, y + dy, shadowCol, false, scale, small);
     return print(txt, x, y, col, false, scale, small);
   }
@@ -33,9 +31,6 @@
   }
 
   function drawControlsTable(tc, Pal, cx, cy, cw) {
-    // Table-style layout (no borders):
-    // header: Controls | Controller | Keyboard
-    // rows: Move/Confirm/Cancel/Inspect
     var x0 = cx + 2;
     var x1 = cx + Math.floor(cw * 0.34);
     var x2 = cx + Math.floor(cw * 0.73);
@@ -115,11 +110,9 @@
       return intent;
     }
 
-    // Menu navigation.
     if (actions.nav && actions.nav.up) st.menuI = wrapI(st.menuI - 1, nItems);
     if (actions.nav && actions.nav.down) st.menuI = wrapI(st.menuI + 1, nItems);
 
-    // Activate selection.
     if (actions.a && actions.a.tap) {
       var itSel = menuItems[st.menuI];
       if (itSel && itSel.enabled) {
@@ -144,7 +137,6 @@
           titlePushToast(toastView, cfg, "info", MC.debug.toolsOn ? "Dev tools enabled" : "Dev tools disabled");
         }
       } else if (itSel) {
-        // Disabled feedback (toast).
         var msg = "Not available";
         if (itSel.id === "continueGame") msg = "No game to continue";
         titlePushToast(toastView, cfg, "error", msg);
@@ -182,7 +174,6 @@
     var menuW = tc.menuW;
     var leftW = W - menuW;
 
-    // Background.
     // Render title into vbank(1) so it can use a distinct palette.
     // vbank(1) overlays vbank(0); OVR transparency index lives at 0x03FF8 on vbank(1).
     var hasVbank = (typeof vbank === "function");
@@ -198,20 +189,17 @@
     cls(Pal.DarkBlue);
     drawTiledBg(cfg, W, H);
 
-    // Logo (placeholder text).
     var logoScale = tc.logoScale;
     var logoX = tc.logoX;
     var logoY = tc.logoY;
     printShadow("MORTGAGE", logoX, logoY, Pal.White, { scale: logoScale, dx: 2, dy: 2 });
     printShadow("CRISIS", logoX + 20, logoY + 20, Pal.Yellow, { scale: logoScale, dx: 2, dy: 2 });
 
-    // Subtitle.
     if (tc.subtitleText) {
       rect(tc.subtitleX - 1, tc.subtitleY - 1, 12 * 8 - 1, 8, Pal.DarkBlue);
       printShadow(String(tc.subtitleText), tc.subtitleX, tc.subtitleY, Pal.LightGrey, { small: true, shadowCol: Pal.Black });
     }
 
-    // Controls legend (bottom-left).
     var cx = tc.controlsX;
     var ch = tc.controlsH;
     var cy = H - tc.controlsBottomY - ch;
@@ -222,7 +210,6 @@
     rectb(cx - 2, cy - 2, cw + 4, ch + 4, Pal.Grey);
     drawControlsTable(tc, Pal, cx, cy, cw);
 
-    // Static menu list (right).
     var mxA = leftW + tc.menuArrowX;
     var mxT = leftW + tc.menuTextX;
     var my0 = tc.menuY;
@@ -236,7 +223,6 @@
       drawMenuItem(tc, Pal, leftW, menuW, mxA, mxT, my0, dy, gap, mi, it.text, (mi === st.menuI), !!it.enabled);
     }
 
-    // Version.
     var ver = String(cfg.meta.version || "");
     if (ver) {
       var xVer = W + 3 - ver.length * 4;
@@ -246,7 +232,6 @@
       printShadow(ver, xVer, yVer, Pal.LightGrey, { small: true });
     }
 
-    // Toasts (reuse in-game toast UI).
     MC.render.drawToasts(toastView);
 
     // Always restore bank 0 so other modes render normally.
@@ -258,7 +243,6 @@
     if (!raw) raw = MC.controls.pollGlobals();
     var actions = MC.controls.actions(T.ctrl, raw, cfg.controls);
 
-    // Toast feedback (reuse main UI toast state/timing).
     // Title owns its own toast view so messages don't leak into gameplay.
     var toastView = T.toastView;
     MC.ui.toastsTick(toastView);

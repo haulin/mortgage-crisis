@@ -11,7 +11,6 @@ MC.anim.onEvents = function (state, view, events) {
   if (view.menu) view.menu.items = [];
   if (view.targeting) view.targeting.active = false;
 
-  // Config knobs are validated in tests (avoid runtime fallbacks in the cartridge).
   var uiCfg = MC.config.ui;
   var animSpeedMult = uiCfg.animSpeedMult;
   var dealFrames = Math.floor(uiCfg.dealFramesPerCard * animSpeedMult);
@@ -99,7 +98,6 @@ MC.anim.onEvents = function (state, view, events) {
       var isPromptBufIn = (tz === "promptBuf");
       var isSlySteal = (fz === "setProps" && tz === "recvProps");
 
-      // Curated transfer animations for MVP polish.
       var animate = false;
       if (isPromptBufIn) {
         // payDebt selection into the buffer: animate only when AI chose it.

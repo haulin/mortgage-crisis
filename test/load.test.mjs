@@ -10,7 +10,7 @@ test("src bundle loads and exposes MC + TIC", async () => {
   assert.equal(typeof context.TIC, "function");
   assert.equal(typeof context.MC.bootTick, "undefined");
 
-  // Phase 05c+: animation module should always exist (avoid defensive checks in cartridge code).
+  // Animation module should always exist (avoid defensive checks in cartridge code).
   assert.equal(typeof context.MC.anim, "object");
   assert.equal(typeof context.MC.anim.present, "function");
   assert.equal(typeof context.MC.anim.tick, "function");

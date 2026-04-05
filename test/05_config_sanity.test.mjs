@@ -190,7 +190,7 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   requirePosNum(MC.config.ui.toast, "infoFrames");
   requirePosNum(MC.config.ui.toast, "errorFrames");
 
-  // Phase 08 UI knobs.
+  // UI knobs: Sly Deal targeting.
   assert.equal(typeof MC.config.ui.slyShowTargetGhosts, "boolean", "expected slyShowTargetGhosts boolean");
 
   // Title screen knobs.
@@ -212,7 +212,6 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   requirePosNum(MC.config.title, "menuTextX");
   assert.equal(typeof MC.config.title.menuItemBoxes, "boolean", "expected menuItemBoxes boolean");
   requireNum(MC.config.title, "menuItemGapY");
-  requirePosNum(MC.config.title, "menuItemBoxPadX");
   requirePosNum(MC.config.title, "menuItemBoxPadY");
   requireNum(MC.config.title, "bgTileSprId");
 

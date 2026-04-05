@@ -19,7 +19,6 @@
   for (k in style) R.cfg[k] = style[k];
   R.spr = renderCfg.spr;
   R.moneyBgByValue = renderCfg.moneyBgByValue;
-  R.center = null;
   R.center = (function () {
     var cfg = R.cfg;
     var row = R.ROW_CENTER;
@@ -40,7 +39,6 @@
     };
   })();
 
-  // Property bar palette (placeholder; tweak later).
   R.propBarColByColor = [];
   var Pal = MC.Pal;
   R.propBarColByColor[MC.Color.Cyan] = Pal.Cyan;
@@ -198,10 +196,7 @@
 
   function drawDualPropHalf(xFace, yFace, color, cardValue, flip180) {
     var barCol = R.propBarColByColor[color] != null ? R.propBarColByColor[color] : R.cfg.colText;
-    // Value digit: property money value used for debt payment.
     var v = cardValue;
-    if (v < 0) v = 0;
-    if (v > 9) v = 9;
     var pv = cardLocalRectToScreen(xFace, yFace, R.cfg.propValueX, R.cfg.propValueY, R.cfg.digitGlyphW, R.cfg.digitGlyphH, flip180);
     drawDigitGlyph(v, pv.x, pv.y, flip180);
 
@@ -278,7 +273,6 @@
   function drawCenterIcon(xFace, yFace, iconId, flip180) {
     if (!iconId) return;
     var ck = R.cfg.sprColorkey;
-    // Icon sprites are assumed full 8x8; no anchor offsets needed.
     var p = cardLocalRectToScreen(xFace, yFace, R.cfg.iconX, R.cfg.iconY, 8, 8, flip180);
     sprSafe(iconId, p.x, p.y, ck, 1, 0, flip180 ? 2 : 0, 1, 1);
   }
@@ -383,8 +377,7 @@
     var dbgEnabled = !!(MC.config.debug.enabled && MC.debug.toolsOn);
     var hlCol = (opts.highlightCol != null) ? opts.highlightCol : cfg.colHighlight;
 
-    // Plays indicator is drawn in screen-space.
-
+    // Deck/discard pile count digits (3x5 glyphs).
     function drawCountDigits(n, xFace, yFace) {
       var sN = String(n);
       if (sN.length > 2) sN = sN.slice(-2);
@@ -411,13 +404,11 @@
       var n = (nVis != null) ? nVis : s.deck.length;
       var layers = (layersOverride != null) ? layersOverride : -1;
       if (layers < 0) {
-        // Default: derive visible pile depth from actual count.
         if (n > 2) layers = 2;
         else if (n > 1) layers = 1;
         else layers = 0;
       }
 
-      // Underlayers first (so the top card is always on top).
       if (layers >= 2) drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx2, cfg.pileUnderDy2);
       if (layers >= 1) drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
       drawShadowBar(xFace, yFace);
@@ -515,7 +506,6 @@
     var xDesc = C.desc.x;
     var yDesc = C.desc.y;
 
-    // Inspect uses a screen-space panel with panel-driven anchors.
     var panel = null;
     if (view.inspectActive) {
       var Lp = MC.config.render.layout;
@@ -525,7 +515,6 @@
         x1: Lp.inspectPanelX1,
         y1: Lp.inspectPanelY1
       };
-      // Backing panel behind preview+title+desc.
       rectSafe(panel.x0, panel.y0, panel.x1 - panel.x0 + 1, panel.y1 - panel.y0 + 1, cfg.colInspectPanelFill);
       rectbSafe(panel.x0, panel.y0, panel.x1 - panel.x0 + 1, panel.y1 - panel.y0 + 1, cfg.colCenterPanelBorder);
 
@@ -613,7 +602,6 @@
       if (selI >= items.length) selI = items.length - 1;
       var j;
       var y = yDesc - 1;
-      // Backing box so the menu is unmistakable.
       var boxX = xDesc - 2;
       var boxY = y - 2;
       var boxW = cfg.screenW - boxX - cfg.rowPadX;
@@ -650,7 +638,6 @@
       var title = MC.fmt.targetingTitle(t, cmd);
       printSafe(title, xTitle, yTitle, cfg.colText);
       var destLine = MC.fmt.targetingDestLine(s, t, cmd);
-      // Backing box so targeting is unmistakable.
       var boxX = xDesc - 2;
       var boxY = yDesc - 2;
       var boxW = cfg.screenW - boxX - cfg.rowPadX;
@@ -669,8 +656,6 @@
     else if (view.inspectActive) {
       drawInspectForSelection(selectedItem);
     }
-
-    // Feedback message is drawn as a screen-top toast (see drawToast()).
   }
 
   function drawPlaysPips(state) {
@@ -750,7 +735,6 @@
       var msg = String(t.text);
       if (!msg) continue;
 
-      // Support 1–2 lines.
       var parts = msg.split("\n");
       if (parts.length > 2) parts = [parts[0], parts[1]];
       var maxLen = 0;
@@ -771,8 +755,7 @@
       if (kind === "ai") bgCol = cfg.colToastBgAi;
       rectSafe(x0, y0, boxW, boxH, bgCol);
       rectbSafe(x0, y0, boxW, boxH, cfg.colCenterPanelBorder);
-      // 1px shadow line under the bottom border so the box doesn't blend into bright elements behind it.
-      if ((y0 + boxH) < cfg.screenH) rectSafe(x0, y0 + boxH, boxW, 1, cfg.colShadow);
+      rectSafe(x0, y0 + boxH, boxW, 1, cfg.colShadow);
 
       var textX = x0 + padX + iconW;
       if (isError) {
@@ -788,7 +771,6 @@
     }
   }
 
-  // Expose toast renderer so non-game modes (e.g. Title) can reuse it.
   R.drawToasts = drawToasts;
 
   function groupStacksByKey(items, camX) {
@@ -1008,7 +990,6 @@
     return ["Sel:" + String(it.kind || "?"), ""];
   };
 
-  // Shuffle + deal animations (render-only visuals).
   // Renderer is oblivious to `view.anim`; UI/anim modules provide presentation in `computed`.
   function drawAnimOverlay(state, view, computed) {
     if (!state || !view || !computed) return;
@@ -1054,7 +1035,6 @@
     var cfg = R.cfg;
     var hlCol = (computed.highlightCol != null) ? computed.highlightCol : cfg.colHighlight;
 
-    // Clear background.
     cls(cfg.colBg);
 
     // Draw non-center rows.
@@ -1079,7 +1059,6 @@
       rectbSafe(sel.x - 1, sel.y - 1, sel.w + 2, sel.h + 2, hlCol);
     }
 
-    // HUD / UX chrome (draw last).
     drawPlaysPips(state);
     drawModeHintNearButtons(view, computed);
     drawToasts(view);

@@ -21,10 +21,7 @@ MC.ActionKind = {
 
 // Rule-note IDs. These are small display-only annotations in Inspect.
 MC.RuleNote = {
-  // MVP1 rule constraints.
   SlyDeal_NotFromFullSet: 1,
-
-  // Optional / other-version rules (not enabled in MVP1).
   House_StationsUtilities: 2,
   JSN_Chain: 3
 };

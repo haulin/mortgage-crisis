@@ -344,7 +344,6 @@ MC.ui.navPickInDirection = function (view, computed, dir) {
     var dy = c.cy - curCy;
     var along = (dir === "left" || dir === "right") ? Math.abs(dx) : Math.abs(dy);
     var perp = (dir === "left" || dir === "right") ? Math.abs(dy) : Math.abs(dx);
-    // Config is validated in tests (avoid runtime fallbacks in the cartridge).
     var uiCfg = MC.config.ui;
     var k = (dir === "left" || dir === "right") ? uiCfg.navConeKLeftRight : uiCfg.navConeKUpDown;
     return (along * along) + (perp * perp) * k;

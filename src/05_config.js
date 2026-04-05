@@ -80,7 +80,6 @@ MC.config.title = {
   menuTextX: 12,
   menuItemBoxes: true,
   menuItemGapY: 4,
-  menuItemBoxPadX: 6,
   menuItemBoxPadY: 4,
 
   bgTileSprId: 34
@@ -195,10 +194,10 @@ MC.config.render = {
     camMarginX: 12,
     rowPadX: 4,
 
-    // Controls line (simple single print)
+    // Plays left indicator
     hudLineEnabled: true,
     hudLineX: 6,
-    hudLineY: 90,
+    hudLineY: 74,
 
     // Center row
     centerTopInsetY: 4,
@@ -284,7 +283,7 @@ MC.config.render = {
     pileCountDy: 1
   },
 
-  // Sprite IDs (NOT locked yet; keep all in one place for easy remap).
+  // Sprite IDs (kept together for easy remap).
   spr: {
     // Reserve 0 as blank (convention).
     digit0: 1, // digit sprite IDs are digit0 + n
@@ -294,7 +293,7 @@ MC.config.render = {
     // yielding an effective 15x23 interior when drawn at xFace+1,yFace+1.
     cardBackTL: 32,
 
-    // Optional icons (0 = skip). You’ll remap once the atlas is real.
+    // Optional icons (0 = skip).
     iconMoney: 16,
     iconRent: 20,
     iconSlyDeal: 18,

@@ -258,7 +258,7 @@ test("drawToHand draws partially when the deck is short (no throw)", async () =>
   const p1 = p0 ^ 1;
 
   // Make the deck very small *and* keep discard empty so the draw is forced to be partial.
-  // (Phase 05b reshuffles discard into deck when available.)
+  // drawToHand reshuffles discard into deck when available.
   while (state.deck.length > 2) state.players[p0].bank.push(state.deck.shift());
   state.discard = [];
 
@@ -310,7 +310,7 @@ test("legalMoves only returns commands that applyCommand accepts", async () => {
   }
 });
 
-test("Phase 06: prompt actor is prompt.p (can act even if activeP differs)", async () => {
+test("prompt actor is prompt.p (can act even if activeP differs)", async () => {
   const ctx = await loadSrcIntoVm();
   const state = ctx.MC.state.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
 
@@ -332,7 +332,7 @@ test("Phase 06: prompt actor is prompt.p (can act even if activeP differs)", asy
   assert.doesNotThrow(() => ctx.MC.engine.applyCommand(state, mv));
 });
 
-test("Phase 06: house-pay-first enforced (cannot pay property from housed set)", async () => {
+test("house-pay-first enforced (cannot pay property from housed set)", async () => {
   const ctx = await loadSrcIntoVm();
   const state = ctx.MC.state.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
 
@@ -349,7 +349,7 @@ test("Phase 06: house-pay-first enforced (cannot pay property from housed set)",
   }, /house_pay_first/);
 });
 
-test("Phase 06: paying house can overpay and resolves debt; house goes to recipient bank", async () => {
+test("paying house can overpay and resolves debt; house goes to recipient bank", async () => {
   const ctx = await loadSrcIntoVm();
   const state = ctx.MC.state.newGame({ scenarioId: "debtHouseFirst", seedU32: 1 });
 
@@ -376,7 +376,7 @@ test("Phase 06: paying house can overpay and resolves debt; house goes to recipi
   assert.equal(state.prompt, null, "expected prompt cleared (no properties received)");
 });
 
-test("Phase 15: payDebt property transfer emits move promptBuf->recvProps", async () => {
+test("payDebt: property transfer emits move promptBuf->recvProps", async () => {
   const ctx = await loadSrcIntoVm();
   const state = ctx.MC.state.newGame({ seedU32: 1 });
 
@@ -412,7 +412,7 @@ test("Phase 15: payDebt property transfer emits move promptBuf->recvProps", asyn
   assert.equal(state.prompt.p, 1);
 });
 
-test("Phase 06: placeReceived allows placing from recvProps without consuming plays", async () => {
+test("placeReceived allows placing from recvProps without consuming plays", async () => {
   const ctx = await loadSrcIntoVm();
   const state = ctx.MC.state.newGame({ scenarioId: "placeReceived", seedU32: 1 });
   assert.ok(state.prompt && state.prompt.kind === "placeReceived");
@@ -426,7 +426,7 @@ test("Phase 06: placeReceived allows placing from recvProps without consuming pl
   assert.equal(state.playsLeft, playsBefore, "expected playsLeft unchanged during placement prompt");
 });
 
-test("Phase 09: playProp into an overfill-complete set opens replaceWindow prompt", async () => {
+test("replaceWindow: playProp into an overfill-complete set opens prompt", async () => {
   const ctx = await loadSrcIntoVm();
   const s = ctx.MC.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
 
@@ -443,7 +443,7 @@ test("Phase 09: playProp into an overfill-complete set opens replaceWindow promp
   assert.equal(s.prompt.resume, null);
 });
 
-test("Phase 09: replaceWindow skipReplaceWindow clears prompt", async () => {
+test("replaceWindow: skipReplaceWindow clears prompt", async () => {
   const ctx = await loadSrcIntoVm();
   const s = ctx.MC.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
   const mv = ctx.MC.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);
@@ -454,7 +454,7 @@ test("Phase 09: replaceWindow skipReplaceWindow clears prompt", async () => {
   assert.equal(s.prompt, null);
 });
 
-test("Phase 09: replaceWindow moveWild does not consume plays and disallows moving into the same set", async () => {
+test("replaceWindow: moveWild does not consume plays and disallows moving into the same set", async () => {
   const ctx = await loadSrcIntoVm();
   const s = ctx.MC.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
   const mv = ctx.MC.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);
@@ -474,7 +474,7 @@ test("Phase 09: replaceWindow moveWild does not consume plays and disallows movi
   assert.equal(s.playsLeft, playsBefore, "expected moveWild not to consume plays");
 });
 
-test("Phase 09: replaceWindow disallows moving excludeUid", async () => {
+test("replaceWindow disallows moving excludeUid", async () => {
   const ctx = await loadSrcIntoVm();
   const s = ctx.MC.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
   const mv = ctx.MC.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);
@@ -497,7 +497,7 @@ test("Phase 09: replaceWindow disallows moving excludeUid", async () => {
   }, /replace_exclude/);
 });
 
-test("Phase 09: replaceWindow is not offered when removing a Wild would break source completeness", async () => {
+test("replaceWindow is not offered when removing a Wild would break source completeness", async () => {
   const ctx = await loadSrcIntoVm();
   const s = ctx.MC.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
 
@@ -511,7 +511,7 @@ test("Phase 09: replaceWindow is not offered when removing a Wild would break so
   assert.equal(s.prompt, null, "expected no replaceWindow prompt when source would become incomplete");
 });
 
-test("Phase 09: winning after a playProp skips replaceWindow prompt", async () => {
+test("winning after a playProp skips replaceWindow prompt", async () => {
   const ctx = await loadSrcIntoVm();
   const s = ctx.MC.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
 
@@ -541,7 +541,7 @@ test("Phase 09: winning after a playProp skips replaceWindow prompt", async () =
   assert.equal(s.prompt, null, "expected replaceWindow skipped on win");
 });
 
-test("Phase 09: replaceWindow can nest during placeReceived and resume remaining received props", async () => {
+test("replaceWindow can nest during placeReceived and resume remaining received props", async () => {
   const ctx = await loadSrcIntoVm();
   const s = ctx.MC.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
 
@@ -609,7 +609,7 @@ test("Rent: playRent discards rent card, decrements plays, and creates payDebt p
   assert.ok(state.prompt.rem > 0, "expected positive remaining rent");
 });
 
-test("Phase 08: payDebt(JSN) is legal only when srcAction exists and buf is empty", async () => {
+test("payDebt(JSN) is legal only when srcAction exists and buf is empty", async () => {
   const ctx = await loadSrcIntoVm();
 
   // Scenario includes: payDebt prompt with srcAction and a JSN in P0 hand.
@@ -650,7 +650,7 @@ test("Phase 08: payDebt(JSN) is legal only when srcAction exists and buf is empt
   }, /no_response_window/);
 });
 
-test("Phase 08: Sly Deal - respondAction offered when defender has JSN; respondPass steals and opens placeReceived", async () => {
+test("Sly Deal: respondAction offered when defender has JSN; respondPass steals and opens placeReceived", async () => {
   const ctx = await loadSrcIntoVm();
   const s = ctx.MC.state.newGame({ seedU32: 1 });
   s.activeP = 0;
@@ -707,7 +707,7 @@ test("Phase 08: Sly Deal - respondAction offered when defender has JSN; respondP
   assert.equal(s.players[1].sets.length, 0, "expected defender set removed after stealing last prop");
 });
 
-test("Phase 08: Sly Deal - JSN cancels the action (no steal)", async () => {
+test("Sly Deal: JSN cancels the action (no steal)", async () => {
   const ctx = await loadSrcIntoVm();
   const s = ctx.MC.state.newGame({ seedU32: 1 });
   s.activeP = 0;
@@ -740,7 +740,7 @@ test("Phase 08: Sly Deal - JSN cancels the action (no steal)", async () => {
   assert.equal(s.players[1].sets[0].props.length, 1, "expected target property not stolen");
 });
 
-test("Phase 08: Sly Deal - when defender has no JSN, it resolves immediately into placeReceived", async () => {
+test("Sly Deal: when defender has no JSN, it resolves immediately into placeReceived", async () => {
   const ctx = await loadSrcIntoVm();
   const s = ctx.MC.state.newGame({ seedU32: 1 });
   s.activeP = 0;
@@ -765,7 +765,7 @@ test("Phase 08: Sly Deal - when defender has no JSN, it resolves immediately int
   assert.equal(s.prompt.p, 0);
 });
 
-test("Phase 08: Sly Deal - cannot target properties in a complete set", async () => {
+test("Sly Deal: cannot target properties in a complete set", async () => {
   const ctx = await loadSrcIntoVm();
   const s = ctx.MC.state.newGame({ seedU32: 1 });
   s.activeP = 0;

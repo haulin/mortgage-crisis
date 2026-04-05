@@ -55,10 +55,7 @@ MC.ActionKind = {
 
 // Rule-note IDs. These are small display-only annotations in Inspect.
 MC.RuleNote = {
-  // MVP1 rule constraints.
   SlyDeal_NotFromFullSet: 1,
-
-  // Optional / other-version rules (not enabled in MVP1).
   House_StationsUtilities: 2,
   JSN_Chain: 3
 };
@@ -347,7 +344,6 @@ MC.config.title = {
   menuTextX: 12,
   menuItemBoxes: true,
   menuItemGapY: 4,
-  menuItemBoxPadX: 6,
   menuItemBoxPadY: 4,
 
   bgTileSprId: 34
@@ -462,10 +458,10 @@ MC.config.render = {
     camMarginX: 12,
     rowPadX: 4,
 
-    // Controls line (simple single print)
+    // Plays left indicator
     hudLineEnabled: true,
     hudLineX: 6,
-    hudLineY: 90,
+    hudLineY: 74,
 
     // Center row
     centerTopInsetY: 4,
@@ -551,7 +547,7 @@ MC.config.render = {
     pileCountDy: 1
   },
 
-  // Sprite IDs (NOT locked yet; keep all in one place for easy remap).
+  // Sprite IDs (kept together for easy remap).
   spr: {
     // Reserve 0 as blank (convention).
     digit0: 1, // digit sprite IDs are digit0 + n
@@ -561,7 +557,7 @@ MC.config.render = {
     // yielding an effective 15x23 interior when drawn at xFace+1,yFace+1.
     cardBackTL: 32,
 
-    // Optional icons (0 = skip). You’ll remap once the atlas is real.
+    // Optional icons (0 = skip).
     iconMoney: 16,
     iconRent: 20,
     iconSlyDeal: 18,
@@ -654,8 +650,6 @@ MC.seed.computeSeedU32 = function () {
 // MC.controls: input state machine (injected/pollable controls with repeat + hold/tap detection).
 MC.controls.newState = function () {
   return {
-    frame: 0,
-
     // Previous raw button-down state (0..7).
     prevDown: [false, false, false, false, false, false, false, false],
 
@@ -701,8 +695,6 @@ MC.controls.actions = function (st, raw, cfg) {
   var grabFallback = cfg.aHoldFallbackFrames;
 
   var inspectDelay = cfg.xInspectDelayFrames;
-
-  st.frame += 1;
 
   var i;
   for (i = 0; i < 8; i++) {
@@ -878,7 +870,6 @@ MC.state.setPrompt = function (state, prompt) {
 
   if (k === "respondAction") {
     // Generic response window prompt.
-    // Keep payload minimal and validate via tests (avoid runtime shape asserts).
     var src2 = prompt.srcAction;
     var srcAction2 = src2 ? { kind: String(src2.kind || ""), fromP: src2.fromP, actionUid: Math.floor(src2.actionUid) } : null;
     var tgt = prompt.target;
@@ -903,7 +894,6 @@ MC.state.setPrompt = function (state, prompt) {
 
   if (k === "replaceWindow") {
     // Wild replace-window (optional reposition after property placement).
-    // Keep payload minimal; validate shape via tests (avoid runtime asserts/fallbacks).
     var resume = prompt.resume;
     var resumeObj = null;
     if (resume && String(resume.kind || "") === "placeReceived") {
@@ -2811,7 +2801,6 @@ MC.ai.policies = {
     id: "biasExistingSet",
     weight: function (state, move) {
       // Soft bias: prefer placing properties into existing sets, but still allow anything.
-      // Tuning knob lives in config.
       var k = MC.config.ai.biasExistingSetK;
       if (move && move.kind === "playProp" && move.dest && move.dest.setI != null) return k;
       return 1;
@@ -2822,7 +2811,6 @@ MC.ai.policies = {
     id: "biasPayDebtFromBank",
     weight: function (state, move) {
       // Prefer paying debts from bank to reduce surprise property transfers.
-      // Tuning knob lives in config.
       var k = MC.config.ai.biasPayDebtFromBankK;
       if (!move || move.kind !== "payDebt") return 1;
       if (!(k > 1)) k = 1;
@@ -2917,7 +2905,6 @@ MC.ai.policies = {
     weight: function (state, move) {
       // Soft bias: prefer asking for rent rather than banking the Rent card.
       // Avoid wasting Rent when the opponent has nothing payable.
-      // Tuning knob lives in config.
       var k = MC.config.ai.biasPlayRentK;
       if (!move || move.kind !== "playRent") return 1;
       if (!(k > 1)) k = 1;
@@ -2935,7 +2922,6 @@ MC.ai.policies = {
     id: "biasPlaySlyDeal",
     weight: function (state, move) {
       // Prefer stealing a property rather than banking Sly Deal when a target exists.
-      // Tuning knob lives in config.
       var k = MC.config.ai.biasPlaySlyDealK;
       if (!move || move.kind !== "playSlyDeal") return 1;
       if (!(k > 1)) k = 1;
@@ -2947,7 +2933,6 @@ MC.ai.policies = {
     id: "biasPlayJustSayNo",
     weight: function (state, move) {
       // Soft bias: prefer canceling negative actions when a response window exists.
-      // Tuning knob lives in config.
       var k = MC.config.ai.biasPlayJustSayNoK;
       if (move && move.kind === "playJustSayNo") return k;
       return 1;
@@ -2959,7 +2944,6 @@ MC.ai.policies = {
     weight: function (state, move) {
       // Simple heuristic for replace-window Wild repositioning.
       // Prefer moves that complete a set, then maximize rent delta on existing sets.
-      // Tuning knob lives in config.
       var k = MC.config.ai.biasMoveWildK;
       if (!move || move.kind !== "moveWild") return 1;
       if (!(k > 1)) k = 1;
@@ -3631,7 +3615,6 @@ MC.layout.playerForRow = function (row) {
   for (k in style) R.cfg[k] = style[k];
   R.spr = renderCfg.spr;
   R.moneyBgByValue = renderCfg.moneyBgByValue;
-  R.center = null;
   R.center = (function () {
     var cfg = R.cfg;
     var row = R.ROW_CENTER;
@@ -3652,7 +3635,6 @@ MC.layout.playerForRow = function (row) {
     };
   })();
 
-  // Property bar palette (placeholder; tweak later).
   R.propBarColByColor = [];
   var Pal = MC.Pal;
   R.propBarColByColor[MC.Color.Cyan] = Pal.Cyan;
@@ -3810,10 +3792,7 @@ MC.layout.playerForRow = function (row) {
 
   function drawDualPropHalf(xFace, yFace, color, cardValue, flip180) {
     var barCol = R.propBarColByColor[color] != null ? R.propBarColByColor[color] : R.cfg.colText;
-    // Value digit: property money value used for debt payment.
     var v = cardValue;
-    if (v < 0) v = 0;
-    if (v > 9) v = 9;
     var pv = cardLocalRectToScreen(xFace, yFace, R.cfg.propValueX, R.cfg.propValueY, R.cfg.digitGlyphW, R.cfg.digitGlyphH, flip180);
     drawDigitGlyph(v, pv.x, pv.y, flip180);
 
@@ -3890,7 +3869,6 @@ MC.layout.playerForRow = function (row) {
   function drawCenterIcon(xFace, yFace, iconId, flip180) {
     if (!iconId) return;
     var ck = R.cfg.sprColorkey;
-    // Icon sprites are assumed full 8x8; no anchor offsets needed.
     var p = cardLocalRectToScreen(xFace, yFace, R.cfg.iconX, R.cfg.iconY, 8, 8, flip180);
     sprSafe(iconId, p.x, p.y, ck, 1, 0, flip180 ? 2 : 0, 1, 1);
   }
@@ -3995,8 +3973,7 @@ MC.layout.playerForRow = function (row) {
     var dbgEnabled = !!(MC.config.debug.enabled && MC.debug.toolsOn);
     var hlCol = (opts.highlightCol != null) ? opts.highlightCol : cfg.colHighlight;
 
-    // Plays indicator is drawn in screen-space.
-
+    // Deck/discard pile count digits (3x5 glyphs).
     function drawCountDigits(n, xFace, yFace) {
       var sN = String(n);
       if (sN.length > 2) sN = sN.slice(-2);
@@ -4023,13 +4000,11 @@ MC.layout.playerForRow = function (row) {
       var n = (nVis != null) ? nVis : s.deck.length;
       var layers = (layersOverride != null) ? layersOverride : -1;
       if (layers < 0) {
-        // Default: derive visible pile depth from actual count.
         if (n > 2) layers = 2;
         else if (n > 1) layers = 1;
         else layers = 0;
       }
 
-      // Underlayers first (so the top card is always on top).
       if (layers >= 2) drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx2, cfg.pileUnderDy2);
       if (layers >= 1) drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
       drawShadowBar(xFace, yFace);
@@ -4127,7 +4102,6 @@ MC.layout.playerForRow = function (row) {
     var xDesc = C.desc.x;
     var yDesc = C.desc.y;
 
-    // Inspect uses a screen-space panel with panel-driven anchors.
     var panel = null;
     if (view.inspectActive) {
       var Lp = MC.config.render.layout;
@@ -4137,7 +4111,6 @@ MC.layout.playerForRow = function (row) {
         x1: Lp.inspectPanelX1,
         y1: Lp.inspectPanelY1
       };
-      // Backing panel behind preview+title+desc.
       rectSafe(panel.x0, panel.y0, panel.x1 - panel.x0 + 1, panel.y1 - panel.y0 + 1, cfg.colInspectPanelFill);
       rectbSafe(panel.x0, panel.y0, panel.x1 - panel.x0 + 1, panel.y1 - panel.y0 + 1, cfg.colCenterPanelBorder);
 
@@ -4225,7 +4198,6 @@ MC.layout.playerForRow = function (row) {
       if (selI >= items.length) selI = items.length - 1;
       var j;
       var y = yDesc - 1;
-      // Backing box so the menu is unmistakable.
       var boxX = xDesc - 2;
       var boxY = y - 2;
       var boxW = cfg.screenW - boxX - cfg.rowPadX;
@@ -4262,7 +4234,6 @@ MC.layout.playerForRow = function (row) {
       var title = MC.fmt.targetingTitle(t, cmd);
       printSafe(title, xTitle, yTitle, cfg.colText);
       var destLine = MC.fmt.targetingDestLine(s, t, cmd);
-      // Backing box so targeting is unmistakable.
       var boxX = xDesc - 2;
       var boxY = yDesc - 2;
       var boxW = cfg.screenW - boxX - cfg.rowPadX;
@@ -4281,8 +4252,6 @@ MC.layout.playerForRow = function (row) {
     else if (view.inspectActive) {
       drawInspectForSelection(selectedItem);
     }
-
-    // Feedback message is drawn as a screen-top toast (see drawToast()).
   }
 
   function drawPlaysPips(state) {
@@ -4362,7 +4331,6 @@ MC.layout.playerForRow = function (row) {
       var msg = String(t.text);
       if (!msg) continue;
 
-      // Support 1–2 lines.
       var parts = msg.split("\n");
       if (parts.length > 2) parts = [parts[0], parts[1]];
       var maxLen = 0;
@@ -4383,8 +4351,7 @@ MC.layout.playerForRow = function (row) {
       if (kind === "ai") bgCol = cfg.colToastBgAi;
       rectSafe(x0, y0, boxW, boxH, bgCol);
       rectbSafe(x0, y0, boxW, boxH, cfg.colCenterPanelBorder);
-      // 1px shadow line under the bottom border so the box doesn't blend into bright elements behind it.
-      if ((y0 + boxH) < cfg.screenH) rectSafe(x0, y0 + boxH, boxW, 1, cfg.colShadow);
+      rectSafe(x0, y0 + boxH, boxW, 1, cfg.colShadow);
 
       var textX = x0 + padX + iconW;
       if (isError) {
@@ -4400,7 +4367,6 @@ MC.layout.playerForRow = function (row) {
     }
   }
 
-  // Expose toast renderer so non-game modes (e.g. Title) can reuse it.
   R.drawToasts = drawToasts;
 
   function groupStacksByKey(items, camX) {
@@ -4620,7 +4586,6 @@ MC.layout.playerForRow = function (row) {
     return ["Sel:" + String(it.kind || "?"), ""];
   };
 
-  // Shuffle + deal animations (render-only visuals).
   // Renderer is oblivious to `view.anim`; UI/anim modules provide presentation in `computed`.
   function drawAnimOverlay(state, view, computed) {
     if (!state || !view || !computed) return;
@@ -4666,7 +4631,6 @@ MC.layout.playerForRow = function (row) {
     var cfg = R.cfg;
     var hlCol = (computed.highlightCol != null) ? computed.highlightCol : cfg.colHighlight;
 
-    // Clear background.
     cls(cfg.colBg);
 
     // Draw non-center rows.
@@ -4691,7 +4655,6 @@ MC.layout.playerForRow = function (row) {
       rectbSafe(sel.x - 1, sel.y - 1, sel.w + 2, sel.h + 2, hlCol);
     }
 
-    // HUD / UX chrome (draw last).
     drawPlaysPips(state);
     drawModeHintNearButtons(view, computed);
     drawToasts(view);
@@ -5045,7 +5008,6 @@ MC.ui.navPickInDirection = function (view, computed, dir) {
     var dy = c.cy - curCy;
     var along = (dir === "left" || dir === "right") ? Math.abs(dx) : Math.abs(dy);
     var perp = (dir === "left" || dir === "right") ? Math.abs(dy) : Math.abs(dx);
-    // Config is validated in tests (avoid runtime fallbacks in the cartridge).
     var uiCfg = MC.config.ui;
     var k = (dir === "left" || dir === "right") ? uiCfg.navConeKLeftRight : uiCfg.navConeKUpDown;
     return (along * along) + (perp * perp) * k;
@@ -7519,7 +7481,6 @@ MC.anim.onEvents = function (state, view, events) {
   if (view.menu) view.menu.items = [];
   if (view.targeting) view.targeting.active = false;
 
-  // Config knobs are validated in tests (avoid runtime fallbacks in the cartridge).
   var uiCfg = MC.config.ui;
   var animSpeedMult = uiCfg.animSpeedMult;
   var dealFrames = Math.floor(uiCfg.dealFramesPerCard * animSpeedMult);
@@ -7607,7 +7568,6 @@ MC.anim.onEvents = function (state, view, events) {
       var isPromptBufIn = (tz === "promptBuf");
       var isSlySteal = (fz === "setProps" && tz === "recvProps");
 
-      // Curated transfer animations for MVP polish.
       var animate = false;
       if (isPromptBufIn) {
         // payDebt selection into the buffer: animate only when AI chose it.
@@ -8323,7 +8283,6 @@ MC.anim.present = function (state, view, computed) {
 (function initTitleModule() {
   var T = MC.title;
 
-  // Local state (kept minimal for now).
   T.st = { menuI: 0, confirm: null };
   T.ctrl = MC.controls.newState();
   T.toastView = { toasts: [] };
@@ -8336,7 +8295,6 @@ MC.anim.present = function (state, view, computed) {
     var shadowCol = (opts.shadowCol == null) ? MC.Pal.Black : opts.shadowCol;
     var dx = (opts.dx == null) ? 1 : opts.dx;
     var dy = (opts.dy == null) ? 1 : opts.dy;
-    // fixed=false => proportional font (better kerning than fixed-width).
     print(txt, x + dx, y + dy, shadowCol, false, scale, small);
     return print(txt, x, y, col, false, scale, small);
   }
@@ -8354,9 +8312,6 @@ MC.anim.present = function (state, view, computed) {
   }
 
   function drawControlsTable(tc, Pal, cx, cy, cw) {
-    // Table-style layout (no borders):
-    // header: Controls | Controller | Keyboard
-    // rows: Move/Confirm/Cancel/Inspect
     var x0 = cx + 2;
     var x1 = cx + Math.floor(cw * 0.34);
     var x2 = cx + Math.floor(cw * 0.73);
@@ -8436,11 +8391,9 @@ MC.anim.present = function (state, view, computed) {
       return intent;
     }
 
-    // Menu navigation.
     if (actions.nav && actions.nav.up) st.menuI = wrapI(st.menuI - 1, nItems);
     if (actions.nav && actions.nav.down) st.menuI = wrapI(st.menuI + 1, nItems);
 
-    // Activate selection.
     if (actions.a && actions.a.tap) {
       var itSel = menuItems[st.menuI];
       if (itSel && itSel.enabled) {
@@ -8465,7 +8418,6 @@ MC.anim.present = function (state, view, computed) {
           titlePushToast(toastView, cfg, "info", MC.debug.toolsOn ? "Dev tools enabled" : "Dev tools disabled");
         }
       } else if (itSel) {
-        // Disabled feedback (toast).
         var msg = "Not available";
         if (itSel.id === "continueGame") msg = "No game to continue";
         titlePushToast(toastView, cfg, "error", msg);
@@ -8503,7 +8455,6 @@ MC.anim.present = function (state, view, computed) {
     var menuW = tc.menuW;
     var leftW = W - menuW;
 
-    // Background.
     // Render title into vbank(1) so it can use a distinct palette.
     // vbank(1) overlays vbank(0); OVR transparency index lives at 0x03FF8 on vbank(1).
     var hasVbank = (typeof vbank === "function");
@@ -8519,20 +8470,17 @@ MC.anim.present = function (state, view, computed) {
     cls(Pal.DarkBlue);
     drawTiledBg(cfg, W, H);
 
-    // Logo (placeholder text).
     var logoScale = tc.logoScale;
     var logoX = tc.logoX;
     var logoY = tc.logoY;
     printShadow("MORTGAGE", logoX, logoY, Pal.White, { scale: logoScale, dx: 2, dy: 2 });
     printShadow("CRISIS", logoX + 20, logoY + 20, Pal.Yellow, { scale: logoScale, dx: 2, dy: 2 });
 
-    // Subtitle.
     if (tc.subtitleText) {
       rect(tc.subtitleX - 1, tc.subtitleY - 1, 12 * 8 - 1, 8, Pal.DarkBlue);
       printShadow(String(tc.subtitleText), tc.subtitleX, tc.subtitleY, Pal.LightGrey, { small: true, shadowCol: Pal.Black });
     }
 
-    // Controls legend (bottom-left).
     var cx = tc.controlsX;
     var ch = tc.controlsH;
     var cy = H - tc.controlsBottomY - ch;
@@ -8543,7 +8491,6 @@ MC.anim.present = function (state, view, computed) {
     rectb(cx - 2, cy - 2, cw + 4, ch + 4, Pal.Grey);
     drawControlsTable(tc, Pal, cx, cy, cw);
 
-    // Static menu list (right).
     var mxA = leftW + tc.menuArrowX;
     var mxT = leftW + tc.menuTextX;
     var my0 = tc.menuY;
@@ -8557,7 +8504,6 @@ MC.anim.present = function (state, view, computed) {
       drawMenuItem(tc, Pal, leftW, menuW, mxA, mxT, my0, dy, gap, mi, it.text, (mi === st.menuI), !!it.enabled);
     }
 
-    // Version.
     var ver = String(cfg.meta.version || "");
     if (ver) {
       var xVer = W + 3 - ver.length * 4;
@@ -8567,7 +8513,6 @@ MC.anim.present = function (state, view, computed) {
       printShadow(ver, xVer, yVer, Pal.LightGrey, { small: true });
     }
 
-    // Toasts (reuse in-game toast UI).
     MC.render.drawToasts(toastView);
 
     // Always restore bank 0 so other modes render normally.
@@ -8579,7 +8524,6 @@ MC.anim.present = function (state, view, computed) {
     if (!raw) raw = MC.controls.pollGlobals();
     var actions = MC.controls.actions(T.ctrl, raw, cfg.controls);
 
-    // Toast feedback (reuse main UI toast state/timing).
     // Title owns its own toast view so messages don't leak into gameplay.
     var toastView = T.toastView;
     MC.ui.toastsTick(toastView);
