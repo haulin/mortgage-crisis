@@ -1061,6 +1061,33 @@
 
     drawPlaysPips(state);
     drawModeHintNearButtons(view, computed);
+
+    // Mouse drag-and-drop: floating source card under cursor when dragging and not snapped.
+    if (
+      view.mode === "targeting" &&
+      view.targeting &&
+      view.targeting.active &&
+      view.targeting.mouse &&
+      view.targeting.mouse.dragMode &&
+      view.targeting.mouse.dragging &&
+      !view.targeting.mouse.snapped
+    ) {
+      var uidDrag = (view.targeting.card && view.targeting.card.uid) ? view.targeting.card.uid : 0;
+      if (uidDrag) {
+        var faceW = cfg.faceW;
+        var faceH = cfg.faceH;
+        var xF = view.targeting.mouse.x - Math.floor(faceW / 2);
+        var yF = view.targeting.mouse.y - Math.floor(faceH / 2);
+        if (xF < 0) xF = 0;
+        if (yF < 0) yF = 0;
+        if (xF > (cfg.screenW - faceW)) xF = cfg.screenW - faceW;
+        if (yF > (cfg.screenH - faceH)) yF = cfg.screenH - faceH;
+        var asColor = (view.targeting.wildColor !== MC.state.NO_COLOR) ? view.targeting.wildColor : null;
+        drawShadowBar(xF, yF);
+        drawMiniCard(state, uidDrag, xF, yF, false, asColor);
+        drawHighlight(xF, yF, hlCol);
+      }
+    }
     drawToasts(view);
   };
 })();

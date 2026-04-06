@@ -6,6 +6,7 @@ Documentation convention (for future phases):
 
 - `docs/phaseXX.md` should record **everything implemented** in that phase (detailed).
 - `docs/plan.md` should include **minimal Phase summary bullets** (scan-friendly; link to the phase doc).
+- `docs/refactor-*.md` captures **deferred refactor proposals** (design notes for Phase 20+).
 - Keep phase docs **current and non-contradictory**. It’s fine to edit older phase docs to correct factual statements when architecture/conventions change.
 
 ## Current progress
@@ -497,16 +498,25 @@ Done:
 - Rent targeting cycles spatially (no amount-based jumps), while defaulting to the highest-rent set.
 - See `docs/phase16.md`.
 
+### Phase 17 ✅ — Mouse controls
 
-### Phase 17 - Demo ready
+- Add mouse controls (TIC-80 `mouse()`) layered on top of controller UX:
+  - hover-select cursor
+  - LMB confirm / open menu (A tap)
+  - drag-and-drop quick play (A hold targeting + release)
+  - RMB cancel/back (B)
+  - MMB Inspect (X hold)
+  - wheel→nav (configurable, invert knob)
+- See `docs/phase17.md`.
+
+### Phase 18 - Demo ready?
 
 - Replace placeholder action icons with larger **~15×15** icons (implemented as a 2×2 sprite block with a colorkey padding row/col to yield an effective 15×15)
 - More exciting animated abstract background; fallback to tiled sprite patterns if per-frame generation is too expensive
-- Add mouse controls (TIC-80 `mouse()`) layered on top of controller UX
+
+### Phase 19 — Post‑Demo
+
 - Move cards from one set to another, costing a play
-
-### Phase 18 — Post‑Demo
-
 - scrolling in the banks shuffle stress scenario is not good
 - Seed UX for dev/playtesting:
   - seed **display** (show the current seed so bug reports are reproducible)
@@ -514,8 +524,9 @@ Done:
   - default “release-ish” seeding option (time-based seed from TIC-80 time source)
 - AI strategy picker
 - Music / sound effects (TIC-80 `music()` / `sfx()`)
+- Mouse changing pages in howto is not obvious.
 
-### Phase 19 - Content expansion
+### Content expansion
 
 - Add more property colors/sets (new `MC.Color` entries + `MC.SET_RULES` + `CARD_DEFS`)
 - Expand deck composition (properties/money/actions) while keeping turn UX readable
@@ -539,7 +550,10 @@ Issues:
 - Deferred: Add an in-game animation speed toggle (slow/medium/fast) wired to `MC.config.ui.animSpeedMult` (the underlying multiplier exists; Phase 15 added the knob).
 - Deferred: Refactor `MC.ui.computeRowModels` overlay/preview logic into smaller helpers (reduce “policy knot” + improve readability)
 - Deferred: Split `MC.ui.step` mode handling (browse/menu/targeting/prompt) into smaller per-mode helpers (reduce nesting + make input rules easier to audit)
-- Deferred: Consolidate UI slot/stack geometry helpers (destination→slot + stack locators) to reduce duplication and keep ghost/reservation rules consistent
+- Deferred: Consolidate UI slot/stack geometry helpers (destination→slot + stack locators) to reduce duplication and keep ghost/reservation rules consistent. See `docs/refactor-targeting-geometry.md`.
+- Deferred: Introduce a UI input-intents layer so `MC.ui.step` consumes device-agnostic intent (confirm/cancel/inspect/grab) instead of device-specific actions. See `docs/refactor-input-intents.md`.
+- Deferred: Mouse DnD: avoid the 1-frame “no selection” flash after a drop by adding a post-command view settle (or a small post-apply UI hook) in the debug harness/game loop.
+- Deferred: payDebt focus: when the bank empties mid-prompt, keep selection on a valid payable (rather than falling back to geometry-based preservation onto hand) - make these behaviors into an auto-focus rule so that it can be paused when using mouse.
 - Deferred: AI: add a generic “action move value” heuristic (or shallow 1‑ply simulation) to favor moves that reduce opponent payables/progress (Rent/Sly etc.).
 - Deferred: Denote complete property sets in the UI (e.g. badge/outline/marker and/or Inspect text “Complete set”) so Sly Deal restrictions are obvious
 - Deferred: Optional rule/UX: when a House is received via debt payment, allow recipient to place it onto a completed set (instead of always banking it as money)

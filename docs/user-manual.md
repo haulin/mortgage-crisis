@@ -13,7 +13,7 @@ npm run build
 ```
 
 - In TIC-80, import/run `game.js` (see `README.md` for workflow notes).
-- Controls are **controller-first** (D-pad + A/B/X/Y).
+- Controls are **controller-first**, but the build also supports **mouse** (hover + click + drag-and-drop).
 
 ## Title screen (current)
 
@@ -21,6 +21,9 @@ On boot you start on the **Title screen**:
 
 - It shows the project name, a main menu, and a controls quick-reference (plus the version).
 - Use **Up/Down** to choose a menu item, then **A** to select.
+- Mouse:
+  - **Hover** a menu item to select it
+  - **Left click** to confirm
 - Menu feedback (e.g. disabled **Continue**) appears as a **toast** at the top of the screen (same style as in-game).
 - **New Game** starts a fresh game.
 - If a game is already running, selecting **New Game** asks for confirmation (**A** confirm, **B** cancel).
@@ -43,6 +46,15 @@ Button IDs are TIC-80 defaults for player 1: UP=0 DOWN=1 LEFT=2 RIGHT=3 A=4 B=5 
 - **B (tap)**: back/cancel out of menu/targeting (and some prompts, if allowed).
 - **X (hold)**: Inspect overlay (after a short delay).
 - **Y (tap)**: when **Dev tools** are enabled, toggle DebugText ↔ Render.
+
+### Mouse controls
+
+- **Hover**: moves selection cursor.
+- **Left click**: confirm / open menu (equivalent to **A tap**).
+- **Left drag**: drag-and-drop quick play (equivalent to **A hold** → targeting; release confirms).
+- **Right click**: back/cancel (equivalent to **B**).
+- **Middle click (hold)**: Inspect (equivalent to **X hold**).
+- **Wheel**: optional up/down navigation pulses (configurable; invert knob exists).
 
 ## Gameplay loop (current)
 
@@ -158,6 +170,7 @@ Inspect shows the selected card’s details. Notes:
 
 - Inspect only shows while you’re in normal browsing / prompt flow.
 - In menus/targeting, Inspect is intentionally suppressed to reduce UI noise.
+  - Mouse: you can also hold **middle click** to Inspect.
 
 ## Hand card actions (menu)
 
@@ -217,6 +230,10 @@ Targeting includes a special destination called **Source**:
 - Cycling to **Source** and confirming cancels the action (no command is applied).
 - While targeting, the grabbed source card is usually hidden at its source position so it doesn’t look like you have “two copies” on screen.
   - When **Source** is the selected destination, the real source card is shown again with the normal selection highlight.
+
+Mouse note:
+
+- During drag-and-drop targeting, you can cancel by releasing off-target, or by dragging back onto the source card and releasing.
 
 ## Ghost/preview space reservation (no overlap)
 

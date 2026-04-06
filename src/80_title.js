@@ -2,7 +2,7 @@
 (function initTitleModule() {
   var T = MC.title;
 
-  T.st = { menuI: 0, confirm: null };
+  T.st = { menuI: 0, hoverI: -1, mouseMode: false, confirm: null };
   T.ctrl = MC.controls.newState();
   T.toastView = { toasts: [] };
 
@@ -33,26 +33,29 @@
   function drawControlsTable(tc, Pal, cx, cy, cw) {
     var x0 = cx + 2;
     var x1 = cx + Math.floor(cw * 0.34);
-    var x2 = cx + Math.floor(cw * 0.73);
+    var x2 = cx + Math.floor(cw * 0.55);
+    var x3 = cx + Math.floor(cw * 0.80);
     var y = cy + 1;
     var dy = 8;
 
     printShadow("Controls", x0, y, Pal.White, { small: true, shadowCol: Pal.Black });
-    printShadow("Controller", x1, y, Pal.LightGrey, { small: true, shadowCol: Pal.Black });
-    printShadow("Keyboard", x2, y, Pal.LightGrey, { small: true, shadowCol: Pal.Black });
+    printShadow("Pad", x1, y, Pal.LightGrey, { small: true, shadowCol: Pal.Black });
+    printShadow("Keys", x2, y, Pal.LightGrey, { small: true, shadowCol: Pal.Black });
+    printShadow("Mouse", x3, y, Pal.LightGrey, { small: true, shadowCol: Pal.Black });
     y += dy;
 
-    function row(label, ctrl, kb) {
+    function row(label, ctrl, kb, ms) {
       printShadow(label, x0, y, Pal.LightGrey, { small: true, shadowCol: Pal.Black });
       printShadow(ctrl, x1, y, Pal.Yellow, { small: true, shadowCol: Pal.Black });
       printShadow(kb, x2, y, Pal.Cyan, { small: true, shadowCol: Pal.Black });
+      printShadow(ms, x3, y, Pal.LightGreen, { small: true, shadowCol: Pal.Black });
       y += dy;
     }
 
-    row("Move", "D-pad", "Arrows");
-    row("Confirm", "A", "Z");
-    row("Cancel", "B", "X");
-    row("Inspect", "X", "A");
+    row("Move", "D-pad", "Arrows", "Hover");
+    row("Confirm", "A", "Z", "LMB");
+    row("Cancel", "B", "X", "RMB");
+    row("Inspect", "X", "A", "MMB");
   }
 
   function wrapI(i, n) {
@@ -97,6 +100,9 @@
     var nItems = menuItems.length;
     st.menuI = wrapI(st.menuI, nItems);
 
+    var m = actions && actions.mouse ? actions.mouse : null;
+    var mouseTap = !!(m && m.avail && m.left && m.left.tap);
+
     // Confirm state: ignore nav and interpret A/B as confirm/cancel.
     if (String(st.confirm || "") === "overwriteNewGame") {
       if (actions.b && actions.b.pressed) {
@@ -110,10 +116,53 @@
       return intent;
     }
 
-    if (actions.nav && actions.nav.up) st.menuI = wrapI(st.menuI - 1, nItems);
-    if (actions.nav && actions.nav.down) st.menuI = wrapI(st.menuI + 1, nItems);
+    // Mouse hover selects a menu item.
+    var mouseCfg = cfg.mouse;
+    if (mouseCfg && mouseCfg.enabled && mouseCfg.hoverSelect && m && m.avail && (m.moved || (m.left && m.left.pressed))) {
+      st.mouseMode = true;
+      var tc = cfg.title;
+      var W = cfg.screenW;
+      var menuW = tc.menuW;
+      var leftW = W - menuW;
+      var my0 = tc.menuY;
+      var dy = tc.menuDy;
+      var gap = tc.menuItemGapY;
+      if (gap == null) gap = 0;
+      var padY = tc.menuItemBoxPadY;
+      var xBox = leftW + 2;
+      var wBox = menuW - 8;
+      var hBox = dy - 2 + padY;
+      st.hoverI = -1;
+      var i;
+      for (i = 0; i < nItems; i++) {
+        var y0 = my0 + i * (dy + gap);
+        var x0 = xBox;
+        var x1 = xBox + wBox - 1;
+        var yTop = y0 - padY;
+        var yBot = yTop + hBox - 1;
+        if (m.x >= x0 && m.x <= x1 && m.y >= yTop && m.y <= yBot) {
+          st.hoverI = i;
+          st.menuI = i; // keep controller selection aligned with hover when on-item
+          break;
+        }
+      }
+    }
+
+    // Controller/keyboard nav leaves mouse-hover mode.
+    if (actions.nav && actions.nav.up) { st.mouseMode = false; st.hoverI = -1; st.menuI = wrapI(st.menuI - 1, nItems); }
+    if (actions.nav && actions.nav.down) { st.mouseMode = false; st.hoverI = -1; st.menuI = wrapI(st.menuI + 1, nItems); }
 
     if (actions.a && actions.a.tap) {
+      // Mouse click only confirms when the pointer is currently over an item.
+      if (mouseTap) {
+        if (!(st.mouseMode && st.hoverI >= 0 && st.hoverI < nItems)) return null;
+        st.menuI = st.hoverI;
+      } else {
+        // Controller/keyboard confirm leaves mouse-hover mode.
+        st.mouseMode = false;
+        st.hoverI = -1;
+      }
+
       var itSel = menuItems[st.menuI];
       if (itSel && itSel.enabled) {
         if (itSel.id === "startNewGame") {
@@ -220,7 +269,8 @@
     var mi;
     for (mi = 0; mi < menuItems.length; mi++) {
       var it = menuItems[mi];
-      drawMenuItem(tc, Pal, leftW, menuW, mxA, mxT, my0, dy, gap, mi, it.text, (mi === st.menuI), !!it.enabled);
+      var selI = st.mouseMode ? st.hoverI : st.menuI;
+      drawMenuItem(tc, Pal, leftW, menuW, mxA, mxT, my0, dy, gap, mi, it.text, (mi === selI), !!it.enabled);
     }
 
     var ver = String(cfg.meta.version || "");

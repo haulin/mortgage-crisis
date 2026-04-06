@@ -270,7 +270,7 @@ MC.config = {
 };
 
 MC.config.meta = {
-  version: "MVP v0.16"
+  version: "MVP v0.17"
 };
 
 MC.config.debug = {
@@ -283,6 +283,21 @@ MC.config.controls = {
   dpadRepeatPeriodFrames: 4,
   aHoldFallbackFrames: 18,
   xInspectDelayFrames: 6
+};
+
+// Mouse/touch UX knobs.
+MC.config.mouse = {
+  enabled: true,
+  // Drag starts when the pointer moves >= this many pixels while left is held.
+  dragStartPx: 3,
+  // Extra padding around snap hitboxes (pixels).
+  snapPadPx: 2,
+  // Map scroll wheel to nav Up/Down pulses.
+  wheelNav: true,
+  // Invert scroll wheel Y mapping to Up/Down nav.
+  wheelInvertY: true,
+  // Allow hover to move the selection outline.
+  hoverSelect: true
 };
 
 // UI/navigation tuning.
@@ -665,6 +680,19 @@ MC.controls.newState = function () {
 
     // D-pad repeat counters (per direction button id 0..3).
     dpadRepeat: [0, 0, 0, 0],
+
+    // Mouse tracking (hover/click/drag).
+    mouse: {
+      prevX: 0,
+      prevY: 0,
+      prevLeft: false,
+      prevMiddle: false,
+      prevRight: false,
+      pressX: 0,
+      pressY: 0,
+      leftDragActive: false,
+      leftDraggedThisPress: false,
+    },
   };
 };
 
@@ -680,7 +708,62 @@ MC.controls.pollGlobals = function () {
     pressed[i] = hasBtnp ? !!btnp(i) : false;
   }
 
-  return { down: down, pressed: pressed };
+  var m = null;
+  if (typeof mouse === "function") {
+    var r = mouse();
+    var x = 0, y = 0;
+    var left = false, middle = false, right = false;
+    var scrollx = 0, scrolly = 0;
+    if (r && typeof r.length === "number") {
+      x = Number(r[0]);
+      y = Number(r[1]);
+      left = !!r[2];
+      middle = !!r[3];
+      right = !!r[4];
+      scrollx = Number(r[5]);
+      scrolly = Number(r[6]);
+    } else if (r && typeof r === "object") {
+      x = Number(r.x);
+      y = Number(r.y);
+      left = !!r.left;
+      middle = !!r.middle;
+      right = !!r.right;
+      scrollx = Number(r.scrollx);
+      scrolly = Number(r.scrolly);
+    }
+    if (!isFinite(x)) x = 0;
+    if (!isFinite(y)) y = 0;
+    if (!isFinite(scrollx)) scrollx = 0;
+    if (!isFinite(scrolly)) scrolly = 0;
+    m = { x: x, y: y, left: left, middle: middle, right: right, scrollx: scrollx, scrolly: scrolly };
+  }
+
+  return { down: down, pressed: pressed, mouse: m };
+};
+
+// Canonical "no input" actions shape (useful when suppressing player input).
+MC.controls.emptyActions = function () {
+  return {
+    nav: { up: false, down: false, left: false, right: false },
+    a: { down: false, pressed: false, released: false, tap: false, grabActive: false, grabStart: false },
+    b: { pressed: false },
+    x: { down: false, pressed: false, released: false, inspectActive: false },
+    mouse: {
+      avail: false,
+      x: 0,
+      y: 0,
+      pressX: null,
+      pressY: null,
+      moved: false,
+      scrollX: 0,
+      scrollY: 0,
+      left: { down: false, pressed: false, released: false, tap: false },
+      middle: { down: false, pressed: false, released: false },
+      right: { down: false, pressed: false, released: false },
+      dragging: false,
+      dragStart: false
+    }
+  };
 };
 
 MC.controls.actions = function (st, raw, cfg) {
@@ -688,6 +771,10 @@ MC.controls.actions = function (st, raw, cfg) {
   // Contract: caller provides {down[8], pressed[8]} and cfg from MC.config.controls.
   var down = raw.down;
   var pressed = raw.pressed;
+  var mouseCfg = MC.config.mouse;
+  var m = raw ? raw.mouse : null;
+  var mouseEnabled = !!(mouseCfg && mouseCfg.enabled && m);
+  var mouseSt = st.mouse || null;
 
   var repeatDelay = cfg.dpadRepeatDelayFrames;
   var repeatPeriod = cfg.dpadRepeatPeriodFrames;
@@ -696,9 +783,69 @@ MC.controls.actions = function (st, raw, cfg) {
 
   var inspectDelay = cfg.xInspectDelayFrames;
 
+  var mx = mouseEnabled && m.x != null ? m.x : 0;
+  var my = mouseEnabled && m.y != null ? m.y : 0;
+  var mLeftDown = mouseEnabled ? !!m.left : false;
+  var mMiddleDown = mouseEnabled ? !!m.middle : false;
+  var mRightDown = mouseEnabled ? !!m.right : false;
+  var mScrollX = mouseEnabled && m.scrollx != null ? m.scrollx : 0;
+  var mScrollY = mouseEnabled && m.scrolly != null ? m.scrolly : 0;
+  if (!isFinite(mx)) mx = 0;
+  if (!isFinite(my)) my = 0;
+  if (!isFinite(mScrollX)) mScrollX = 0;
+  if (!isFinite(mScrollY)) mScrollY = 0;
+
+  var mPrevX = mouseSt ? mouseSt.prevX : 0;
+  var mPrevY = mouseSt ? mouseSt.prevY : 0;
+  var mPrevLeft = mouseSt ? !!mouseSt.prevLeft : false;
+  var mPrevMiddle = mouseSt ? !!mouseSt.prevMiddle : false;
+  var mPrevRight = mouseSt ? !!mouseSt.prevRight : false;
+
+  var mMoved = mouseEnabled ? (mx !== mPrevX || my !== mPrevY) : false;
+  var mLeftPressed = mouseEnabled ? (mLeftDown && !mPrevLeft) : false;
+  var mLeftReleased = mouseEnabled ? (!mLeftDown && mPrevLeft) : false;
+  var mMiddlePressed = mouseEnabled ? (mMiddleDown && !mPrevMiddle) : false;
+  var mMiddleReleased = mouseEnabled ? (!mMiddleDown && mPrevMiddle) : false;
+  var mRightPressed = mouseEnabled ? (mRightDown && !mPrevRight) : false;
+  var mRightReleased = mouseEnabled ? (!mRightDown && mPrevRight) : false;
+
+  // Mouse drag detection (left button).
+  var dragStartPx = mouseCfg ? mouseCfg.dragStartPx : 0;
+  if (!isFinite(dragStartPx)) dragStartPx = 0;
+  var dragStartNow = false;
+  var mouseDragging = false;
+  if (mouseSt) {
+    if (mLeftPressed) {
+      mouseSt.pressX = mx;
+      mouseSt.pressY = my;
+      mouseSt.leftDragActive = false;
+      mouseSt.leftDraggedThisPress = false;
+    }
+
+    if (mLeftDown) {
+      if (!mouseSt.leftDragActive && dragStartPx > 0) {
+        var dx = mx - mouseSt.pressX;
+        var dy = my - mouseSt.pressY;
+        if (dx * dx + dy * dy >= dragStartPx * dragStartPx) {
+          mouseSt.leftDragActive = true;
+          mouseSt.leftDraggedThisPress = true;
+          dragStartNow = true;
+        }
+      }
+    }
+
+    if (mLeftReleased) {
+      mouseSt.leftDragActive = false;
+    }
+
+    mouseDragging = !!(mLeftDown && mouseSt.leftDragActive);
+  }
+
   var i;
   for (i = 0; i < 8; i++) {
     var isDown = !!down[i];
+    // Mouse middle-click is treated as X (Inspect) hold.
+    if (i === 6 && mMiddleDown) isDown = true;
     st.held[i] = isDown ? (st.held[i] + 1) : 0;
   }
 
@@ -725,15 +872,25 @@ MC.controls.actions = function (st, raw, cfg) {
   var left = navPulse(2);
   var right = navPulse(3);
 
-  var aDown = !!down[4];
-  var aPressed = !!pressed[4] || rose(4);
-  var aReleased = fell(4);
+  if (mouseEnabled && mouseCfg && mouseCfg.wheelNav) {
+    var dy = mScrollY;
+    if (mouseCfg.wheelInvertY) dy = -dy;
+    if (dy < 0) up = true;
+    else if (dy > 0) downNav = true;
+  }
 
-  var bPressed = !!pressed[5] || rose(5);
+  var aDownBtn = !!down[4];
+  var aPressedBtn = !!pressed[4] || rose(4);
+  var aReleasedBtn = fell(4);
+  var aDown = !!(aDownBtn || mLeftDown);
+  var aPressed = !!(aPressedBtn || mLeftPressed);
+  var aReleased = !!(aReleasedBtn || mLeftReleased);
 
-  var xDown = !!down[6];
-  var xPressed = !!pressed[6] || rose(6);
-  var xReleased = fell(6);
+  var bPressed = !!(!!pressed[5] || rose(5) || mRightPressed);
+
+  var xDown = !!(down[6] || mMiddleDown);
+  var xPressed = !!(!!pressed[6] || rose(6) || mMiddlePressed);
+  var xReleased = !!(fell(6) || mMiddleReleased);
 
   // A grab mode: enter on hold+move (any nav pulse while A held),
   // or on fallback hold threshold.
@@ -750,6 +907,7 @@ MC.controls.actions = function (st, raw, cfg) {
     var shouldEnter = false;
     if (navAny && aHeldFrames > 0) shouldEnter = true;
     else if (aHeldFrames >= grabFallback && grabFallback > 0) shouldEnter = true;
+    else if (dragStartNow) shouldEnter = true;
     if (shouldEnter) {
       st.aGrabActive = true;
       st.aGrabEnteredThisPress = true;
@@ -780,6 +938,18 @@ MC.controls.actions = function (st, raw, cfg) {
   // Persist prevDown.
   for (i = 0; i < 8; i++) st.prevDown[i] = !!down[i];
 
+  // Persist mouse state.
+  if (mouseSt) {
+    mouseSt.prevX = mx;
+    mouseSt.prevY = my;
+    mouseSt.prevLeft = !!mLeftDown;
+    mouseSt.prevMiddle = !!mMiddleDown;
+    mouseSt.prevRight = !!mRightDown;
+  }
+
+  var leftTap = false;
+  if (mouseSt) leftTap = !!(mLeftReleased && !mouseSt.leftDraggedThisPress);
+
   return {
     nav: { up: up, down: downNav, left: left, right: right },
 
@@ -799,7 +969,23 @@ MC.controls.actions = function (st, raw, cfg) {
       pressed: xPressed,
       released: xReleased,
       inspectActive: !!st.xInspectActive,
-    }
+    },
+
+    mouse: {
+      avail: !!mouseEnabled,
+      x: mx,
+      y: my,
+      pressX: mouseSt ? mouseSt.pressX : mx,
+      pressY: mouseSt ? mouseSt.pressY : my,
+      moved: !!mMoved,
+      scrollX: mScrollX,
+      scrollY: mScrollY,
+      left: { down: !!mLeftDown, pressed: !!mLeftPressed, released: !!mLeftReleased, tap: !!leftTap },
+      middle: { down: !!mMiddleDown, pressed: !!mMiddlePressed, released: !!mMiddleReleased },
+      right: { down: !!mRightDown, pressed: !!mRightPressed, released: !!mRightReleased },
+      dragging: !!mouseDragging,
+      dragStart: !!dragStartNow,
+    },
   };
 };
 
@@ -3588,6 +3774,9 @@ MC.fmt.targetingTitle = function (targeting, cmd) {
 
 MC.fmt.targetingDestLine = function (state, targeting, cmd) {
   var t = targeting || null;
+  if (t && t.mouse && t.mouse.dragMode && t.mouse.dragging && !t.mouse.snapped) {
+    return "Hover dest\nto snap";
+  }
 
   var tKind = t && t.kind ? String(t.kind) : "";
   var prof = MC.cmd.getProfile(tKind);
@@ -3597,6 +3786,12 @@ MC.fmt.targetingDestLine = function (state, targeting, cmd) {
 
 MC.fmt.targetingHelp = function (targeting) {
   var t = targeting || null;
+  if (t && t.mouse && t.mouse.dragMode && t.mouse.dragging && !t.mouse.snapped) {
+    var help = "Hover:Snap";
+    if (t.card && t.card.def && MC.rules.isWildDef(t.card.def)) help += "  U/D:Color";
+    help += "\nRelease:Cancel  Right:Cancel";
+    return help;
+  }
   var kind = t && t.kind ? String(t.kind) : "";
   var prof = MC.cmd.getProfile(kind);
   var help = (prof && prof.helpLR) ? String(prof.helpLR) : "L/R: Dest";
@@ -4694,6 +4889,33 @@ MC.layout.playerForRow = function (row) {
 
     drawPlaysPips(state);
     drawModeHintNearButtons(view, computed);
+
+    // Mouse drag-and-drop: floating source card under cursor when dragging and not snapped.
+    if (
+      view.mode === "targeting" &&
+      view.targeting &&
+      view.targeting.active &&
+      view.targeting.mouse &&
+      view.targeting.mouse.dragMode &&
+      view.targeting.mouse.dragging &&
+      !view.targeting.mouse.snapped
+    ) {
+      var uidDrag = (view.targeting.card && view.targeting.card.uid) ? view.targeting.card.uid : 0;
+      if (uidDrag) {
+        var faceW = cfg.faceW;
+        var faceH = cfg.faceH;
+        var xF = view.targeting.mouse.x - Math.floor(faceW / 2);
+        var yF = view.targeting.mouse.y - Math.floor(faceH / 2);
+        if (xF < 0) xF = 0;
+        if (yF < 0) yF = 0;
+        if (xF > (cfg.screenW - faceW)) xF = cfg.screenW - faceW;
+        if (yF > (cfg.screenH - faceH)) yF = cfg.screenH - faceH;
+        var asColor = (view.targeting.wildColor !== MC.state.NO_COLOR) ? view.targeting.wildColor : null;
+        drawShadowBar(xF, yF);
+        drawMiniCard(state, uidDrag, xF, yF, false, asColor);
+        drawHighlight(xF, yF, hlCol);
+      }
+    }
     drawToasts(view);
   };
 })();
@@ -4738,7 +4960,11 @@ MC.ui.newView = function () {
       chainSegs: [],
       chainI: 0,
       // Cursor location to snap back to when entering non-cursor segments (bank/source).
-      srcCursor: { row: 4, i: 0 }
+      srcCursor: { row: 4, i: 0 },
+
+      // Mouse targeting (hover + drag-and-drop).
+      // When dragMode is true, releasing without a snap cancels instead of confirming a default.
+      mouse: { active: false, dragMode: false, dragging: false, x: 0, y: 0, snapped: false, leftSource: false }
     },
 
     // Inspect (hold X with delay)
@@ -4783,6 +5009,7 @@ MC.ui.newView = function () {
       lastFocusRuleId: "",
       pendingFocusErrorCode: "",
       autoFocusPausedByDebug: false,
+      autoFocusPausedByMouse: false,
       selAnchor: null
     }
   };
@@ -5003,6 +5230,85 @@ MC.ui.itemScreenCenter = function (view, item) {
   var w = item.w;
   var h = item.h;
   return { cx: x + (w / 2), cy: y + (h / 2) };
+};
+
+MC.ui.itemScreenRect = function (view, item, pad) {
+  if (!item || !view || !view.camX) return { x0: 0, y0: 0, x1: 0, y1: 0 };
+  if (pad == null) pad = 0;
+  var row = item.row;
+  var cam = (view.camX[row] != null) ? view.camX[row] : 0;
+  var x0 = ((item.x != null) ? item.x : 0) - cam - pad;
+  var y0 = ((item.y != null) ? item.y : 0) - pad;
+  var w = (item.w != null) ? item.w : 0;
+  var h = (item.h != null) ? item.h : 0;
+  return { x0: x0, y0: y0, x1: x0 + w - 1 + 2 * pad, y1: y0 + h - 1 + 2 * pad };
+};
+
+MC.ui.findItemByUidLoc = function (models, uid, loc) {
+  if (!models || !uid || !loc) return null;
+  var row;
+  for (row = 0; row < models.length; row++) {
+    var rm = models[row];
+    if (!rm || !rm.items) continue;
+    var i;
+    for (i = 0; i < rm.items.length; i++) {
+      var it = rm.items[i];
+      if (!it || it.uid !== uid || !it.loc) continue;
+      if (it.loc.p !== loc.p) continue;
+      if (String(it.loc.zone) !== String(loc.zone)) continue;
+      if ((it.loc.setI != null) && (loc.setI != null) && it.loc.setI !== loc.setI) continue;
+      if ((it.loc.i != null) && (loc.i != null) && it.loc.i !== loc.i) continue;
+      return { row: row, i: i, item: it };
+    }
+  }
+  return null;
+};
+
+MC.ui.pickItemAtScreen = function (view, computed, x, y, predicate) {
+  if (!view || !computed || !computed.models) return null;
+  if (x == null || y == null) return null;
+  if (!isFinite(x) || !isFinite(y)) return null;
+  predicate = predicate || function () { return true; };
+
+  var best = null;
+  var bestZ = -999999;
+  var models = computed.models;
+  var row;
+  for (row = 0; row < models.length; row++) {
+    var rm = models[row];
+    if (!rm || !rm.items) continue;
+    var i;
+    for (i = 0; i < rm.items.length; i++) {
+      var it = rm.items[i];
+      if (!it) continue;
+      if (!predicate(it)) continue;
+      var r = MC.ui.itemScreenRect(view, it, 0);
+      if (x < r.x0 || x > r.x1 || y < r.y0 || y > r.y1) continue;
+      var z = (it.depth != null) ? it.depth : 0;
+      if (z >= bestZ) { bestZ = z; best = { row: row, i: i, item: it }; }
+    }
+  }
+  return best;
+};
+
+MC.ui.stackRectForKey = function (view, computed, row, stackKey, pad) {
+  if (!view || !computed || !computed.models) return null;
+  if (pad == null) pad = 0;
+  if (row < 0 || row >= computed.models.length) return null;
+  var rm = computed.models[row];
+  if (!rm || !rm.stacks) return null;
+  var st = rm.stacks[String(stackKey)];
+  if (!st) return null;
+  var cam = (view.camX && view.camX[row] != null) ? view.camX[row] : 0;
+  var L = MC.config.render.layout;
+  var nSlots = (st.nSlots != null) ? st.nSlots : ((st.nReal != null) ? st.nReal : 0);
+  if (nSlots <= 0) nSlots = 1;
+  var xA = st.x0;
+  var xB = st.x0 + (nSlots - 1) * st.stride * st.fanDir;
+  var minX = xA < xB ? xA : xB;
+  var maxX = xA < xB ? xB : xA;
+  maxX += L.faceW - 1;
+  return { x0: minX - cam - pad, y0: st.y - pad, x1: maxX - cam + pad, y1: st.y + L.faceH - 1 + pad };
 };
 
 MC.ui.navPickInDirection = function (view, computed, dir) {
@@ -5671,6 +5977,7 @@ MC.ui.computeRowModels = function (state, view) {
     var uiMode = (uiT && uiT.mode) ? String(uiT.mode) : "preview";
     var isCursorMode = (uiMode === "cursor");
     var isSourceSel = !!(cmdSel0 && cmdSel0.kind === "source");
+    var mouseDragNoSnap = !!(t.mouse && t.mouse.dragMode && t.mouse.dragging && !t.mouse.snapped);
 
     // Find source slot in models (for hold-targeting Source destination).
     var srcX = null, srcY = null, srcRow = null;
@@ -5708,7 +6015,10 @@ MC.ui.computeRowModels = function (state, view) {
 
     // While targeting, hide the source card so the source slot can be represented by a ghost/preview.
     // Exception: when the selected destination is Source, show the real source card + normal highlight.
-    if (!isSourceSel) if (t.card && t.card.uid && t.card.loc && (t.card.loc.zone === "hand" || t.card.loc.zone === "recvProps" || t.card.loc.zone === "setProps")) {
+    // Mouse DnD nuance: while dragging unsnapped, keep hiding the source even if cmdI is Source,
+    // otherwise the real source would duplicate against the floating card under the cursor.
+    var showRealSource = !!(isSourceSel && !mouseDragNoSnap);
+    if (!showRealSource) if (t.card && t.card.uid && t.card.loc && (t.card.loc.zone === "hand" || t.card.loc.zone === "recvProps" || t.card.loc.zone === "setProps")) {
       meta.hideSrc = { uid: t.card.uid, loc: t.card.loc };
     }
 
@@ -5770,17 +6080,25 @@ MC.ui.computeRowModels = function (state, view) {
       var j;
       for (j = 0; j < cmds.length; j++) if (cmds[j] && cmds[j].kind === "source") { hasSourceCmd = true; break; }
 
+      // When dragging but not snapped, still show a ghost at the source slot so it doesn't look like the card vanished.
+      if (mouseDragNoSnap && meta.hideSrc && srcRow != null && srcX != null && srcY != null) {
+        pushOverlay(srcRow, { kind: "ghost", x: srcX, y: srcY, stackKey: "overlay:src:row" + srcRow, depth: 0 });
+      }
+
       for (j = 0; j < cmds.length; j++) {
-        if (j === cmdI) continue;
+        // While dragging but not snapped, ghost *all* destinations (including the default `cmdI`)
+        // so the player sees every legal drop target even before a snap occurs.
+        if (!mouseDragNoSnap && j === cmdI) continue;
         var c = cmds[j];
         if (!c || !c.kind) continue;
+        if (mouseDragNoSnap && c.kind === "source") continue; // source is represented by the separate source ghost above
         pushGhost(slotForCmd(c, srcSlot));
       }
 
       // Preview-in-stack for selected destination. If Source is selected, rely on the real card + highlight
       // (otherwise we would double-render the same card at the same position).
       var cmdSel = cmds[cmdI];
-      if (cmdSel && cmdSel.kind !== "source") {
+      if (!mouseDragNoSnap && cmdSel && cmdSel.kind !== "source") {
         setFocusForCmd(cmdSel, srcSlot, { uid: (t.card && t.card.uid) ? t.card.uid : 0, def: (t.card && t.card.def) ? t.card.def : null, wildColor: t.wildColor });
       }
 
@@ -6046,6 +6364,7 @@ MC.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
   t.chainSegs = [];
   t.chainI = 0;
   t.srcCursor = { row: view.cursor ? view.cursor.row : 4, i: view.cursor ? view.cursor.i : 0 };
+  MC.ui.mouse.resetTargeting(t);
 
   var def = MC.state.defByUid(state, uid);
   t.card = { uid: uid, loc: loc || null, def: def || null };
@@ -6102,6 +6421,7 @@ MC.ui.targetingEnterHoldChain = function (state, view, kinds, uid, loc) {
   t.chainSegs = [];
   t.chainI = 0;
   t.srcCursor = { row: view.cursor ? view.cursor.row : 4, i: view.cursor ? view.cursor.i : 0 };
+  MC.ui.mouse.resetTargeting(t);
 
   var def = MC.state.defByUid(state, uid);
   t.card = { uid: uid, loc: loc || null, def: def || null };
@@ -6231,6 +6551,9 @@ MC.ui.step = function (state, view, actions) {
   MC.ui.syncWinnerToast(state, view);
   MC.anim.tick(state, view);
 
+  // Track recent mouse usage (for hover UX + focus policy).
+  MC.ui.mouse.syncAutoFocusPause(view, actions);
+
   var gameOver = (state.winnerP !== MC.state.NO_WINNER);
   var prevWinner = (view.ux && view.ux.lastWinnerP != null) ? view.ux.lastWinnerP : MC.state.NO_WINNER;
   var justEnded = (gameOver && prevWinner === MC.state.NO_WINNER);
@@ -6268,7 +6591,7 @@ MC.ui.step = function (state, view, actions) {
   }
 
   // Inspect is meaningful in browse + prompt mode.
-  view.inspectActive = !!((view.mode === "browse" || view.mode === "prompt") && actions.x && actions.x.inspectActive);
+  view.inspectActive = !!((view.mode === "browse" || view.mode === "prompt") && actions.x.inspectActive);
 
   // Compute models for navigation helpers.
   var computed = MC.ui.computeRowModels(state, view);
@@ -6339,7 +6662,7 @@ MC.ui.step = function (state, view, actions) {
 
   // Prevent accidental immediate Reset/Next activation if the player is pressing A
   // during the same frame the win becomes visible.
-  if (justEnded && actions && actions.a && (actions.a.tap || actions.a.grabStart)) {
+  if (justEnded && (actions.a.tap || actions.a.grabStart)) {
     MC.anim.feedbackError(view, "game_over", "");
     return null;
   }
@@ -6409,19 +6732,22 @@ MC.ui.step = function (state, view, actions) {
 
   // Menu mode
   if (view.mode === "menu") {
-    if (actions.b && actions.b.pressed) {
+    if (actions.b.pressed) {
       view.mode = "browse";
       view.menu.items = [];
       return null;
     }
 
+    // Mouse menu hover + click-outside behavior.
+    if (MC.ui.mouse.menuTick(view, actions)) return null;
+
     var nItems = view.menu.items ? view.menu.items.length : 0;
     if (nItems > 0) {
-      if (actions.nav && actions.nav.up) view.menu.i = MC.ui.wrapI(view.menu.i - 1, nItems);
-      if (actions.nav && actions.nav.down) view.menu.i = MC.ui.wrapI(view.menu.i + 1, nItems);
+      if (actions.nav.up) view.menu.i = MC.ui.wrapI(view.menu.i - 1, nItems);
+      if (actions.nav.down) view.menu.i = MC.ui.wrapI(view.menu.i + 1, nItems);
     }
 
-    if (actions.a && actions.a.tap) {
+    if (actions.a.tap) {
       if (!view.menu.items || view.menu.items.length === 0) {
         view.mode = "browse";
         return null;
@@ -6465,7 +6791,7 @@ MC.ui.step = function (state, view, actions) {
     var t = view.targeting;
 
     // Cancel
-    if (actions.b && actions.b.pressed) {
+    if (actions.b.pressed) {
       t.active = false;
       view.mode = "browse";
       return null;
@@ -6581,6 +6907,8 @@ MC.ui.step = function (state, view, actions) {
     }
 
     profileEnsureSortedOnce();
+    var mouseDid = MC.ui.mouse.applyTargeting(state, view, computed, actions);
+    if (mouseDid) profileEnsureSortedOnce();
 
     // Cycle destinations
     var nCmds = t.cmds ? t.cmds.length : 0;
@@ -6621,7 +6949,7 @@ MC.ui.step = function (state, view, actions) {
         return true;
       }
 
-      if (actions.nav && actions.nav.left) {
+      if (actions.nav.left) {
         if (t.chainActive && t.chainSegs && t.chainSegs.length) {
           if (t.cmdI > 0) t.cmdI -= 1;
           else chainApplySeg(t.chainI - 1, -1);
@@ -6629,7 +6957,7 @@ MC.ui.step = function (state, view, actions) {
           t.cmdI = MC.ui.wrapI(t.cmdI - 1, nCmds);
         }
       }
-      if (actions.nav && actions.nav.right) {
+      if (actions.nav.right) {
         if (t.chainActive && t.chainSegs && t.chainSegs.length) {
           if (t.cmdI < (nCmds - 1)) t.cmdI += 1;
           else chainApplySeg(t.chainI + 1, 1);
@@ -6640,15 +6968,39 @@ MC.ui.step = function (state, view, actions) {
     }
 
     // Wild color toggle (Up/Down)
-    if (actions.nav && (actions.nav.up || actions.nav.down)) {
+    if (actions.nav.up || actions.nav.down) {
       var dir = actions.nav.down ? 1 : -1;
       MC.ui.targetingRetargetWild(state, view, dir);
     }
 
     // Confirm: tap-A (menu targeting) OR release-A (hold targeting).
     var shouldConfirm = false;
-    if (!t.hold && actions.a && actions.a.tap) shouldConfirm = true;
-    if (t.hold && actions.a && actions.a.released) shouldConfirm = true;
+    var mouseTap = MC.ui.mouse.leftTap(actions);
+    var mouseReleased = MC.ui.mouse.leftReleased(actions);
+    var mouseSnapped = !!(t.mouse && t.mouse.active && t.mouse.snapped);
+
+    if (!t.hold && actions.a.tap) {
+      // Mouse click should only confirm when the pointer is over a destination/target.
+      if (mouseTap && t.mouse && t.mouse.active && !mouseSnapped) {
+        MC.anim.feedbackError(view, "no_targets", "Pick a destination");
+        return null;
+      }
+      shouldConfirm = true;
+    }
+
+    if (t.hold && actions.a.released) {
+      // Mouse DnD: releasing without a snap cancels (prevents accidental default drops).
+      if (mouseReleased && t.mouse && t.mouse.dragMode && !mouseSnapped) {
+        t.active = false;
+        view.mode = "browse";
+        if (t.srcCursor) {
+          view.cursor.row = t.srcCursor.row;
+          view.cursor.i = t.srcCursor.i;
+        }
+        return null;
+      }
+      shouldConfirm = true;
+    }
     if (!shouldConfirm) {
       // Update cameras to follow destination preview / cursor-moving selection.
       computed = MC.ui.computeRowModels(state, view);
@@ -6670,7 +7022,14 @@ MC.ui.step = function (state, view, actions) {
     view.mode = "browse";
 
     if (!cmdSel) return null;
-    if (cmdSel.kind === "source") return null;
+    // Mouse DnD: snapping back to Source should behave like cancel (restore cursor).
+    if (cmdSel.kind === "source") {
+      if (mouseReleased && t.mouse && t.mouse.dragMode && t.srcCursor) {
+        view.cursor.row = t.srcCursor.row;
+        view.cursor.i = t.srcCursor.i;
+      }
+      return null;
+    }
     focusSnapshot();
     return { kind: "applyCmd", cmd: cmdSel };
   }
@@ -6687,7 +7046,6 @@ MC.ui.step = function (state, view, actions) {
     }
 
     function applyPromptNav() {
-      if (!actions.nav) return;
       var dir = null;
       if (actions.nav.up) dir = "up";
       else if (actions.nav.down) dir = "down";
@@ -6713,6 +7071,15 @@ MC.ui.step = function (state, view, actions) {
       if (pick) MC.ui.cursorMoveTo(view, pick);
     }
 
+    // Mouse hover selection in prompts (discardDown is handled separately below).
+    // When mouse autofocus pause is latched, keep selection under the pointer even if the mouse is stationary
+    // (e.g. immediately after a drop/play changes the UI under the cursor).
+    var hoverEnabledP = !!(MC.config.mouse.enabled && MC.config.mouse.hoverSelect);
+    if (hoverEnabledP && (view.ux.autoFocusPausedByMouse || MC.ui.mouse.shouldHoverPick(actions))) {
+      var pickP = MC.ui.mouse.pickAtPointer(view, computed, actions, function (it) { return !!it; });
+      if (pickP) MC.ui.cursorMoveTo(view, pickP);
+    }
+
     if (prompt.kind === "discardDown") {
       // Lock cursor to player hand cards only (not bank).
       var handIs = promptPickHandItemIndices();
@@ -6722,12 +7089,25 @@ MC.ui.step = function (state, view, actions) {
       computed = MC.ui.computeRowModels(state, view);
       MC.ui.updateCameras(state, view, computed);
 
+      // Mouse hover selects a specific hand card to discard.
+      var hoverEnabledD = !!(MC.config.mouse.enabled && MC.config.mouse.hoverSelect);
+      if (hoverEnabledD && (view.ux.autoFocusPausedByMouse || MC.ui.mouse.shouldHoverPick(actions))) {
+        var pickD = MC.ui.mouse.pickAtPointer(view, computed, actions, function (it) {
+          return it && it.kind === "hand" && it.loc && it.loc.zone === "hand" && it.loc.p === 0;
+        });
+        if (pickD) {
+          MC.ui.cursorMoveTo(view, pickD);
+          computed = MC.ui.computeRowModels(state, view);
+          MC.ui.updateCameras(state, view, computed);
+        }
+      }
+
       // Left/Right cycle within hand.
-      if (actions.nav && actions.nav.left) promptCycleHand(handIs, -1);
-      if (actions.nav && actions.nav.right) promptCycleHand(handIs, 1);
+      if (actions.nav.left) promptCycleHand(handIs, -1);
+      if (actions.nav.right) promptCycleHand(handIs, 1);
 
       // Cancel: only before any discard has happened in this prompt instance.
-      if (actions.b && actions.b.pressed) {
+      if (actions.b.pressed) {
         if (prompt.nDiscarded <= 0) {
           focusSnapshot();
           return { kind: "applyCmd", cmd: { kind: "cancelPrompt" } };
@@ -6737,7 +7117,7 @@ MC.ui.step = function (state, view, actions) {
       }
 
       // Discard with A tap.
-      if (actions.a && actions.a.tap) {
+      if (actions.a.tap) {
         computed = MC.ui.computeRowModels(state, view);
         MC.ui.updateCameras(state, view, computed);
         var selP = currentSelection();
@@ -6752,7 +7132,17 @@ MC.ui.step = function (state, view, actions) {
 
     // Hold-A grab: enter targeting *before* directional nav so the nudge that triggers
     // grabStart doesn't also move the cursor to a different card in the same frame.
-    if (prompt.kind === "placeReceived" && actions.a && actions.a.grabStart) {
+    if (prompt.kind === "placeReceived" && actions.a.grabStart) {
+      // Mouse drag-start must originate on an actual received property.
+      if (MC.ui.mouse.dragStart(actions)) {
+        var pickM = MC.ui.mouse.pickAtPress(view, computed, actions, function (it) {
+          return it && it.loc && it.loc.zone === "recvProps" && it.loc.p === 0;
+        });
+        if (!pickM) return null;
+        MC.ui.cursorMoveTo(view, pickM);
+        computed = MC.ui.computeRowModels(state, view);
+        MC.ui.updateCameras(state, view, computed);
+      }
       var selGrabP = currentSelection();
       if (!selGrabP || !selGrabP.loc) { MC.anim.feedbackError(view, "no_actions", "No actions"); snapCursorToFirstRecv(); return null; }
       if (selGrabP.loc.zone !== "recvProps") {
@@ -6761,9 +7151,20 @@ MC.ui.step = function (state, view, actions) {
         return null;
       }
       MC.ui.targetingEnter(state, view, "place", true, selGrabP.uid, selGrabP.loc);
+      MC.ui.mouse.dragModeEnter(view, actions);
       return null;
     }
-    if (prompt.kind === "replaceWindow" && actions.a && actions.a.grabStart) {
+    if (prompt.kind === "replaceWindow" && actions.a.grabStart) {
+      // Mouse drag-start must originate on an actual eligible Wild in the source set.
+      if (MC.ui.mouse.dragStart(actions)) {
+        var pickW = MC.ui.mouse.pickAtPress(view, computed, actions, function (it) {
+          return it && it.loc && it.loc.zone === "setProps" && it.loc.p === 0;
+        });
+        if (!pickW) return null;
+        MC.ui.cursorMoveTo(view, pickW);
+        computed = MC.ui.computeRowModels(state, view);
+        MC.ui.updateCameras(state, view, computed);
+      }
       var selGrabW = currentSelection();
       if (!selGrabW || !selGrabW.loc) { MC.anim.feedbackError(view, "no_actions", "No actions"); snapCursorToFirstReplaceWild(); return null; }
       if (selGrabW.loc.zone !== "setProps" || selGrabW.loc.p !== 0 || selGrabW.loc.setI == null || selGrabW.loc.setI !== prompt.srcSetI) {
@@ -6783,6 +7184,7 @@ MC.ui.step = function (state, view, actions) {
         return null;
       }
       MC.ui.targetingEnter(state, view, "moveWild", true, selGrabW.uid, selGrabW.loc);
+      MC.ui.mouse.dragModeEnter(view, actions);
       return null;
     }
 
@@ -6793,7 +7195,7 @@ MC.ui.step = function (state, view, actions) {
     MC.ui.focus.snapshot(state, view, computed);
 
     // Global prompt escape: allow returning to the title screen via the center Menu button.
-    if (actions.a && actions.a.tap) {
+    if (actions.a.tap) {
       var selPromptBtn = currentSelection();
       if (selPromptBtn && selPromptBtn.kind === "btn" && selPromptBtn.id === "mainMenu") {
         setAutoFocusPauseForCenterBtn("mainMenu");
@@ -6803,12 +7205,12 @@ MC.ui.step = function (state, view, actions) {
     }
 
     if (prompt.kind === "payDebt") {
-      if (actions.b && actions.b.pressed) {
+      if (actions.b.pressed) {
         MC.anim.feedbackError(view, "prompt_forced", "Must pay");
         return null;
       }
 
-      if (actions.a && actions.a.tap) {
+      if (actions.a.tap) {
         var selD = currentSelection();
         // Allow debug buttons (Step/Reset/Next) during this prompt; End remains disallowed.
         if (selD && selD.kind === "btn") {
@@ -6867,12 +7269,12 @@ MC.ui.step = function (state, view, actions) {
     }
 
     if (prompt.kind === "respondAction") {
-      if (actions.b && actions.b.pressed) {
+      if (actions.b.pressed) {
         MC.anim.feedbackError(view, "prompt_forced", "Must respond");
         return null;
       }
 
-      if (actions.a && actions.a.tap) {
+      if (actions.a.tap) {
         var selR0 = currentSelection();
         if (!selR0 || !selR0.loc) { MC.anim.feedbackError(view, "no_actions", "No actions"); return null; }
 
@@ -6907,13 +7309,13 @@ MC.ui.step = function (state, view, actions) {
     }
 
     if (prompt.kind === "placeReceived") {
-      if (actions.b && actions.b.pressed) {
+      if (actions.b.pressed) {
         MC.anim.feedbackError(view, "prompt_forced", "Must place");
         snapCursorToFirstRecv();
         return null;
       }
 
-      if (actions.a && actions.a.tap) {
+      if (actions.a.tap) {
         var selR = currentSelection();
         // Allow debug buttons (Step/Reset/Next) during this prompt; End remains disallowed.
         if (selR && selR.kind === "btn") {
@@ -6941,12 +7343,12 @@ MC.ui.step = function (state, view, actions) {
     }
 
     if (prompt.kind === "replaceWindow") {
-      if (actions.b && actions.b.pressed) {
+      if (actions.b.pressed) {
         focusSnapshot();
         return { kind: "applyCmd", cmd: { kind: "skipReplaceWindow" } };
       }
 
-      if (actions.a && actions.a.tap) {
+      if (actions.a.tap) {
         var selW = currentSelection();
         // Allow debug buttons (Step/Reset/Next) during this prompt; End remains disallowed.
         if (selW && selW.kind === "btn") {
@@ -6985,14 +7387,35 @@ MC.ui.step = function (state, view, actions) {
     return null;
   }
 
+  // Mouse hover selection in browse mode.
+  if (view.mode === "browse") {
+    var hoverEnabledB = !!(MC.config.mouse.enabled && MC.config.mouse.hoverSelect);
+    if (hoverEnabledB && (view.ux.autoFocusPausedByMouse || MC.ui.mouse.shouldHoverPick(actions))) {
+      var pickB = MC.ui.mouse.pickAtPointer(view, computed, actions, function (it) { return !!it; });
+      if (pickB) {
+        MC.ui.cursorMoveTo(view, pickB);
+        computed = MC.ui.computeRowModels(state, view);
+        MC.ui.updateCameras(state, view, computed);
+      }
+    }
+  }
+
   // Navigation (directional, screen-space).
   // Hold-A grab: enter targeting *before* directional nav so the nudge that triggers
   // grabStart doesn't also move the cursor to a different card in the same frame.
-  if (gameOver && actions.a && actions.a.grabStart) {
+  if (gameOver && actions.a.grabStart) {
     MC.anim.feedbackError(view, "game_over", "");
     return null;
   }
-  if (actions.a && actions.a.grabStart) {
+  if (actions.a.grabStart) {
+    // Mouse drag-start must originate on an actual on-screen item; otherwise ignore it.
+    if (MC.ui.mouse.dragStart(actions)) {
+      var pickDrag = MC.ui.mouse.pickAtPress(view, computed, actions, function (it) { return !!it; });
+      if (!pickDrag) return null;
+      MC.ui.cursorMoveTo(view, pickDrag);
+      computed = MC.ui.computeRowModels(state, view);
+      MC.ui.updateCameras(state, view, computed);
+    }
     var selGrab = currentSelection();
     if (selGrab && selGrab.loc && selGrab.loc.zone === "hand" && selGrab.loc.p === 0) {
       var uidGrab = selGrab.uid;
@@ -7000,6 +7423,7 @@ MC.ui.step = function (state, view, actions) {
       var kinds = MC.cmd.holdChainKindsForDef(defGrab);
       if (kinds) {
         MC.ui.targetingEnterHoldChain(state, view, kinds, uidGrab, selGrab.loc);
+        MC.ui.mouse.dragModeEnter(view, actions);
         return null;
       }
       MC.anim.feedbackError(view, "hold_noop", "Can't do that");
@@ -7007,19 +7431,17 @@ MC.ui.step = function (state, view, actions) {
     }
   }
 
-  if (actions.nav) {
-    var dir = null;
-    if (actions.nav.up) dir = "up";
-    else if (actions.nav.down) dir = "down";
-    else if (actions.nav.left) dir = "left";
-    else if (actions.nav.right) dir = "right";
+  var dir = null;
+  if (actions.nav.up) dir = "up";
+  else if (actions.nav.down) dir = "down";
+  else if (actions.nav.left) dir = "left";
+  else if (actions.nav.right) dir = "right";
 
-    if (dir) {
-      var pick = MC.ui.navPickInDirection(view, computed, dir);
-      if (pick) {
-        view.cursor.row = pick.row;
-        view.cursor.i = pick.i;
-      }
+  if (dir) {
+    var pick = MC.ui.navPickInDirection(view, computed, dir);
+    if (pick) {
+      view.cursor.row = pick.row;
+      view.cursor.i = pick.i;
     }
   }
 
@@ -7028,7 +7450,15 @@ MC.ui.step = function (state, view, actions) {
   MC.ui.updateCameras(state, view, computed);
 
   // Context actions on tap A.
-  if (actions.a && actions.a.tap) {
+  if (actions.a.tap) {
+    // Mouse click must originate on an item; clicking empty space does nothing.
+    if (MC.ui.mouse.leftTap(actions)) {
+      var pickClick = MC.ui.mouse.pickAtPress(view, computed, actions, function (it) { return !!it; });
+      if (!pickClick) return null;
+      MC.ui.cursorMoveTo(view, pickClick);
+      computed = MC.ui.computeRowModels(state, view);
+      MC.ui.updateCameras(state, view, computed);
+    }
     var sel = currentSelection();
     if (!sel) return null;
 
@@ -7486,8 +7916,8 @@ MC.ui.focus.rules = [
 MC.ui.focus.apply = function (state, view, computed, actions) {
   var nav = actions.nav;
   var a = actions.a;
-  var hasNav = !!(nav && (nav.up || nav.down || nav.left || nav.right));
-  var hasA = !!(a && (a.tap || a.grabStart));
+  var hasNav = !!(nav.up || nav.down || nav.left || nav.right);
+  var hasA = !!(a.tap || a.grabStart);
 
   // Debug-pause latch: suppress all snapping until the player provides a non-debug input.
   if (view.ux.autoFocusPausedByDebug) {
@@ -7501,6 +7931,13 @@ MC.ui.focus.apply = function (state, view, computed, actions) {
     }
 
     // While latched, allow preservation only when selection disappears.
+    if (!computed.selected) return MC.ui.focus.preserve(state, view, computed);
+    return false;
+  }
+
+  // Mouse-pause latch: suppress autofocus rules while the pointer has been used recently.
+  // Allow preservation only when selection disappears.
+  if (view.ux.autoFocusPausedByMouse) {
     if (!computed.selected) return MC.ui.focus.preserve(state, view, computed);
     return false;
   }
@@ -7529,6 +7966,353 @@ MC.ui.focus.apply = function (state, view, computed, actions) {
   }
 
   return changed;
+};
+
+// ---- src/67_ui_mouse.js ----
+// MC.ui.mouse: mouse-specific UI adapter helpers (hit-testing + mode helpers).
+MC.ui.mouse = {};
+
+MC.ui.mouse._cfg = function () {
+  return MC.config.mouse;
+};
+
+MC.ui.mouse._m = function (actions) {
+  return (actions && actions.mouse) ? actions.mouse : null;
+};
+
+MC.ui.mouse.isAvail = function (actions) {
+  var cfg = MC.ui.mouse._cfg();
+  var m = MC.ui.mouse._m(actions);
+  return !!(cfg.enabled && m && m.avail);
+};
+
+MC.ui.mouse.leftTap = function (actions) {
+  var m = MC.ui.mouse._m(actions);
+  return !!(m && m.avail && m.left && m.left.tap);
+};
+
+MC.ui.mouse.leftReleased = function (actions) {
+  var m = MC.ui.mouse._m(actions);
+  return !!(m && m.avail && m.left && m.left.released);
+};
+
+MC.ui.mouse.dragStart = function (actions) {
+  var m = MC.ui.mouse._m(actions);
+  return !!(m && m.avail && m.dragStart);
+};
+
+MC.ui.mouse.pressPos = function (actions) {
+  var m = MC.ui.mouse._m(actions);
+  if (!m || !m.avail) return { x: 0, y: 0 };
+  var x = (m.pressX != null) ? m.pressX : m.x;
+  var y = (m.pressY != null) ? m.pressY : m.y;
+  if (!isFinite(x)) x = 0;
+  if (!isFinite(y)) y = 0;
+  return { x: x, y: y };
+};
+
+MC.ui.mouse.pointerPos = function (actions) {
+  var m = MC.ui.mouse._m(actions);
+  if (!m || !m.avail) return { x: 0, y: 0 };
+  var x = m.x;
+  var y = m.y;
+  if (!isFinite(x)) x = 0;
+  if (!isFinite(y)) y = 0;
+  return { x: x, y: y };
+};
+
+MC.ui.mouse.shouldHoverPick = function (actions) {
+  var cfg = MC.ui.mouse._cfg();
+  if (!cfg.enabled || !cfg.hoverSelect) return false;
+  var m = MC.ui.mouse._m(actions);
+  if (!m || !m.avail) return false;
+  if (m.left && m.left.pressed) return true;
+  if (m.moved && !(m.left && m.left.down)) return true;
+  return false;
+};
+
+MC.ui.mouse.usedNow = function (actions) {
+  var m = MC.ui.mouse._m(actions);
+  if (!m || !m.avail) return false;
+  return !!(
+    m.moved ||
+    m.scrollX ||
+    m.scrollY ||
+    m.dragStart ||
+    m.dragging ||
+    (m.left && (m.left.down || m.left.pressed || m.left.released || m.left.tap)) ||
+    (m.right && (m.right.down || m.right.pressed || m.right.released)) ||
+    (m.middle && (m.middle.down || m.middle.pressed || m.middle.released))
+  );
+};
+
+// Latch autofocus pause while using the mouse, so hover-driven selection doesn't fight
+// controller-first autofocus rules. Clear the latch when controller input happens.
+MC.ui.mouse.syncAutoFocusPause = function (view, actions) {
+  if (!view || !view.ux) return;
+  var cfg = MC.ui.mouse._cfg();
+  if (!cfg.enabled) { view.ux.autoFocusPausedByMouse = false; return; }
+  var m = MC.ui.mouse._m(actions);
+  var mAvail = !!(m && m.avail);
+  // Important: when the debug harness suppresses player input (AI turn), it passes emptyActions()
+  // which sets mouse.avail=false. Don't clear the latch in that case; keep "last input wins"
+  // semantics until controller input happens.
+  if (!mAvail) return;
+
+  var nav = actions.nav;
+  var a = actions.a;
+  var hasNav = !!(nav && (nav.up || nav.down || nav.left || nav.right));
+  var hasA = !!(a && (a.tap || a.grabStart));
+
+  // Nav pulses may be synthesized from the wheel.
+  var navFromMouse = !!(hasNav && mAvail && (m.scrollX || m.scrollY));
+
+  // A tap/grabStart may come from the mouse (left tap / dragStart).
+  var aFromMouse = false;
+  if (hasA && mAvail) {
+    if (a.tap && m.left && m.left.tap) aFromMouse = true;
+    else if (a.grabStart && m.dragStart) aFromMouse = true;
+  }
+
+  // B pressed may come from the mouse (right click).
+  var bFromMouse = !!(mAvail && m.right && m.right.pressed);
+
+  var controllerUsed = !!((hasNav && !navFromMouse) || (hasA && !aFromMouse) || (actions.b && actions.b.pressed && !bFromMouse));
+  if (controllerUsed) { view.ux.autoFocusPausedByMouse = false; return; }
+  if (MC.ui.mouse.usedNow(actions)) view.ux.autoFocusPausedByMouse = true;
+};
+
+MC.ui.mouse.resetTargeting = function (t) {
+  var tm = t.mouse;
+  tm.active = false;
+  tm.dragMode = false;
+  tm.dragging = false;
+  tm.x = 0;
+  tm.y = 0;
+  tm.snapped = false;
+  tm.leftSource = false;
+};
+
+MC.ui.mouse.pickAtPress = function (view, computed, actions, predicate) {
+  if (!MC.ui.mouse.isAvail(actions)) return null;
+  var p = MC.ui.mouse.pressPos(actions);
+  return MC.ui.pickItemAtScreen(view, computed, p.x, p.y, predicate || function () { return true; });
+};
+
+MC.ui.mouse.pickAtPointer = function (view, computed, actions, predicate) {
+  if (!MC.ui.mouse.isAvail(actions)) return null;
+  var p = MC.ui.mouse.pointerPos(actions);
+  return MC.ui.pickItemAtScreen(view, computed, p.x, p.y, predicate || function () { return true; });
+};
+
+MC.ui.mouse.menuTick = function (view, actions) {
+  var cfg = MC.ui.mouse._cfg();
+  if (!cfg.enabled || !cfg.hoverSelect) return false;
+  var m = MC.ui.mouse._m(actions);
+  if (!m || !m.avail) return false;
+  if (!view || view.mode !== "menu" || !view.menu || !view.menu.items || view.menu.items.length <= 0) return false;
+
+  var items = view.menu.items;
+  var C = MC.render.center;
+  var L = MC.config.render.layout;
+  var xDesc = C.desc.x;
+  var yDesc = C.desc.y;
+  var yBase = yDesc - 1;
+  var boxX = xDesc - 2;
+  var boxY = yBase - 2;
+  var boxW = L.screenW - boxX - L.rowPadX;
+  var y0 = L.rowY[MC.render.ROW_CENTER];
+  var y1 = y0 + L.rowH[MC.render.ROW_CENTER] - 1;
+  var hintY = y1 - 7;
+  var boxH = (items.length * 7 + 10);
+  var maxH = (hintY - 2) - boxY;
+  if (maxH > 0 && boxH > maxH) boxH = maxH;
+  if (boxH < 16) boxH = 16;
+
+  var inBox = (m.x >= boxX && m.x <= (boxX + boxW - 1) && m.y >= boxY && m.y <= (boxY + boxH - 1));
+  if (m.moved || (m.left && m.left.pressed)) {
+    if (inBox) {
+      var j = Math.floor((m.y - yBase) / 7);
+      if (j < 0) j = 0;
+      if (j >= items.length) j = items.length - 1;
+      view.menu.i = j;
+    }
+  }
+
+  // Mouse click outside closes the menu.
+  if (MC.ui.mouse.leftTap(actions) && !inBox) {
+    view.mode = "browse";
+    view.menu.items = [];
+    return true;
+  }
+
+  return false;
+};
+
+MC.ui.mouse.applyTargeting = function (state, view, computed, actions) {
+  var cfg = MC.ui.mouse._cfg();
+  if (!cfg.enabled) return false;
+  var m = MC.ui.mouse._m(actions);
+  if (!m || !m.avail) return false;
+  if (!view || view.mode !== "targeting") return false;
+  var t = view.targeting;
+  if (!t || !t.active) return false;
+  if (!t.mouse) return false;
+
+  var usedNow = !!(m.moved || m.scrollX || m.scrollY || (m.left && (m.left.down || m.left.pressed || m.left.released)) || (m.right && m.right.pressed));
+  if (!usedNow) return false;
+
+  t.mouse.active = true;
+  t.mouse.x = m.x;
+  t.mouse.y = m.y;
+  t.mouse.dragging = !!(t.mouse.dragMode && m.dragging);
+  t.mouse.snapped = false;
+
+  function pointInRect(x, y, r) {
+    return !!(r && x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1);
+  }
+
+  function segIsCursorMode(kind) {
+    var prof = MC.cmd.getProfile(kind);
+    var ui = (prof && prof.ui) ? prof.ui : null;
+    return !!(ui && String(ui.mode || "") === "cursor");
+  }
+
+  function newSetRectForP(p, pad) {
+    var row = (p === 0) ? MC.render.ROW_P_TABLE : MC.render.ROW_OP_TABLE;
+    var rm = computed.models[row];
+    if (!rm || rm.newSetX == null) return null;
+    var L = MC.config.render.layout;
+    var cam = (view.camX && view.camX[row] != null) ? view.camX[row] : 0;
+    var x0 = rm.newSetX - cam - pad;
+    var y0 = MC.layout.faceYForRow(row) - pad;
+    return { x0: x0, y0: y0, x1: x0 + L.faceW - 1 + 2 * pad, y1: y0 + L.faceH - 1 + 2 * pad };
+  }
+
+  function rectForCmdPreview(cmd, pad) {
+    var d = MC.moves.destForCmd(cmd);
+    if (!d) return null;
+    if (d.kind === "newSet") return newSetRectForP(d.p, pad);
+    if (d.kind === "bankEnd") {
+      var rowB = (d.p === 0) ? MC.render.ROW_P_HAND : MC.render.ROW_OP_HAND;
+      var keyB = "bank:p" + d.p + ":row" + rowB;
+      return MC.ui.stackRectForKey(view, computed, rowB, keyB, pad);
+    }
+    if (d.kind === "setEnd" || d.kind === "setTop") {
+      var rowS = (d.p === 0) ? MC.render.ROW_P_TABLE : MC.render.ROW_OP_TABLE;
+      var keyS = "set:p" + d.p + ":set" + d.setI;
+      return MC.ui.stackRectForKey(view, computed, rowS, keyS, pad);
+    }
+    if (d.kind === "source") {
+      if (t.card && t.card.uid && t.card.loc) {
+        var pickS = MC.ui.findItemByUidLoc(computed.models, t.card.uid, t.card.loc);
+        if (pickS && pickS.item) return MC.ui.itemScreenRect(view, pickS.item, pad);
+      }
+    }
+    return null;
+  }
+
+  function rectForCmdCursor(kind, cmd, pad) {
+    var prof = MC.cmd.getProfile(kind);
+    var ui = (prof && prof.ui) ? prof.ui : null;
+    if (!ui || !ui.findItemForCmd) return null;
+    var pick = ui.findItemForCmd({ state: state, view: view, computed: computed }, cmd);
+    if (!pick || !pick.item) return null;
+    return MC.ui.itemScreenRect(view, pick.item, pad);
+  }
+
+  var pad = (cfg.snapPadPx != null) ? cfg.snapPadPx : 0;
+  if (!isFinite(pad) || pad < 0) pad = 0;
+
+  // Source snap-back latch: do not allow snapping to Source until the pointer has
+  // left the source area at least once after entering drag mode.
+  if (t.mouse && t.mouse.dragMode && t.mouse.dragging && !t.mouse.leftSource) {
+    var rSrcLeave = rectForCmdPreview({ kind: "source" }, pad);
+    if (rSrcLeave && !pointInRect(m.x, m.y, rSrcLeave)) t.mouse.leftSource = true;
+  }
+
+  function pickCmdInSeg(kind, cmds) {
+    if (!cmds || cmds.length === 0) return null;
+    var isCursor = segIsCursorMode(kind);
+
+    var i;
+    for (i = 0; i < cmds.length; i++) {
+      var c = cmds[i];
+      if (!c || !c.kind) continue;
+      // In drag mode, allow Source snapping only after leaving the source once.
+      if (t.mouse && t.mouse.dragMode && c.kind === "source" && !t.mouse.leftSource) continue;
+      var r = isCursor ? rectForCmdCursor(kind, c, pad) : rectForCmdPreview(c, pad);
+      if (!r) continue;
+      if (pointInRect(m.x, m.y, r)) return i;
+    }
+    return null;
+  }
+
+  function chainSetSeg(segI, cmdI) {
+    if (!t.chainSegs || t.chainSegs.length === 0) return false;
+    segI = MC.ui.wrapI(segI, t.chainSegs.length);
+    var seg = t.chainSegs[segI];
+    if (!seg || !seg.cmds || seg.cmds.length === 0) return false;
+
+    // Persist current selection.
+    var curSeg = t.chainSegs[MC.ui.clampI(t.chainI, t.chainSegs.length)];
+    if (curSeg) curSeg.cmdI = t.cmdI;
+
+    t.chainI = segI;
+    t.kind = String(seg.kind || "");
+    t.cmds = seg.cmds;
+    t.cmdI = MC.ui.clampI(cmdI, seg.cmds.length);
+    seg.cmdI = t.cmdI;
+    t._profileSorted = false;
+    t._profileSyncCmdI = -1;
+
+    // Entering non-cursor segments should snap cursor back to the source selection.
+    if (!segIsCursorMode(t.kind) && t.srcCursor) {
+      view.cursor.row = t.srcCursor.row;
+      view.cursor.i = t.srcCursor.i;
+    }
+
+    return true;
+  }
+
+  if (t.chainActive && t.chainSegs && t.chainSegs.length) {
+    var si;
+    for (si = 0; si < t.chainSegs.length; si++) {
+      var seg = t.chainSegs[si];
+      if (!seg || !seg.cmds) continue;
+      var kind = String(seg.kind || "");
+      var ci = pickCmdInSeg(kind, seg.cmds);
+      if (ci == null) continue;
+      chainSetSeg(si, ci);
+      t.mouse.snapped = true;
+      return true;
+    }
+    return true;
+  }
+
+  // Non-chain targeting: update cmdI if the pointer is over a destination/target.
+  var ci2 = pickCmdInSeg(String(t.kind || ""), t.cmds);
+  if (ci2 != null) {
+    t.cmdI = MC.ui.clampI(ci2, t.cmds.length);
+    t._profileSyncCmdI = -1;
+    t.mouse.snapped = true;
+  }
+  return true;
+};
+
+MC.ui.mouse.dragModeEnter = function (view, actions) {
+  if (!view || !view.targeting || !view.targeting.mouse) return false;
+  if (!MC.ui.mouse.isAvail(actions)) return false;
+  if (!MC.ui.mouse.dragStart(actions)) return false;
+  var m = MC.ui.mouse._m(actions);
+  view.targeting.mouse.active = true;
+  view.targeting.mouse.dragMode = true;
+  view.targeting.mouse.dragging = !!(m && m.dragging);
+  view.targeting.mouse.x = m ? m.x : 0;
+  view.targeting.mouse.y = m ? m.y : 0;
+  view.targeting.mouse.snapped = false;
+  view.targeting.mouse.leftSource = false;
+  return true;
 };
 
 // ---- src/70_anim.js ----
@@ -8347,7 +9131,7 @@ MC.anim.present = function (state, view, computed) {
 (function initTitleModule() {
   var T = MC.title;
 
-  T.st = { menuI: 0, confirm: null };
+  T.st = { menuI: 0, hoverI: -1, mouseMode: false, confirm: null };
   T.ctrl = MC.controls.newState();
   T.toastView = { toasts: [] };
 
@@ -8378,26 +9162,29 @@ MC.anim.present = function (state, view, computed) {
   function drawControlsTable(tc, Pal, cx, cy, cw) {
     var x0 = cx + 2;
     var x1 = cx + Math.floor(cw * 0.34);
-    var x2 = cx + Math.floor(cw * 0.73);
+    var x2 = cx + Math.floor(cw * 0.55);
+    var x3 = cx + Math.floor(cw * 0.80);
     var y = cy + 1;
     var dy = 8;
 
     printShadow("Controls", x0, y, Pal.White, { small: true, shadowCol: Pal.Black });
-    printShadow("Controller", x1, y, Pal.LightGrey, { small: true, shadowCol: Pal.Black });
-    printShadow("Keyboard", x2, y, Pal.LightGrey, { small: true, shadowCol: Pal.Black });
+    printShadow("Pad", x1, y, Pal.LightGrey, { small: true, shadowCol: Pal.Black });
+    printShadow("Keys", x2, y, Pal.LightGrey, { small: true, shadowCol: Pal.Black });
+    printShadow("Mouse", x3, y, Pal.LightGrey, { small: true, shadowCol: Pal.Black });
     y += dy;
 
-    function row(label, ctrl, kb) {
+    function row(label, ctrl, kb, ms) {
       printShadow(label, x0, y, Pal.LightGrey, { small: true, shadowCol: Pal.Black });
       printShadow(ctrl, x1, y, Pal.Yellow, { small: true, shadowCol: Pal.Black });
       printShadow(kb, x2, y, Pal.Cyan, { small: true, shadowCol: Pal.Black });
+      printShadow(ms, x3, y, Pal.LightGreen, { small: true, shadowCol: Pal.Black });
       y += dy;
     }
 
-    row("Move", "D-pad", "Arrows");
-    row("Confirm", "A", "Z");
-    row("Cancel", "B", "X");
-    row("Inspect", "X", "A");
+    row("Move", "D-pad", "Arrows", "Hover");
+    row("Confirm", "A", "Z", "LMB");
+    row("Cancel", "B", "X", "RMB");
+    row("Inspect", "X", "A", "MMB");
   }
 
   function wrapI(i, n) {
@@ -8442,6 +9229,9 @@ MC.anim.present = function (state, view, computed) {
     var nItems = menuItems.length;
     st.menuI = wrapI(st.menuI, nItems);
 
+    var m = actions && actions.mouse ? actions.mouse : null;
+    var mouseTap = !!(m && m.avail && m.left && m.left.tap);
+
     // Confirm state: ignore nav and interpret A/B as confirm/cancel.
     if (String(st.confirm || "") === "overwriteNewGame") {
       if (actions.b && actions.b.pressed) {
@@ -8455,10 +9245,53 @@ MC.anim.present = function (state, view, computed) {
       return intent;
     }
 
-    if (actions.nav && actions.nav.up) st.menuI = wrapI(st.menuI - 1, nItems);
-    if (actions.nav && actions.nav.down) st.menuI = wrapI(st.menuI + 1, nItems);
+    // Mouse hover selects a menu item.
+    var mouseCfg = cfg.mouse;
+    if (mouseCfg && mouseCfg.enabled && mouseCfg.hoverSelect && m && m.avail && (m.moved || (m.left && m.left.pressed))) {
+      st.mouseMode = true;
+      var tc = cfg.title;
+      var W = cfg.screenW;
+      var menuW = tc.menuW;
+      var leftW = W - menuW;
+      var my0 = tc.menuY;
+      var dy = tc.menuDy;
+      var gap = tc.menuItemGapY;
+      if (gap == null) gap = 0;
+      var padY = tc.menuItemBoxPadY;
+      var xBox = leftW + 2;
+      var wBox = menuW - 8;
+      var hBox = dy - 2 + padY;
+      st.hoverI = -1;
+      var i;
+      for (i = 0; i < nItems; i++) {
+        var y0 = my0 + i * (dy + gap);
+        var x0 = xBox;
+        var x1 = xBox + wBox - 1;
+        var yTop = y0 - padY;
+        var yBot = yTop + hBox - 1;
+        if (m.x >= x0 && m.x <= x1 && m.y >= yTop && m.y <= yBot) {
+          st.hoverI = i;
+          st.menuI = i; // keep controller selection aligned with hover when on-item
+          break;
+        }
+      }
+    }
+
+    // Controller/keyboard nav leaves mouse-hover mode.
+    if (actions.nav && actions.nav.up) { st.mouseMode = false; st.hoverI = -1; st.menuI = wrapI(st.menuI - 1, nItems); }
+    if (actions.nav && actions.nav.down) { st.mouseMode = false; st.hoverI = -1; st.menuI = wrapI(st.menuI + 1, nItems); }
 
     if (actions.a && actions.a.tap) {
+      // Mouse click only confirms when the pointer is currently over an item.
+      if (mouseTap) {
+        if (!(st.mouseMode && st.hoverI >= 0 && st.hoverI < nItems)) return null;
+        st.menuI = st.hoverI;
+      } else {
+        // Controller/keyboard confirm leaves mouse-hover mode.
+        st.mouseMode = false;
+        st.hoverI = -1;
+      }
+
       var itSel = menuItems[st.menuI];
       if (itSel && itSel.enabled) {
         if (itSel.id === "startNewGame") {
@@ -8565,7 +9398,8 @@ MC.anim.present = function (state, view, computed) {
     var mi;
     for (mi = 0; mi < menuItems.length; mi++) {
       var it = menuItems[mi];
-      drawMenuItem(tc, Pal, leftW, menuW, mxA, mxT, my0, dy, gap, mi, it.text, (mi === st.menuI), !!it.enabled);
+      var selI = st.mouseMode ? st.hoverI : st.menuI;
+      drawMenuItem(tc, Pal, leftW, menuW, mxA, mxT, my0, dy, gap, mi, it.text, (mi === selI), !!it.enabled);
     }
 
     var ver = String(cfg.meta.version || "");
@@ -9122,6 +9956,17 @@ MC.anim.present = function (state, view, computed) {
 
     var actions = MC.controls.actions(H.ctrl, raw, cfg.controls);
 
+    // Mouse: header click pages left/right (Back is handled via right-click -> B).
+    var mouseCfg = cfg.mouse;
+    var m = actions && actions.mouse ? actions.mouse : null;
+    if (mouseCfg && mouseCfg.enabled && m && m.avail && actions.a && actions.a.tap && m.left && m.left.tap) {
+      var hc0 = cfg.howto;
+      if (m.y < hc0.headerH) {
+        if (m.x < (cfg.screenW / 2)) st.pageI = wrapI(st.pageI - 1, pages.length);
+        else st.pageI = wrapI(st.pageI + 1, pages.length);
+      }
+    }
+
     if (actions.b && actions.b.pressed) {
       return { kind: "backToTitle" };
     }
@@ -9240,6 +10085,19 @@ MC.anim.present = function (state, view, computed) {
               print("X", ctx.x + 34, ctx.y + 4, MC.Pal.Cyan);
               print("Y", ctx.x + 48, ctx.y + 4, MC.Pal.LightGrey);
             } }
+          },
+
+          { kind: "h", text: "Mouse" },
+          {
+            kind: "bullets",
+            items: [
+              "<c4>Hover</c>: move selection (cursor).",
+              "<c4>Left click</c>: open a card menu / confirm a choice.",
+              "<c4>Left drag</c>: drag a card to a destination (drop confirms).",
+              "<c4>Right click</c>: back / cancel (when allowed).",
+              "<c4>Middle click (hold)</c>: Inspect.",
+              "<c4>Wheel</c>: move selection up/down."
+            ]
           },
 
           { kind: "h", text: "Menus and targeting" },
@@ -9730,7 +10588,7 @@ MC.mainTick = function () {
     // AI acts for actor=1 (activeP or prompt.p). While AI is acting, suppress player input.
     var actor = MC.ai.actor(d.state);
     var gameOver = (d.state.winnerP !== MC.state.NO_WINNER);
-    if (actor !== 0 && !gameOver) actions = {};
+    if (actor !== 0 && !gameOver) actions = MC.controls.emptyActions();
 
     var intent = MC.ui.step(d.state, d.view, actions);
     {

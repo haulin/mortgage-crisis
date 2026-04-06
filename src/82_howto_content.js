@@ -85,6 +85,19 @@
             } }
           },
 
+          { kind: "h", text: "Mouse" },
+          {
+            kind: "bullets",
+            items: [
+              "<c4>Hover</c>: move selection (cursor).",
+              "<c4>Left click</c>: open a card menu / confirm a choice.",
+              "<c4>Left drag</c>: drag a card to a destination (drop confirms).",
+              "<c4>Right click</c>: back / cancel (when allowed).",
+              "<c4>Middle click (hold)</c>: Inspect.",
+              "<c4>Wheel</c>: move selection up/down."
+            ]
+          },
+
           { kind: "h", text: "Menus and targeting" },
           {
             kind: "p",

@@ -388,8 +388,8 @@ MC.ui.focus.rules = [
 MC.ui.focus.apply = function (state, view, computed, actions) {
   var nav = actions.nav;
   var a = actions.a;
-  var hasNav = !!(nav && (nav.up || nav.down || nav.left || nav.right));
-  var hasA = !!(a && (a.tap || a.grabStart));
+  var hasNav = !!(nav.up || nav.down || nav.left || nav.right);
+  var hasA = !!(a.tap || a.grabStart);
 
   // Debug-pause latch: suppress all snapping until the player provides a non-debug input.
   if (view.ux.autoFocusPausedByDebug) {
@@ -403,6 +403,13 @@ MC.ui.focus.apply = function (state, view, computed, actions) {
     }
 
     // While latched, allow preservation only when selection disappears.
+    if (!computed.selected) return MC.ui.focus.preserve(state, view, computed);
+    return false;
+  }
+
+  // Mouse-pause latch: suppress autofocus rules while the pointer has been used recently.
+  // Allow preservation only when selection disappears.
+  if (view.ux.autoFocusPausedByMouse) {
     if (!computed.selected) return MC.ui.focus.preserve(state, view, computed);
     return false;
   }

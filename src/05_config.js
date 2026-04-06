@@ -6,7 +6,7 @@ MC.config = {
 };
 
 MC.config.meta = {
-  version: "MVP v0.16"
+  version: "MVP v0.17"
 };
 
 MC.config.debug = {
@@ -19,6 +19,21 @@ MC.config.controls = {
   dpadRepeatPeriodFrames: 4,
   aHoldFallbackFrames: 18,
   xInspectDelayFrames: 6
+};
+
+// Mouse/touch UX knobs.
+MC.config.mouse = {
+  enabled: true,
+  // Drag starts when the pointer moves >= this many pixels while left is held.
+  dragStartPx: 3,
+  // Extra padding around snap hitboxes (pixels).
+  snapPadPx: 2,
+  // Map scroll wheel to nav Up/Down pulses.
+  wheelNav: true,
+  // Invert scroll wheel Y mapping to Up/Down nav.
+  wheelInvertY: true,
+  // Allow hover to move the selection outline.
+  hoverSelect: true
 };
 
 // UI/navigation tuning.

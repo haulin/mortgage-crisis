@@ -99,7 +99,9 @@ We work in small increments:
 
 ## Input
 
-Controller-first. Use btn() for held buttons, btnp() for single presses.
+Controller-first, with optional mouse support (TIC-80 `mouse()`).
+
+Use btn() for held buttons, btnp() for single presses.
 Player 1 button IDs: UP=0 DOWN=1 LEFT=2 RIGHT=3 A=4 B=5 X=6 Y=7
 
 ## Game Design

@@ -40,6 +40,46 @@ test("title: draws and selecting New Game enters Render", async () => {
   assert.equal(ctx.MC._mainMode, 1);
 });
 
+test("title: mouse click outside menu does not activate last-hovered item", async () => {
+  let frame = 0;
+  let x = 0;
+  let y = 0;
+  let left = false;
+
+  const ctx = await loadSrcIntoVm({
+    extraGlobals: {
+      mouse: () => [x, y, left, false, false, 0, 0]
+    }
+  });
+
+  assert.equal(ctx.MC._mainMode, 2, "expected to boot into Title mode");
+
+  const cfg = ctx.MC.config;
+  const tc = cfg.title;
+  const menuW = tc.menuW;
+  const leftW = cfg.screenW - menuW;
+  const xBox = leftW + 2;
+  const my0 = tc.menuY;
+  const padY = tc.menuItemBoxPadY;
+  const hoverX = xBox + 2;
+  const hoverY = my0 - padY + 2;
+
+  // Frame 0: draw (mouse outside).
+  frame = 0; x = 0; y = 0; left = false; ctx.MC.mainTick();
+
+  // Frame 1: hover New Game.
+  frame = 1; x = hoverX; y = hoverY; left = false; ctx.MC.mainTick();
+
+  // Frame 2: move outside (no selection).
+  frame = 2; x = 0; y = 0; left = false; ctx.MC.mainTick();
+
+  // Frame 3/4: click outside (press then release) should do nothing.
+  frame = 3; x = 0; y = 0; left = true; ctx.MC.mainTick();
+  frame = 4; x = 0; y = 0; left = false; ctx.MC.mainTick();
+
+  assert.equal(ctx.MC._mainMode, 2, "expected to remain in Title mode");
+});
+
 test("title: selecting disabled Continue shows an error toast", async () => {
   let frame = 0;
   const ctx = await loadSrcIntoVm({

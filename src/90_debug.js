@@ -391,7 +391,7 @@ MC.mainTick = function () {
     // AI acts for actor=1 (activeP or prompt.p). While AI is acting, suppress player input.
     var actor = MC.ai.actor(d.state);
     var gameOver = (d.state.winnerP !== MC.state.NO_WINNER);
-    if (actor !== 0 && !gameOver) actions = {};
+    if (actor !== 0 && !gameOver) actions = MC.controls.emptyActions();
 
     var intent = MC.ui.step(d.state, d.view, actions);
     {

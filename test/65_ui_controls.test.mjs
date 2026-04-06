@@ -10,6 +10,16 @@ function rawButtons({ downIds = [], pressedIds = [] } = {}) {
   return { down, pressed };
 }
 
+function rawMouse({ x = 0, y = 0, left = false, middle = false, right = false, scrollx = 0, scrolly = 0 } = {}) {
+  return { x, y, left, middle, right, scrollx, scrolly };
+}
+
+function rawInput({ downIds = [], pressedIds = [], mouse = null } = {}) {
+  const r = rawButtons({ downIds, pressedIds });
+  if (mouse) r.mouse = mouse;
+  return r;
+}
+
 test("controls: inspect becomes active after hold delay", async () => {
   const ctx = await loadSrcIntoVm();
   const st = ctx.MC.controls.newState();
@@ -26,6 +36,34 @@ test("controls: inspect becomes active after hold delay", async () => {
     const raw = rawButtons({ downIds: [6] });
     const a = ctx.MC.controls.actions(st, raw, ctx.MC.config.controls);
     assert.equal(a.x.inspectActive, true);
+  }
+});
+
+test("controls: mouse middle-click becomes inspect after hold delay", async () => {
+  const ctx = await loadSrcIntoVm();
+  ctx.MC.config.mouse.enabled = true;
+  const st = ctx.MC.controls.newState();
+  const cfg = ctx.MC.config.controls;
+
+  // Hold middle for 5 frames: still inactive (default delay=6).
+  for (let f = 0; f < 5; f++) {
+    const a = ctx.MC.controls.actions(st, rawInput({ mouse: rawMouse({ x: 10, y: 10, middle: true }) }), cfg);
+    assert.equal(a.x.inspectActive, false);
+    assert.equal(a.x.down, true);
+  }
+
+  // On frame 6 it becomes active.
+  {
+    const a = ctx.MC.controls.actions(st, rawInput({ mouse: rawMouse({ x: 10, y: 10, middle: true }) }), cfg);
+    assert.equal(a.x.inspectActive, true);
+    assert.equal(a.x.down, true);
+  }
+
+  // Release -> inactive.
+  {
+    const a = ctx.MC.controls.actions(st, rawInput({ mouse: rawMouse({ x: 10, y: 10, middle: false }) }), cfg);
+    assert.equal(a.x.inspectActive, false);
+    assert.equal(a.x.down, false);
   }
 });
 
@@ -59,6 +97,67 @@ test("controls: A tap vs hold+move grab", async () => {
     a = ctx.MC.controls.actions(st, rawButtons({ downIds: [] }), cfg);
     assert.equal(a.a.tap, false);
   }
+});
+
+test("controls: mouse click vs drag (A tap vs grabStart)", async () => {
+  const ctx = await loadSrcIntoVm();
+  ctx.MC.config.mouse.dragStartPx = 3;
+  const cfg = ctx.MC.config.controls;
+
+  // Click: press then release without moving -> tap.
+  {
+    const st = ctx.MC.controls.newState();
+    let a;
+    a = ctx.MC.controls.actions(st, rawInput({ mouse: rawMouse({ x: 10, y: 10, left: true }) }), cfg);
+    assert.equal(a.a.pressed, true);
+    assert.equal(a.a.grabStart, false);
+    assert.equal(a.a.tap, false);
+
+    a = ctx.MC.controls.actions(st, rawInput({ mouse: rawMouse({ x: 10, y: 10, left: false }) }), cfg);
+    assert.equal(a.a.tap, true);
+    assert.equal(a.mouse.left.tap, true);
+  }
+
+  // Drag: move beyond threshold while left held -> grabStart once, no tap.
+  {
+    const st = ctx.MC.controls.newState();
+    let a;
+    a = ctx.MC.controls.actions(st, rawInput({ mouse: rawMouse({ x: 10, y: 10, left: true }) }), cfg);
+    assert.equal(a.a.grabStart, false);
+
+    a = ctx.MC.controls.actions(st, rawInput({ mouse: rawMouse({ x: 20, y: 10, left: true }) }), cfg);
+    assert.equal(a.a.grabStart, true);
+    assert.equal(a.mouse.dragStart, true);
+    assert.equal(a.mouse.dragging, true);
+
+    a = ctx.MC.controls.actions(st, rawInput({ mouse: rawMouse({ x: 21, y: 10, left: true }) }), cfg);
+    assert.equal(a.a.grabStart, false);
+
+    a = ctx.MC.controls.actions(st, rawInput({ mouse: rawMouse({ x: 21, y: 10, left: false }) }), cfg);
+    assert.equal(a.a.tap, false);
+    assert.equal(a.mouse.left.tap, false);
+  }
+});
+
+test("controls: wheel invert knob flips Up/Down mapping", async () => {
+  const ctx = await loadSrcIntoVm();
+  const cfg = ctx.MC.config.controls;
+  const st = ctx.MC.controls.newState();
+
+  ctx.MC.config.mouse.enabled = true;
+  ctx.MC.config.mouse.wheelNav = true;
+
+  // Baseline mapping (wheelInvertY=false): negative => Up.
+  ctx.MC.config.mouse.wheelInvertY = false;
+  let a = ctx.MC.controls.actions(st, rawInput({ mouse: rawMouse({ x: 0, y: 0, scrolly: -1 }) }), cfg);
+  assert.equal(!!a.nav.up, true);
+  assert.equal(!!a.nav.down, false);
+
+  // Inverted mapping (wheelInvertY=true): negative => Down.
+  ctx.MC.config.mouse.wheelInvertY = true;
+  a = ctx.MC.controls.actions(st, rawInput({ mouse: rawMouse({ x: 0, y: 0, scrolly: -1 }) }), cfg);
+  assert.equal(!!a.nav.up, false);
+  assert.equal(!!a.nav.down, true);
 });
 
 test("ui: early hold-A grab does not move cursor selection", async () => {
@@ -106,6 +205,310 @@ test("ui: early hold-A grab does not move cursor selection", async () => {
   assert.ok(view.targeting && view.targeting.active, "expected targeting to be active");
   assert.equal(view.targeting.card.uid, uidA, "expected grabbed uid to remain the original selection");
   assert.equal(view.cursor.i, 0, "expected cursor index to remain unchanged on early-grab frame");
+});
+
+test("ui: mouse hover moves cursor selection (browse)", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.MC.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const view = ctx.MC.ui.newView();
+  view.mode = "browse";
+  view.cursor.row = ctx.MC.render.ROW_P_HAND;
+  view.cursor.i = 0;
+
+  // Pick a different hand card in the same row.
+  const before = ctx.MC.ui.computeRowModels(s, view);
+  const rm = before.models[ctx.MC.render.ROW_P_HAND];
+  const pickI = rm.items.findIndex((it) => it && it.kind === "hand" && it.loc && it.loc.zone === "hand" && it.loc.p === 0 && it.loc.i === 1);
+  assert.ok(pickI >= 0, "expected a second hand card");
+  const it = rm.items[pickI];
+  const cam = (view.camX && view.camX[ctx.MC.render.ROW_P_HAND] != null) ? view.camX[ctx.MC.render.ROW_P_HAND] : 0;
+  const x = it.x - cam + 2;
+  const y = it.y + 2;
+
+  ctx.MC.ui.step(s, view, {
+    nav: {},
+    a: {},
+    b: {},
+    x: {},
+    mouse: { avail: true, x, y, moved: true, scrollX: 0, scrollY: 0, left: { down: false, pressed: false, released: false, tap: false }, middle: { down: false, pressed: false, released: false }, right: { down: false, pressed: false, released: false }, dragging: false, dragStart: false }
+  });
+
+  assert.equal(view.cursor.row, ctx.MC.render.ROW_P_HAND);
+  assert.equal(view.cursor.i, pickI);
+});
+
+test("ui: mouse DnD cancels when released off-target", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.MC.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const view = ctx.MC.ui.newView();
+  view.mode = "browse";
+  view.cursor.row = ctx.MC.render.ROW_P_HAND;
+  view.cursor.i = 0;
+
+  // Mouse should start on the selected hand card (the thing we're dragging).
+  const c0 = ctx.MC.ui.computeRowModels(s, view);
+  ctx.MC.ui.updateCameras(s, view, c0);
+  const sel0 = c0.selected;
+  assert.ok(sel0, "expected a selected item");
+  const cam0 = (view.camX && view.camX[sel0.row] != null) ? view.camX[sel0.row] : 0;
+  const x0 = sel0.x - cam0 + 2;
+  const y0 = sel0.y + 2;
+
+  // Enter targeting via mouse drag-start.
+  ctx.MC.ui.step(s, view, {
+    nav: {},
+    a: { grabStart: true },
+    mouse: { avail: true, x: x0, y: y0, moved: false, scrollX: 0, scrollY: 0, left: { down: true, pressed: true, released: false, tap: false }, middle: { down: false, pressed: false, released: false }, right: { down: false, pressed: false, released: false }, dragging: true, dragStart: true }
+  });
+  assert.equal(view.mode, "targeting");
+  assert.ok(view.targeting && view.targeting.active);
+  assert.ok(view.targeting.mouse && view.targeting.mouse.dragMode, "expected dragMode targeting");
+
+  // Drag somewhere irrelevant.
+  ctx.MC.ui.step(s, view, {
+    nav: {},
+    a: { down: true },
+    mouse: { avail: true, x: 0, y: 0, moved: true, scrollX: 0, scrollY: 0, left: { down: true, pressed: false, released: false, tap: false }, middle: { down: false, pressed: false, released: false }, right: { down: false, pressed: false, released: false }, dragging: true, dragStart: false }
+  });
+  assert.equal(view.targeting.mouse.snapped, false);
+
+  // Release off-target -> cancel targeting, no intent.
+  const intent = ctx.MC.ui.step(s, view, {
+    nav: {},
+    a: { released: true },
+    mouse: { avail: true, x: 0, y: 0, moved: false, scrollX: 0, scrollY: 0, left: { down: false, pressed: false, released: true, tap: false }, middle: { down: false, pressed: false, released: false }, right: { down: false, pressed: false, released: false }, dragging: false, dragStart: false }
+  });
+  assert.equal(intent, null);
+  assert.equal(view.mode, "browse");
+});
+
+test("ui: mouse DnD cancels when released back on source (hysteresis)", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.MC.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  ctx.MC.config.mouse.enabled = true;
+  ctx.MC.config.mouse.dragStartPx = 3;
+
+  const view = ctx.MC.ui.newView();
+  view.mode = "browse";
+  view.cursor.row = ctx.MC.render.ROW_P_HAND;
+  view.cursor.i = 0;
+
+  // Mouse should start on the selected hand card (the thing we're dragging).
+  const c0 = ctx.MC.ui.computeRowModels(s, view);
+  ctx.MC.ui.updateCameras(s, view, c0);
+  const sel0 = c0.selected;
+  assert.ok(sel0, "expected a selected item");
+  const cam0 = (view.camX && view.camX[sel0.row] != null) ? view.camX[sel0.row] : 0;
+  const x0 = sel0.x - cam0 + 2;
+  const y0 = sel0.y + 2;
+
+  // Enter targeting via mouse drag-start.
+  ctx.MC.ui.step(s, view, {
+    nav: {},
+    a: { grabStart: true },
+    mouse: { avail: true, x: x0, y: y0, moved: false, scrollX: 0, scrollY: 0, left: { down: true, pressed: true, released: false, tap: false }, middle: { down: false, pressed: false, released: false }, right: { down: false, pressed: false, released: false }, dragging: true, dragStart: true }
+  });
+  assert.equal(view.mode, "targeting");
+  assert.ok(view.targeting && view.targeting.active);
+  assert.ok(view.targeting.mouse && view.targeting.mouse.dragMode, "expected dragMode targeting");
+
+  // Snap to a real destination first (so we can test "snap back to source").
+  const c1 = ctx.MC.ui.computeRowModels(s, view);
+  const rowT1 = ctx.MC.render.ROW_P_TABLE;
+  const rmT1 = c1.models[rowT1];
+  assert.ok(rmT1 && rmT1.newSetX != null, "expected newSetX in targeting");
+  const xDest = rmT1.newSetX - (view.camX[rowT1] || 0) + 2;
+  const yDest = ctx.MC.layout.faceYForRow(rowT1) + 2;
+
+  ctx.MC.ui.step(s, view, {
+    nav: {},
+    a: { down: true },
+    mouse: { avail: true, x: xDest, y: yDest, moved: true, scrollX: 0, scrollY: 0, left: { down: true, pressed: false, released: false, tap: false }, middle: { down: false, pressed: false, released: false }, right: { down: false, pressed: false, released: false }, dragging: true, dragStart: false }
+  });
+  assert.equal(view.targeting.mouse.snapped, true);
+
+  // Move back onto source; hysteresis should snap to Source.
+  ctx.MC.ui.step(s, view, {
+    nav: {},
+    a: { down: true },
+    mouse: { avail: true, x: x0, y: y0, moved: true, scrollX: 0, scrollY: 0, left: { down: true, pressed: false, released: false, tap: false }, middle: { down: false, pressed: false, released: false }, right: { down: false, pressed: false, released: false }, dragging: true, dragStart: false }
+  });
+  assert.equal(view.targeting.mouse.snapped, true);
+
+  // Release on source -> cancel targeting, no intent, cursor restored to source.
+  const intent = ctx.MC.ui.step(s, view, {
+    nav: {},
+    a: { released: true },
+    mouse: { avail: true, x: x0, y: y0, moved: false, scrollX: 0, scrollY: 0, left: { down: false, pressed: false, released: true, tap: false }, middle: { down: false, pressed: false, released: false }, right: { down: false, pressed: false, released: false }, dragging: false, dragStart: false }
+  });
+  assert.equal(intent, null);
+  assert.equal(view.mode, "browse");
+  assert.equal(view.cursor.row, ctx.MC.render.ROW_P_HAND);
+  assert.equal(view.cursor.i, 0);
+});
+
+test("ui: unsnapped mouse drag shows ghosts for all legal destinations", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.MC.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const view = ctx.MC.ui.newView();
+  view.mode = "browse";
+  view.cursor.row = ctx.MC.render.ROW_P_HAND;
+  view.cursor.i = 0;
+
+  // Mouse should start on the selected hand card (the thing we're dragging).
+  const c0 = ctx.MC.ui.computeRowModels(s, view);
+  ctx.MC.ui.updateCameras(s, view, c0);
+  const sel0 = c0.selected;
+  assert.ok(sel0, "expected a selected item");
+  const cam0 = (view.camX && view.camX[sel0.row] != null) ? view.camX[sel0.row] : 0;
+  const x0 = sel0.x - cam0 + 2;
+  const y0 = sel0.y + 2;
+
+  // Enter targeting via mouse drag-start.
+  ctx.MC.ui.step(s, view, {
+    nav: {},
+    a: { grabStart: true },
+    mouse: { avail: true, x: x0, y: y0, moved: false, scrollX: 0, scrollY: 0, left: { down: true, pressed: true, released: false, tap: false }, middle: { down: false, pressed: false, released: false }, right: { down: false, pressed: false, released: false }, dragging: true, dragStart: true }
+  });
+  assert.equal(view.mode, "targeting");
+  assert.ok(view.targeting && view.targeting.active);
+
+  // Drag somewhere irrelevant (stay unsnapped).
+  ctx.MC.ui.step(s, view, {
+    nav: {},
+    a: { down: true },
+    mouse: { avail: true, x: 0, y: 0, moved: true, scrollX: 0, scrollY: 0, left: { down: true, pressed: false, released: false, tap: false }, middle: { down: false, pressed: false, released: false }, right: { down: false, pressed: false, released: false }, dragging: true, dragStart: false }
+  });
+  assert.ok(view.targeting.mouse && view.targeting.mouse.dragMode, "expected dragMode");
+  assert.equal(view.targeting.mouse.snapped, false);
+
+  const c = ctx.MC.ui.computeRowModels(s, view);
+  const rowT = c.models[ctx.MC.render.ROW_P_TABLE];
+  assert.ok(rowT && rowT.overlayItems, "expected table overlayItems during targeting");
+
+  const keys = new Set(rowT.overlayItems.filter((it) => it && it.kind === "ghost" && it.stackKey).map((it) => String(it.stackKey)));
+  assert.ok(keys.has("newSet:p0:row3"), "expected ghost for newSet");
+  assert.ok(keys.has("set:p0:set0"), "expected ghost for existing set0");
+});
+
+test("ui: mouse DnD confirms when released on a valid destination", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.MC.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const view = ctx.MC.ui.newView();
+  view.mode = "browse";
+  view.cursor.row = ctx.MC.render.ROW_P_HAND;
+  view.cursor.i = 0;
+
+  // Mouse should start on the selected hand card (the thing we're dragging).
+  const c0 = ctx.MC.ui.computeRowModels(s, view);
+  ctx.MC.ui.updateCameras(s, view, c0);
+  const sel0 = c0.selected;
+  assert.ok(sel0, "expected a selected item");
+  const cam0 = (view.camX && view.camX[sel0.row] != null) ? view.camX[sel0.row] : 0;
+  const x0 = sel0.x - cam0 + 2;
+  const y0 = sel0.y + 2;
+
+  // Enter targeting via mouse drag-start.
+  ctx.MC.ui.step(s, view, {
+    nav: {},
+    a: { grabStart: true },
+    mouse: { avail: true, x: x0, y: y0, moved: false, scrollX: 0, scrollY: 0, left: { down: true, pressed: true, released: false, tap: false }, middle: { down: false, pressed: false, released: false }, right: { down: false, pressed: false, released: false }, dragging: true, dragStart: true }
+  });
+  assert.equal(view.mode, "targeting");
+
+  const c = ctx.MC.ui.computeRowModels(s, view);
+  const rowT = ctx.MC.render.ROW_P_TABLE;
+  const rmT = c.models[rowT];
+  assert.ok(rmT && rmT.newSetX != null, "expected newSetX in targeting");
+  const camT = (view.camX && view.camX[rowT] != null) ? view.camX[rowT] : 0;
+  const x = rmT.newSetX - camT + 2;
+  const y = ctx.MC.layout.faceYForRow(rowT) + 2;
+
+  // Hover over newSet while dragging.
+  ctx.MC.ui.step(s, view, {
+    nav: {},
+    a: { down: true },
+    mouse: { avail: true, x, y, moved: true, scrollX: 0, scrollY: 0, left: { down: true, pressed: false, released: false, tap: false }, middle: { down: false, pressed: false, released: false }, right: { down: false, pressed: false, released: false }, dragging: true, dragStart: false }
+  });
+  assert.equal(view.targeting.mouse.snapped, true);
+
+  // Release on destination -> confirm cmd.
+  const intent = ctx.MC.ui.step(s, view, {
+    nav: {},
+    a: { released: true },
+    mouse: { avail: true, x, y, moved: false, scrollX: 0, scrollY: 0, left: { down: false, pressed: false, released: true, tap: false }, middle: { down: false, pressed: false, released: false }, right: { down: false, pressed: false, released: false }, dragging: false, dragStart: false }
+  });
+  assert.ok(intent && intent.kind === "applyCmd", "expected applyCmd intent");
+  assert.ok(intent.cmd && intent.cmd.kind, "expected cmd");
+});
+
+test("ui: mouse click in empty space does not trigger last selection", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.MC.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const view = ctx.MC.ui.newView();
+  view.mode = "browse";
+  view.cursor.row = ctx.MC.render.ROW_P_HAND;
+  view.cursor.i = 0;
+
+  const st = ctx.MC.controls.newState();
+  const cfg = ctx.MC.config.controls;
+
+  // Frame 1: press in empty space.
+  let a = ctx.MC.controls.actions(st, rawInput({ mouse: rawMouse({ x: 0, y: 0, left: true }) }), cfg);
+  ctx.MC.ui.step(s, view, a);
+
+  // Frame 2: release (tap) in empty space => should do nothing (no menu, no targeting).
+  a = ctx.MC.controls.actions(st, rawInput({ mouse: rawMouse({ x: 0, y: 0, left: false }) }), cfg);
+  const intent = ctx.MC.ui.step(s, view, a);
+  assert.equal(intent, null);
+  assert.equal(view.mode, "browse");
+  assert.ok(!view.menu || !view.menu.items || view.menu.items.length === 0, "expected no menu from empty click");
+});
+
+test("ui: mouse dragStart in empty space does not enter targeting", async () => {
+  const ctx = await loadSrcIntoVm();
+  ctx.MC.config.mouse.dragStartPx = 3;
+
+  const s = ctx.MC.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const view = ctx.MC.ui.newView();
+  view.mode = "browse";
+  view.cursor.row = ctx.MC.render.ROW_P_HAND;
+  view.cursor.i = 0;
+
+  const st = ctx.MC.controls.newState();
+  const cfg = ctx.MC.config.controls;
+
+  // Press in empty space.
+  let a = ctx.MC.controls.actions(st, rawInput({ mouse: rawMouse({ x: 0, y: 0, left: true }) }), cfg);
+  ctx.MC.ui.step(s, view, a);
+
+  // Move far enough to trigger dragStart while still in empty space.
+  a = ctx.MC.controls.actions(st, rawInput({ mouse: rawMouse({ x: 10, y: 0, left: true }) }), cfg);
+  ctx.MC.ui.step(s, view, a);
+
+  assert.equal(view.mode, "browse");
+  assert.ok(!view.targeting || !view.targeting.active, "expected not to enter targeting from empty drag");
 });
 
 test("controls: d-pad repeat pulses after delay", async () => {

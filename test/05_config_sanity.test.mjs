@@ -145,6 +145,7 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   assert.ok(MC.config.meta.version.length > 0, "expected MC.config.meta.version non-empty");
 
   assert.equal(typeof MC.config.controls, "object", "expected MC.config.controls");
+  assert.equal(typeof MC.config.mouse, "object", "expected MC.config.mouse");
   assert.equal(typeof MC.config.ui, "object", "expected MC.config.ui");
   assert.equal(typeof MC.config.title, "object", "expected MC.config.title");
   assert.equal(typeof MC.config.howto, "object", "expected MC.config.howto");
@@ -162,11 +163,22 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
     assert.ok(Number.isFinite(obj[key]), `expected ${key} to be finite`);
   };
 
+  const requireBool = (obj, key) =>
+    assert.equal(typeof obj[key], "boolean", `expected ${key} to be a boolean`);
+
   // Controls (frames).
   requirePosNum(MC.config.controls, "dpadRepeatDelayFrames");
   requirePosNum(MC.config.controls, "dpadRepeatPeriodFrames");
   requirePosNum(MC.config.controls, "aHoldFallbackFrames");
   requirePosNum(MC.config.controls, "xInspectDelayFrames");
+
+  // Mouse.
+  requireBool(MC.config.mouse, "enabled");
+  requirePosNum(MC.config.mouse, "dragStartPx");
+  requireNum(MC.config.mouse, "snapPadPx");
+  requireBool(MC.config.mouse, "wheelNav");
+  requireBool(MC.config.mouse, "wheelInvertY");
+  requireBool(MC.config.mouse, "hoverSelect");
 
   // Directional navigation cone penalties.
   requirePosNum(MC.config.ui, "navConeKLeftRight");

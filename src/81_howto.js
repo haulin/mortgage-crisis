@@ -516,6 +516,17 @@
 
     var actions = MC.controls.actions(H.ctrl, raw, cfg.controls);
 
+    // Mouse: header click pages left/right (Back is handled via right-click -> B).
+    var mouseCfg = cfg.mouse;
+    var m = actions && actions.mouse ? actions.mouse : null;
+    if (mouseCfg && mouseCfg.enabled && m && m.avail && actions.a && actions.a.tap && m.left && m.left.tap) {
+      var hc0 = cfg.howto;
+      if (m.y < hc0.headerH) {
+        if (m.x < (cfg.screenW / 2)) st.pageI = wrapI(st.pageI - 1, pages.length);
+        else st.pageI = wrapI(st.pageI + 1, pages.length);
+      }
+    }
+
     if (actions.b && actions.b.pressed) {
       return { kind: "backToTitle" };
     }

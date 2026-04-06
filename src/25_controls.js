@@ -16,6 +16,19 @@ MC.controls.newState = function () {
 
     // D-pad repeat counters (per direction button id 0..3).
     dpadRepeat: [0, 0, 0, 0],
+
+    // Mouse tracking (hover/click/drag).
+    mouse: {
+      prevX: 0,
+      prevY: 0,
+      prevLeft: false,
+      prevMiddle: false,
+      prevRight: false,
+      pressX: 0,
+      pressY: 0,
+      leftDragActive: false,
+      leftDraggedThisPress: false,
+    },
   };
 };
 
@@ -31,7 +44,62 @@ MC.controls.pollGlobals = function () {
     pressed[i] = hasBtnp ? !!btnp(i) : false;
   }
 
-  return { down: down, pressed: pressed };
+  var m = null;
+  if (typeof mouse === "function") {
+    var r = mouse();
+    var x = 0, y = 0;
+    var left = false, middle = false, right = false;
+    var scrollx = 0, scrolly = 0;
+    if (r && typeof r.length === "number") {
+      x = Number(r[0]);
+      y = Number(r[1]);
+      left = !!r[2];
+      middle = !!r[3];
+      right = !!r[4];
+      scrollx = Number(r[5]);
+      scrolly = Number(r[6]);
+    } else if (r && typeof r === "object") {
+      x = Number(r.x);
+      y = Number(r.y);
+      left = !!r.left;
+      middle = !!r.middle;
+      right = !!r.right;
+      scrollx = Number(r.scrollx);
+      scrolly = Number(r.scrolly);
+    }
+    if (!isFinite(x)) x = 0;
+    if (!isFinite(y)) y = 0;
+    if (!isFinite(scrollx)) scrollx = 0;
+    if (!isFinite(scrolly)) scrolly = 0;
+    m = { x: x, y: y, left: left, middle: middle, right: right, scrollx: scrollx, scrolly: scrolly };
+  }
+
+  return { down: down, pressed: pressed, mouse: m };
+};
+
+// Canonical "no input" actions shape (useful when suppressing player input).
+MC.controls.emptyActions = function () {
+  return {
+    nav: { up: false, down: false, left: false, right: false },
+    a: { down: false, pressed: false, released: false, tap: false, grabActive: false, grabStart: false },
+    b: { pressed: false },
+    x: { down: false, pressed: false, released: false, inspectActive: false },
+    mouse: {
+      avail: false,
+      x: 0,
+      y: 0,
+      pressX: null,
+      pressY: null,
+      moved: false,
+      scrollX: 0,
+      scrollY: 0,
+      left: { down: false, pressed: false, released: false, tap: false },
+      middle: { down: false, pressed: false, released: false },
+      right: { down: false, pressed: false, released: false },
+      dragging: false,
+      dragStart: false
+    }
+  };
 };
 
 MC.controls.actions = function (st, raw, cfg) {
@@ -39,6 +107,10 @@ MC.controls.actions = function (st, raw, cfg) {
   // Contract: caller provides {down[8], pressed[8]} and cfg from MC.config.controls.
   var down = raw.down;
   var pressed = raw.pressed;
+  var mouseCfg = MC.config.mouse;
+  var m = raw ? raw.mouse : null;
+  var mouseEnabled = !!(mouseCfg && mouseCfg.enabled && m);
+  var mouseSt = st.mouse || null;
 
   var repeatDelay = cfg.dpadRepeatDelayFrames;
   var repeatPeriod = cfg.dpadRepeatPeriodFrames;
@@ -47,9 +119,69 @@ MC.controls.actions = function (st, raw, cfg) {
 
   var inspectDelay = cfg.xInspectDelayFrames;
 
+  var mx = mouseEnabled && m.x != null ? m.x : 0;
+  var my = mouseEnabled && m.y != null ? m.y : 0;
+  var mLeftDown = mouseEnabled ? !!m.left : false;
+  var mMiddleDown = mouseEnabled ? !!m.middle : false;
+  var mRightDown = mouseEnabled ? !!m.right : false;
+  var mScrollX = mouseEnabled && m.scrollx != null ? m.scrollx : 0;
+  var mScrollY = mouseEnabled && m.scrolly != null ? m.scrolly : 0;
+  if (!isFinite(mx)) mx = 0;
+  if (!isFinite(my)) my = 0;
+  if (!isFinite(mScrollX)) mScrollX = 0;
+  if (!isFinite(mScrollY)) mScrollY = 0;
+
+  var mPrevX = mouseSt ? mouseSt.prevX : 0;
+  var mPrevY = mouseSt ? mouseSt.prevY : 0;
+  var mPrevLeft = mouseSt ? !!mouseSt.prevLeft : false;
+  var mPrevMiddle = mouseSt ? !!mouseSt.prevMiddle : false;
+  var mPrevRight = mouseSt ? !!mouseSt.prevRight : false;
+
+  var mMoved = mouseEnabled ? (mx !== mPrevX || my !== mPrevY) : false;
+  var mLeftPressed = mouseEnabled ? (mLeftDown && !mPrevLeft) : false;
+  var mLeftReleased = mouseEnabled ? (!mLeftDown && mPrevLeft) : false;
+  var mMiddlePressed = mouseEnabled ? (mMiddleDown && !mPrevMiddle) : false;
+  var mMiddleReleased = mouseEnabled ? (!mMiddleDown && mPrevMiddle) : false;
+  var mRightPressed = mouseEnabled ? (mRightDown && !mPrevRight) : false;
+  var mRightReleased = mouseEnabled ? (!mRightDown && mPrevRight) : false;
+
+  // Mouse drag detection (left button).
+  var dragStartPx = mouseCfg ? mouseCfg.dragStartPx : 0;
+  if (!isFinite(dragStartPx)) dragStartPx = 0;
+  var dragStartNow = false;
+  var mouseDragging = false;
+  if (mouseSt) {
+    if (mLeftPressed) {
+      mouseSt.pressX = mx;
+      mouseSt.pressY = my;
+      mouseSt.leftDragActive = false;
+      mouseSt.leftDraggedThisPress = false;
+    }
+
+    if (mLeftDown) {
+      if (!mouseSt.leftDragActive && dragStartPx > 0) {
+        var dx = mx - mouseSt.pressX;
+        var dy = my - mouseSt.pressY;
+        if (dx * dx + dy * dy >= dragStartPx * dragStartPx) {
+          mouseSt.leftDragActive = true;
+          mouseSt.leftDraggedThisPress = true;
+          dragStartNow = true;
+        }
+      }
+    }
+
+    if (mLeftReleased) {
+      mouseSt.leftDragActive = false;
+    }
+
+    mouseDragging = !!(mLeftDown && mouseSt.leftDragActive);
+  }
+
   var i;
   for (i = 0; i < 8; i++) {
     var isDown = !!down[i];
+    // Mouse middle-click is treated as X (Inspect) hold.
+    if (i === 6 && mMiddleDown) isDown = true;
     st.held[i] = isDown ? (st.held[i] + 1) : 0;
   }
 
@@ -76,15 +208,25 @@ MC.controls.actions = function (st, raw, cfg) {
   var left = navPulse(2);
   var right = navPulse(3);
 
-  var aDown = !!down[4];
-  var aPressed = !!pressed[4] || rose(4);
-  var aReleased = fell(4);
+  if (mouseEnabled && mouseCfg && mouseCfg.wheelNav) {
+    var dy = mScrollY;
+    if (mouseCfg.wheelInvertY) dy = -dy;
+    if (dy < 0) up = true;
+    else if (dy > 0) downNav = true;
+  }
 
-  var bPressed = !!pressed[5] || rose(5);
+  var aDownBtn = !!down[4];
+  var aPressedBtn = !!pressed[4] || rose(4);
+  var aReleasedBtn = fell(4);
+  var aDown = !!(aDownBtn || mLeftDown);
+  var aPressed = !!(aPressedBtn || mLeftPressed);
+  var aReleased = !!(aReleasedBtn || mLeftReleased);
 
-  var xDown = !!down[6];
-  var xPressed = !!pressed[6] || rose(6);
-  var xReleased = fell(6);
+  var bPressed = !!(!!pressed[5] || rose(5) || mRightPressed);
+
+  var xDown = !!(down[6] || mMiddleDown);
+  var xPressed = !!(!!pressed[6] || rose(6) || mMiddlePressed);
+  var xReleased = !!(fell(6) || mMiddleReleased);
 
   // A grab mode: enter on hold+move (any nav pulse while A held),
   // or on fallback hold threshold.
@@ -101,6 +243,7 @@ MC.controls.actions = function (st, raw, cfg) {
     var shouldEnter = false;
     if (navAny && aHeldFrames > 0) shouldEnter = true;
     else if (aHeldFrames >= grabFallback && grabFallback > 0) shouldEnter = true;
+    else if (dragStartNow) shouldEnter = true;
     if (shouldEnter) {
       st.aGrabActive = true;
       st.aGrabEnteredThisPress = true;
@@ -131,6 +274,18 @@ MC.controls.actions = function (st, raw, cfg) {
   // Persist prevDown.
   for (i = 0; i < 8; i++) st.prevDown[i] = !!down[i];
 
+  // Persist mouse state.
+  if (mouseSt) {
+    mouseSt.prevX = mx;
+    mouseSt.prevY = my;
+    mouseSt.prevLeft = !!mLeftDown;
+    mouseSt.prevMiddle = !!mMiddleDown;
+    mouseSt.prevRight = !!mRightDown;
+  }
+
+  var leftTap = false;
+  if (mouseSt) leftTap = !!(mLeftReleased && !mouseSt.leftDraggedThisPress);
+
   return {
     nav: { up: up, down: downNav, left: left, right: right },
 
@@ -150,7 +305,23 @@ MC.controls.actions = function (st, raw, cfg) {
       pressed: xPressed,
       released: xReleased,
       inspectActive: !!st.xInspectActive,
-    }
+    },
+
+    mouse: {
+      avail: !!mouseEnabled,
+      x: mx,
+      y: my,
+      pressX: mouseSt ? mouseSt.pressX : mx,
+      pressY: mouseSt ? mouseSt.pressY : my,
+      moved: !!mMoved,
+      scrollX: mScrollX,
+      scrollY: mScrollY,
+      left: { down: !!mLeftDown, pressed: !!mLeftPressed, released: !!mLeftReleased, tap: !!leftTap },
+      middle: { down: !!mMiddleDown, pressed: !!mMiddlePressed, released: !!mMiddleReleased },
+      right: { down: !!mRightDown, pressed: !!mRightPressed, released: !!mRightReleased },
+      dragging: !!mouseDragging,
+      dragStart: !!dragStartNow,
+    },
   };
 };
 

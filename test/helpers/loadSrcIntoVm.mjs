@@ -52,6 +52,34 @@ export async function loadSrcIntoVm({ extraGlobals } = {}) {
     new vm.Script(source, { filename: `src/${fileName}` }).runInContext(context);
   }
 
+  // Test convenience: many tests pass a minimal "actions patch" into MC.ui.step.
+  // Runtime always supplies the full canonical shape via MC.controls.actions / emptyActions.
+  if (
+    context.MC &&
+    context.MC.controls &&
+    typeof context.MC.controls.emptyActions === "function" &&
+    context.MC.ui &&
+    typeof context.MC.ui.step === "function"
+  ) {
+    const origStep = context.MC.ui.step;
+
+    const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+    const mergeInto = (dst, src) => {
+      if (!isObj(src)) return;
+      for (const k of Object.keys(src)) {
+        const sv = src[k];
+        if (isObj(sv) && isObj(dst[k])) mergeInto(dst[k], sv);
+        else dst[k] = sv;
+      }
+    };
+
+    context.MC.ui.step = (state, view, actionsPatch) => {
+      const actions = context.MC.controls.emptyActions();
+      mergeInto(actions, actionsPatch);
+      return origStep(state, view, actions);
+    };
+  }
+
   return context;
 }
 

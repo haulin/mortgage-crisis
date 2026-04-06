@@ -141,6 +141,9 @@ MC.fmt.targetingTitle = function (targeting, cmd) {
 
 MC.fmt.targetingDestLine = function (state, targeting, cmd) {
   var t = targeting || null;
+  if (t && t.mouse && t.mouse.dragMode && t.mouse.dragging && !t.mouse.snapped) {
+    return "Hover dest\nto snap";
+  }
 
   var tKind = t && t.kind ? String(t.kind) : "";
   var prof = MC.cmd.getProfile(tKind);
@@ -150,6 +153,12 @@ MC.fmt.targetingDestLine = function (state, targeting, cmd) {
 
 MC.fmt.targetingHelp = function (targeting) {
   var t = targeting || null;
+  if (t && t.mouse && t.mouse.dragMode && t.mouse.dragging && !t.mouse.snapped) {
+    var help = "Hover:Snap";
+    if (t.card && t.card.def && MC.rules.isWildDef(t.card.def)) help += "  U/D:Color";
+    help += "\nRelease:Cancel  Right:Cancel";
+    return help;
+  }
   var kind = t && t.kind ? String(t.kind) : "";
   var prof = MC.cmd.getProfile(kind);
   var help = (prof && prof.helpLR) ? String(prof.helpLR) : "L/R: Dest";
