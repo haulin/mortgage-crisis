@@ -1375,6 +1375,13 @@ MC.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
     return;
   }
 
+  // Profile-driven default selection (e.g. Rent: highest amount, without changing cycle order).
+  var profD = MC.cmd.getProfile(t.kind);
+  if (profD && typeof profD.defaultCmdI === "function") {
+    var di = profD.defaultCmdI(state, t.cmds, t.card ? t.card.loc : null);
+    if (di != null) t.cmdI = MC.ui.clampI(di, t.cmds.length);
+  }
+
   view.mode = "targeting";
 };
 
@@ -1415,6 +1422,15 @@ MC.ui.targetingEnterHoldChain = function (state, view, kinds, uid, loc) {
   t.cmds = seg0.cmds;
   t.cmdI = 0;
   t.wildColor = (chain && chain.wildColor != null) ? chain.wildColor : MC.state.NO_COLOR;
+
+  // Profile-driven default selection for the first segment (notably Rent).
+  var prof0 = MC.cmd.getProfile(t.kind);
+  if (prof0 && typeof prof0.defaultCmdI === "function") {
+    var di0 = prof0.defaultCmdI(state, t.cmds, t.card ? t.card.loc : null);
+    if (di0 != null) t.cmdI = MC.ui.clampI(di0, t.cmds.length);
+    seg0.cmdI = t.cmdI;
+  }
+
   view.mode = "targeting";
 };
 
@@ -1790,8 +1806,9 @@ MC.ui.step = function (state, view, actions) {
       // Preserve selection across sort only when we're not at the default index 0.
       // This avoids letting pre-sort engine order influence the default selection on first entry.
       var preserveNonDefault = (t.cmdI !== 0);
-      var keepNewSet = preserveNonDefault && !!(prev && prev.dest && prev.dest.newSet);
-      var keepSetI = preserveNonDefault && (prev && prev.dest && prev.dest.setI != null) ? prev.dest.setI : null;
+      // Preserve selection by interpreted destination semantics (supports cmds that don't have cmd.dest,
+      // e.g. Rent uses cmd.setI).
+      var keepDest = preserveNonDefault ? MC.moves.destForCmd(prev) : null;
       var keepTargetUid = preserveNonDefault && (prev && prev.target && prev.target.uid) ? prev.target.uid : 0;
       var keepTargetLoc = preserveNonDefault && (prev && prev.target && prev.target.loc) ? prev.target.loc : null;
 
@@ -1808,10 +1825,20 @@ MC.ui.step = function (state, view, actions) {
       var i;
       if (keepSource) {
         for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].kind === "source") { selI = i; break; }
-      } else if (keepNewSet) {
-        for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].dest && cmds[i].dest.newSet) { selI = i; break; }
-      } else if (keepSetI != null) {
-        for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].dest && cmds[i].dest.setI === keepSetI) { selI = i; break; }
+      } else if (keepDest && keepDest.kind) {
+        var k = keepDest.kind;
+        var kp = (keepDest.p != null) ? keepDest.p : null;
+        var kSetI = (keepDest.setI != null) ? keepDest.setI : null;
+        for (i = 0; i < cmds.length; i++) {
+          var cD = cmds[i];
+          if (!cD || !cD.kind) continue;
+          var dD = MC.moves.destForCmd(cD);
+          if (!dD || dD.kind !== k) continue;
+          if (kp != null && dD.p != null && dD.p !== kp) continue;
+          if ((k === "setEnd" || k === "setTop") && kSetI != null && dD.setI !== kSetI) continue;
+          selI = i;
+          break;
+        }
       } else if (keepTargetUid && keepTargetLoc) {
         for (i = 0; i < cmds.length; i++) {
           var c = cmds[i];

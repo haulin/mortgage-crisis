@@ -107,20 +107,6 @@ MC.moves.slyDealMovesForUid = function (state, uid) {
   return out;
 };
 
-MC.moves.sortRentMovesByAmount = function (state, p, rentMoves) {
-  if (!rentMoves || rentMoves.length <= 1) return rentMoves;
-  rentMoves.sort(function (a, b) {
-    var ai = (a && a.setI != null) ? a.setI : -1;
-    var bi = (b && b.setI != null) ? b.setI : -1;
-    var aa = MC.rules.rentAmountForSet(state, p, ai);
-    var bb = MC.rules.rentAmountForSet(state, p, bi);
-    var d = bb - aa;
-    if (d) return d;
-    return ai - bi;
-  });
-  return rentMoves;
-};
-
 MC.moves.locAllowsSource = function (loc) {
   if (!loc || !loc.zone) return false;
   var z = String(loc.zone);

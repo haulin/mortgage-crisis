@@ -270,7 +270,7 @@ MC.config = {
 };
 
 MC.config.meta = {
-  version: "MVP v0.15"
+  version: "MVP v0.16"
 };
 
 MC.config.debug = {
@@ -2689,20 +2689,6 @@ MC.moves.slyDealMovesForUid = function (state, uid) {
   return out;
 };
 
-MC.moves.sortRentMovesByAmount = function (state, p, rentMoves) {
-  if (!rentMoves || rentMoves.length <= 1) return rentMoves;
-  rentMoves.sort(function (a, b) {
-    var ai = (a && a.setI != null) ? a.setI : -1;
-    var bi = (b && b.setI != null) ? b.setI : -1;
-    var aa = MC.rules.rentAmountForSet(state, p, ai);
-    var bb = MC.rules.rentAmountForSet(state, p, bi);
-    var d = bb - aa;
-    if (d) return d;
-    return ai - bi;
-  });
-  return rentMoves;
-};
-
 MC.moves.locAllowsSource = function (loc) {
   if (!loc || !loc.zone) return false;
   var z = String(loc.zone);
@@ -3231,6 +3217,34 @@ MC.cmd.previewForCmd = function (state, cmd, card) {
   return out;
 };
 
+// UI helper: return the screen-space X coordinate for a cmd's destination slot.
+// Used for spatial L/R targeting-cycle ordering across targeting kinds.
+MC.cmd.screenXForCmdDest = function (ctx, cmd) {
+  // Source is always ordered via sortRank, but keep a stable extreme X if it ever leaks through.
+  if (cmd && cmd.kind === "source") return 999999;
+
+  var d = MC.moves.destForCmd(cmd);
+  var p = d.p;
+  var row =
+    (d.kind === "bankEnd")
+      ? ((p === 0) ? MC.render.ROW_P_HAND : MC.render.ROW_OP_HAND)
+      : ((p === 0) ? MC.render.ROW_P_TABLE : MC.render.ROW_OP_TABLE);
+
+  var rm = ctx.computed.models[row];
+  var cam = ctx.view.camX[row];
+
+  if (d.kind === "newSet") return rm.newSetX - cam;
+
+  if (d.kind === "bankEnd") {
+    var stB = rm.stacks["bank:p" + p + ":row" + row];
+    return (stB.x0 + stB.nReal * stB.stride * stB.fanDir) - cam;
+  }
+
+  var stS = rm.stacks["set:p" + p + ":set" + d.setI];
+  var depth = (d.kind === "setTop") ? (stS.nReal - 1) : stS.nReal;
+  return (stS.x0 + depth * stS.stride * stS.fanDir) - cam;
+};
+
 MC.cmd.buildHoldChain = function (state, uid, loc, kinds) {
   var out = { segs: [], wildColor: MC.state.NO_COLOR };
   var chainWildColor = MC.state.NO_COLOR;
@@ -3268,7 +3282,15 @@ MC.cmdProfiles.place = {
     return MC.moves.placeCmdsForUid(state, uid, def, wildColor);
   },
   destLine: MC.cmd.destLinePlaceLike,
-  ui: { mode: "preview" }
+  ui: {
+    mode: "preview",
+    screenXForCmd: MC.cmd.screenXForCmdDest,
+    sortRank: function (cmdP) {
+      if (cmdP.kind === "source") return 2;
+      if (cmdP.dest && cmdP.dest.newSet) return 1;
+      return 0;
+    }
+  }
 };
 
 MC.cmdProfiles.moveWild = {
@@ -3285,28 +3307,14 @@ MC.cmdProfiles.moveWild = {
   cmdsForWildColor: function (state, uid, def, wildColor) {
     return MC.moves.moveWildCmdsForUid(state, uid, def, wildColor);
   },
-  sortRank: function (cmd) {
-    if (cmd && cmd.kind === "source") return 2;
-    if (cmd && cmd.dest && cmd.dest.newSet) return 1;
-    return 0;
-  },
   destLine: MC.cmd.destLinePlaceLike,
   ui: {
     mode: "preview",
-    screenXForCmd: function (ctx, cmdW) {
-      if (!cmdW || !cmdW.kind || cmdW.kind !== "moveWild") return 999999;
-      if (cmdW.dest && cmdW.dest.newSet) return 999999;
-      var setI = (cmdW.dest && cmdW.dest.setI != null) ? cmdW.dest.setI : null;
-      if (setI == null) return 999999;
-      var rmT = ctx.computed.models[MC.render.ROW_P_TABLE];
-      var st = rmT.stacks["set:p0:set" + setI];
-      if (!st) return 999999;
-      var x = st.x0 + st.nReal * st.stride * st.fanDir;
-      var cam = ctx.view.camX[MC.render.ROW_P_TABLE];
-      return x - cam;
-    },
-    sortRank: function (cmd) {
-      return MC.cmdProfiles.moveWild.sortRank(cmd);
+    screenXForCmd: MC.cmd.screenXForCmdDest,
+    sortRank: function (cmdW) {
+      if (cmdW.kind === "source") return 2;
+      if (cmdW.dest && cmdW.dest.newSet) return 1;
+      return 0;
     }
   }
 };
@@ -3320,7 +3328,11 @@ MC.cmdProfiles.bank = {
   includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
   cmdsForUid: function (state, uid) { return MC.moves.bankCmdsForUid(state, uid); },
   destLine: MC.cmd.destLineForCmd,
-  ui: { mode: "preview" }
+  ui: {
+    mode: "preview",
+    screenXForCmd: MC.cmd.screenXForCmdDest,
+    sortRank: function (cmdB) { return (cmdB.kind === "source") ? 1 : 0; }
+  }
 };
 
 MC.cmdProfiles.build = {
@@ -3332,7 +3344,11 @@ MC.cmdProfiles.build = {
   includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
   cmdsForUid: function (state, uid) { return MC.moves.buildCmdsForUid(state, uid); },
   destLine: MC.cmd.destLineForCmd,
-  ui: { mode: "preview" }
+  ui: {
+    mode: "preview",
+    screenXForCmd: MC.cmd.screenXForCmdDest,
+    sortRank: function (cmdH) { return (cmdH.kind === "source") ? 1 : 0; }
+  }
 };
 
 MC.cmdProfiles.rent = {
@@ -3343,12 +3359,33 @@ MC.cmdProfiles.rent = {
   menuHoverPreview: true,
   includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
   cmdsForUid: function (state, uid, loc) {
-    var cmds = MC.moves.rentMovesForUid(state, uid);
-    MC.moves.sortRentMovesByAmount(state, loc ? loc.p : 0, cmds);
-    return cmds;
+    return MC.moves.rentMovesForUid(state, uid);
+  },
+  defaultCmdI: function (state, cmds, loc) {
+    if (!cmds || cmds.length === 0) return 0;
+    var p = (loc && loc.p != null) ? loc.p : 0;
+    var bestI = 0;
+    var bestAmt = -999999;
+    var bestSetI = 999999;
+    var i;
+    for (i = 0; i < cmds.length; i++) {
+      var c = cmds[i];
+      if (!c || c.kind !== "playRent" || c.setI == null) continue;
+      var amt = MC.rules.rentAmountForSet(state, p, c.setI);
+      if (amt > bestAmt || (amt === bestAmt && c.setI < bestSetI)) {
+        bestAmt = amt;
+        bestSetI = c.setI;
+        bestI = i;
+      }
+    }
+    return bestI;
   },
   destLine: MC.cmd.destLineForCmd,
-  ui: { mode: "preview" }
+  ui: {
+    mode: "preview",
+    screenXForCmd: MC.cmd.screenXForCmdDest,
+    sortRank: function (cmdR) { return (cmdR.kind === "source") ? 1 : 0; }
+  }
 };
 
 MC.cmdProfiles.sly = {
@@ -6039,6 +6076,13 @@ MC.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
     return;
   }
 
+  // Profile-driven default selection (e.g. Rent: highest amount, without changing cycle order).
+  var profD = MC.cmd.getProfile(t.kind);
+  if (profD && typeof profD.defaultCmdI === "function") {
+    var di = profD.defaultCmdI(state, t.cmds, t.card ? t.card.loc : null);
+    if (di != null) t.cmdI = MC.ui.clampI(di, t.cmds.length);
+  }
+
   view.mode = "targeting";
 };
 
@@ -6079,6 +6123,15 @@ MC.ui.targetingEnterHoldChain = function (state, view, kinds, uid, loc) {
   t.cmds = seg0.cmds;
   t.cmdI = 0;
   t.wildColor = (chain && chain.wildColor != null) ? chain.wildColor : MC.state.NO_COLOR;
+
+  // Profile-driven default selection for the first segment (notably Rent).
+  var prof0 = MC.cmd.getProfile(t.kind);
+  if (prof0 && typeof prof0.defaultCmdI === "function") {
+    var di0 = prof0.defaultCmdI(state, t.cmds, t.card ? t.card.loc : null);
+    if (di0 != null) t.cmdI = MC.ui.clampI(di0, t.cmds.length);
+    seg0.cmdI = t.cmdI;
+  }
+
   view.mode = "targeting";
 };
 
@@ -6454,8 +6507,9 @@ MC.ui.step = function (state, view, actions) {
       // Preserve selection across sort only when we're not at the default index 0.
       // This avoids letting pre-sort engine order influence the default selection on first entry.
       var preserveNonDefault = (t.cmdI !== 0);
-      var keepNewSet = preserveNonDefault && !!(prev && prev.dest && prev.dest.newSet);
-      var keepSetI = preserveNonDefault && (prev && prev.dest && prev.dest.setI != null) ? prev.dest.setI : null;
+      // Preserve selection by interpreted destination semantics (supports cmds that don't have cmd.dest,
+      // e.g. Rent uses cmd.setI).
+      var keepDest = preserveNonDefault ? MC.moves.destForCmd(prev) : null;
       var keepTargetUid = preserveNonDefault && (prev && prev.target && prev.target.uid) ? prev.target.uid : 0;
       var keepTargetLoc = preserveNonDefault && (prev && prev.target && prev.target.loc) ? prev.target.loc : null;
 
@@ -6472,10 +6526,20 @@ MC.ui.step = function (state, view, actions) {
       var i;
       if (keepSource) {
         for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].kind === "source") { selI = i; break; }
-      } else if (keepNewSet) {
-        for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].dest && cmds[i].dest.newSet) { selI = i; break; }
-      } else if (keepSetI != null) {
-        for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].dest && cmds[i].dest.setI === keepSetI) { selI = i; break; }
+      } else if (keepDest && keepDest.kind) {
+        var k = keepDest.kind;
+        var kp = (keepDest.p != null) ? keepDest.p : null;
+        var kSetI = (keepDest.setI != null) ? keepDest.setI : null;
+        for (i = 0; i < cmds.length; i++) {
+          var cD = cmds[i];
+          if (!cD || !cD.kind) continue;
+          var dD = MC.moves.destForCmd(cD);
+          if (!dD || dD.kind !== k) continue;
+          if (kp != null && dD.p != null && dD.p !== kp) continue;
+          if ((k === "setEnd" || k === "setTop") && kSetI != null && dD.setI !== kSetI) continue;
+          selI = i;
+          break;
+        }
       } else if (keepTargetUid && keepTargetLoc) {
         for (i = 0; i < cmds.length; i++) {
           var c = cmds[i];

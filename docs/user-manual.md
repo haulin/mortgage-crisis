@@ -110,7 +110,7 @@ After some property placements, the rules may offer an *optional* prompt to repo
 
 While targeting the Wild move:
 
-- **Left/Right**: cycle destinations (matching-color sets + New set, plus **Source** to cancel)
+- **Left/Right**: cycle destinations (matching-color sets + New set, plus **Source** to cancel; ordered left→right)
 - **Up/Down**: toggle which color the Wild will count as at the destination
 - Confirm normally with **A**, or cancel by cycling to **Source** and confirming
 
@@ -121,7 +121,8 @@ If you have a Rent card and at least one eligible set, it can be played (not jus
 - Cursor the Rent card in hand, then **tap A** to open the menu
 - Choose **Rent**
 - If there are multiple eligible sets, you enter a Rent picker:
-  - **Left/Right**: cycle which of your sets you’re charging rent from
+  - default selection is your **highest-rent** eligible set
+  - **Left/Right**: cycle which of your sets you’re charging rent from (spatial, left→right across your table; wraps)
   - the overlay shows the chosen set and the amount
   - **A** confirms, **B** cancels (or cycle to **Source** and confirm)
 - After confirming, the opponent pays via the standard **pay-debt prompt** (and may be able to respond with JSN before paying anything).
@@ -192,7 +193,7 @@ There are two ways to enter targeting:
 
 While targeting:
 
-- **Left/Right**: cycle destinations/options
+- **Left/Right**: cycle destinations/options (ordered spatially left→right by on-screen position; wraps)
 - **Up/Down**: toggle Wild color (when targeting a Wild placement or Wild move)
 - **B**: cancel targeting and return to browse
 

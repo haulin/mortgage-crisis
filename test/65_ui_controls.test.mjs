@@ -1629,8 +1629,8 @@ test("ui: menu hover Rent (multi-target) does not imply a default target while h
 
   const rentMoves = ctx.MC.moves.rentMovesForUid(s, uid);
   assert.ok(rentMoves.length >= 2, "expected 2+ rent targets");
-  ctx.MC.moves.sortRentMovesByAmount(s, 0, rentMoves);
-  assert.equal(rentMoves[0].setI, 1, "expected sorted default target to be the Magenta set (setI=1)");
+  const di = ctx.MC.cmdProfiles.rent.defaultCmdI(s, rentMoves, { p: 0, zone: "hand", i: 0 });
+  assert.equal(rentMoves[di].setI, 1, "expected default target to be the Magenta set (setI=1)");
 
   const i = s.players[0].hand.indexOf(uid);
   const view = ctx.MC.ui.newView();

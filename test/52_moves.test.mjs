@@ -138,7 +138,7 @@ test("moves: destForCmd maps cmd kinds to board destinations", async () => {
   assert.equal(ctx.MC.moves.destForCmd({ kind: "nope" }), null);
 });
 
-test("moves: sortRentMovesByAmount uses p (not hardcoded 0)", async () => {
+test("cmdProfiles.rent: defaultCmdI uses loc.p (not hardcoded 0)", async () => {
   const ctx = await loadSrcIntoVm();
   const s = ctx.MC.state.newGame({ seedU32: 1 });
   ctx.MC.scenarios.resetForScenario(s);
@@ -171,8 +171,8 @@ test("moves: sortRentMovesByAmount uses p (not hardcoded 0)", async () => {
   const a1 = ctx.MC.rules.rentAmountForSet(s, 1, 1);
   assert.ok(a1 > a0, "expected setI=1 to have higher rent than setI=0");
 
-  ctx.MC.moves.sortRentMovesByAmount(s, 1, rentMoves);
-  assert.equal(rentMoves[0].setI, 1, "expected highest-rent set first");
+  const di = ctx.MC.cmdProfiles.rent.defaultCmdI(s, rentMoves, { p: 1, zone: "hand", i: 0 });
+  assert.equal(rentMoves[di].setI, 1, "expected highest-rent set chosen by default");
 });
 
 test("moves: cmdsForTargeting(place) returns cmds + wildColor and includes Source for hand loc", async () => {

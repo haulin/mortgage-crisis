@@ -64,7 +64,7 @@ Rent cards are now playable:
   - Amount is computed from set size (capped at required size) plus House bonus when applicable.
 - UI:
   - Rent cards show a **Rent** menu option when at least one eligible set exists.
-  - Rent uses a targeting-like picker where **L/R cycles sets**, defaulting to the **highest** rent amount but allowing player override (strategic low-rent plays).
+  - Rent uses a targeting-like picker where **L/R cycles sets** (spatial/left→right), defaulting to the **highest** rent amount but allowing player override (strategic low-rent plays).
 - Harness note:
   - During Phase 06 development, the debug harness temporarily auto-resolved opponent `payDebt` prompts for playtesting; this is superseded by Phase 07’s simple AI loop.
 

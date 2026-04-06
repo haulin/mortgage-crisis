@@ -492,17 +492,22 @@ Done:
 - Fix focus stability edge cases exposed by animation locks (deal lock selection anchoring; transfer lock anchor refresh; replace-window exit snapping to End when out of plays).
 - See `docs/phase15.md`.
 
+### Phase 16 ✅ — Targeting-cycle refactor
+- Targeting-cycle refactor: directionally consistent L/R ordering across all targeting kinds (Rent/Place/Build/Bank/Sly).
+- Rent targeting cycles spatially (no amount-based jumps), while defaulting to the highest-rent set.
+- See `docs/phase16.md`.
+
 
 ### Phase 17 - Demo ready
 
 - Replace placeholder action icons with larger **~15×15** icons (implemented as a 2×2 sprite block with a colorkey padding row/col to yield an effective 15×15)
 - More exciting animated abstract background; fallback to tiled sprite patterns if per-frame generation is too expensive
 - Add mouse controls (TIC-80 `mouse()`) layered on top of controller UX
-- scrolling in the banks shuffle stress scenario is not good
 - Move cards from one set to another, costing a play
 
 ### Phase 18 — Post‑Demo
 
+- scrolling in the banks shuffle stress scenario is not good
 - Seed UX for dev/playtesting:
   - seed **display** (show the current seed so bug reports are reproducible)
   - seed **override** (type/select a seed so a run is replayable)
@@ -547,7 +552,6 @@ Issues:
   - Still missing: a general feature registry for engine/rules hooks (e.g. post-apply prompt triggers) and prompt-mode legality/validation hooks.
   - Migration: convert one feature at a time and keep a generic fallback for anything not registered.
 - Broader spatially-aware targeting cycle redesign (directionally consistent cycling, improved Up/Down semantics, etc.)
-- Targeting-cycle refactor: directionally consistent L/R ordering across all targeting kinds (Rent/Place/Build/Bank/Sly)
 - Add a red chevron/arrow threat marker option (instead of ghost-only) for respond/target emphasis
 - (Optional later) Reduced motion accessibility toggle:
   - make animations/presentation a no-op pass-through
