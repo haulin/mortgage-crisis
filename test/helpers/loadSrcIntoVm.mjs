@@ -32,10 +32,16 @@ export async function loadSrcIntoVm({ extraGlobals } = {}) {
     rectb: () => {},
     line: () => {},
     spr: () => {},
+    clip: () => {},
     btn: () => 0,
     btnp: () => 0,
+    mouse: () => null,
     // Seed policy stubs (TIC-80 provides these; tests keep them deterministic).
     tstamp: () => 0,
+    // VRAM / palette ops (used by vbank overlay workflow).
+    vbank: () => 0,
+    poke: () => {},
+    peek: () => 0,
 
     // Useful for debugging tests.
     console,

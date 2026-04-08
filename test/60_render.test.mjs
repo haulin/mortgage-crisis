@@ -197,6 +197,57 @@ test("render: rent card draws 2px color bars at bottom", async () => {
   assert.equal(colByY.get(y1), ctx.MC.Pal.Black, "expected top bar black");
 });
 
+test("render: money card center icon draws as a 2x2 sprite block", async () => {
+  const rec = makeRecorder();
+  const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
+
+  const s = ctx.MC.state.newGame({ seedU32: 1 });
+  const uid = ctx.MC.state.takeUid(s, "money_1");
+  assert.ok(uid, "expected money_1 uid");
+
+  // Minimal visible state: only this money card in player hand.
+  s.deck = s.deck.filter((u) => u !== uid);
+  s.discard = s.discard.filter((u) => u !== uid);
+  for (let p = 0; p < 2; p++) {
+    s.players[p].hand = s.players[p].hand.filter((u) => u !== uid);
+    s.players[p].bank = s.players[p].bank.filter((u) => u !== uid);
+    s.players[p].sets = [];
+  }
+  s.players[0].hand = [uid];
+  s.activeP = 0;
+  s.playsLeft = 3;
+
+  const view = newView(ctx);
+  view.cursor.row = ctx.MC.render.ROW_P_HAND;
+  view.cursor.i = 0;
+  drawFrame(ctx, s, view);
+
+  const L = ctx.MC.config.render.layout;
+  const S = ctx.MC.config.render.style;
+  const sprId = ctx.MC.config.render.spr.iconMoney;
+
+  const cam = view.camX[ctx.MC.render.ROW_P_HAND] ?? 0;
+  const xFace = (L.rowPadX) - cam;
+  const yFace = L.rowY[ctx.MC.render.ROW_P_HAND] + L.faceInsetY;
+  const expectedX = xFace + S.iconX;
+  const expectedY = yFace + S.iconY;
+
+  const sprCall = rec.calls.find(
+    (c) =>
+      c.kind === "spr" &&
+      c.args[0] === sprId &&
+      c.args[1] === expectedX &&
+      c.args[2] === expectedY &&
+      c.args[3] === S.sprColorkey &&
+      c.args[4] === 1 &&
+      c.args[5] === 0 &&
+      c.args[6] === 0 &&
+      c.args[7] === 2 &&
+      c.args[8] === 2
+  );
+  assert.ok(sprCall, `expected 2x2 money icon spr at (${expectedX},${expectedY})`);
+});
+
 test("render: opponent table stack shadow is mirrored", async () => {
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
@@ -397,7 +448,7 @@ test("render: wild in set uses assigned color for visual top", async () => {
     (c) => c.kind === "rect" && c.args[0] === xBar && c.args[1] === yBar && c.args[2] === S.propBarW && c.args[3] === S.propBarH
   );
   assert.ok(bar, "expected to find top-half property color bar rect");
-  assert.equal(bar.args[4], ctx.MC.Pal.DarkGrey, "expected assigned black to render as top-half bar color");
+  assert.equal(bar.args[4], ctx.MC.Pal.Black, "expected assigned black to render as black (avoid index 15 reserved for transparency)");
 });
 
 test("render: opponent wild in set keeps assigned color on owner-facing half", async () => {
@@ -436,7 +487,7 @@ test("render: opponent wild in set keeps assigned color on owner-facing half", a
     (c) => c.kind === "rect" && c.args[0] === xBar && c.args[1] === yBar && c.args[2] === S.propBarW && c.args[3] === S.propBarH
   );
   assert.ok(bar, "expected to find owner-facing property color bar rect for opponent wild");
-  assert.equal(bar.args[4], ctx.MC.Pal.DarkGrey, "expected assigned black to render on owner-facing half for opponent wild");
+  assert.equal(bar.args[4], ctx.MC.Pal.Black, "expected assigned black to render as black (avoid index 15 reserved for transparency)");
 });
 
 test("render: no scroll when content fits (opponent hand row)", async () => {
@@ -465,7 +516,7 @@ test("render: no scroll when content fits (opponent hand row)", async () => {
   assert.equal(cam, 0, "expected no scrolling when opponent hand+bank fit");
 });
 
-test("render: opponent hand back sprite origin is aligned for rotate=2", async () => {
+test("render: opponent hand back tiles start at interior origin", async () => {
   const rec = makeRecorder();
   const ctx = await loadSrcIntoVm({ extraGlobals: rec.globals });
 
@@ -495,13 +546,13 @@ test("render: opponent hand back sprite origin is aligned for rotate=2", async (
     (c) =>
       c.kind === "spr" &&
       c.args[0] === backId &&
-      c.args[1] === xFace &&
-      c.args[2] === yFace &&
-      c.args[6] === 2 &&
-      c.args[7] === 2 &&
-      c.args[8] === 3
+      c.args[1] === (xFace + 1) &&
+      c.args[2] === (yFace + 1) &&
+      c.args[6] === 0 &&
+      c.args[7] === 1 &&
+      c.args[8] === 1
   );
-  assert.ok(sprCall, `expected rotate=2 card back spr at (${xFace},${yFace})`);
+  assert.ok(sprCall, `expected card back tile spr at (${xFace + 1},${yFace + 1})`);
 });
 
 test("render: center button strip uses dark fill and selected uses highlight fill", async () => {
@@ -532,19 +583,19 @@ test("render: center button strip uses dark fill and selected uses highlight fil
   );
   assert.ok(fillHighlight, "expected selected End button to have highlight fill rect");
 
-  // Some non-selected debug button (if present) should be dark (center panel color), not highlight.
+  // Some non-selected debug button (if present) should have no fill (transparent),
+  // so the center-panel dither shows through.
   const otherBtn = rowM.items.find((it) => it && it.kind === "btn" && it.id !== "endTurn");
   if (otherBtn) {
-    const darkFill = rec.calls.find(
+    const anyFill = rec.calls.find(
       (c) =>
         c.kind === "rect" &&
         c.args[0] === otherBtn.x &&
         c.args[1] === otherBtn.y &&
         c.args[2] === otherBtn.w &&
-        c.args[3] === otherBtn.h &&
-        c.args[4] === ctx.MC.config.render.style.colCenterPanel
+        c.args[3] === otherBtn.h
     );
-    assert.ok(darkFill, "expected at least one non-selected button to use center panel fill (dark)");
+    assert.ok(!anyFill, "expected non-selected button to have no fill rect (transparent)");
   }
 });
 

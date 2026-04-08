@@ -18,18 +18,6 @@
     return print(txt, x, y, col, false, scale, small);
   }
 
-  function drawTiledBg(cfg, W, H) {
-    var tc = cfg.title;
-    var tid = tc.bgTileSprId;
-    var ck = cfg.render.style.sprColorkey;
-    var xT, yT;
-    for (yT = 0; yT < H; yT += 16) {
-      for (xT = 0; xT < W; xT += 16) {
-        spr(tid, xT, yT, ck, 1, 0, 0, 2, 2);
-      }
-    }
-  }
-
   function drawControlsTable(tc, Pal, cx, cy, cw) {
     var x0 = cx + 2;
     var x1 = cx + Math.floor(cw * 0.34);
@@ -201,9 +189,7 @@
     var xBox = leftW + 2;
     var wBox = menuW - 8;
     var hBox = dy - 2;
-    // IMPORTANT: title renders in vbank(1) with transparency index = 15,
-    // so avoid using palette index 15 for UI borders (it becomes see-through).
-    // Use a consistent inactive border and only "light up" enabled selections.
+    // Keep borders understated and only "light up" enabled selections.
     var colB = selected && enabled ? Pal.White : Pal.Grey;
     var colT = enabled ? (selected ? Pal.White : Pal.LightGrey) : Pal.Grey;
     if (tc.menuItemBoxes) {
@@ -223,20 +209,11 @@
     var menuW = tc.menuW;
     var leftW = W - menuW;
 
-    // Render title into vbank(1) so it can use a distinct palette.
-    // vbank(1) overlays vbank(0); OVR transparency index lives at 0x03FF8 on vbank(1).
-    var hasVbank = (typeof vbank === "function");
-    if (hasVbank) {
-      // Clear the base bank too, so any transparent pixels in the overlay
-      // can't reveal stale game frames underneath.
-      vbank(0);
-      cls(Pal.DarkBlue);
-
-      vbank(1);
-      if (typeof poke === "function") poke(0x03FF8, 15);
-    }
+    // Render title into vbank(0) (background palette).
+    // Ensure vbank(1) overlay is fully transparent so gameplay UI can't leak over the title.
+    MC.render.vbankClearOverlay();
     cls(Pal.DarkBlue);
-    drawTiledBg(cfg, W, H);
+    MC.render.tileFillSpr(tc.bgTileSprId, 0, 0, W, H, 2, 2, cfg.render.style.sprColorkey);
 
     var logoScale = tc.logoScale;
     var logoX = tc.logoX;
@@ -283,9 +260,6 @@
     }
 
     MC.render.drawToasts(toastView);
-
-    // Always restore bank 0 so other modes render normally.
-    if (hasVbank) vbank(0);
   }
 
   T.tick = function (raw) {

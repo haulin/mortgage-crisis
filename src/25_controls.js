@@ -36,17 +36,15 @@ MC.controls.pollGlobals = function () {
   var down = [false, false, false, false, false, false, false, false];
   var pressed = [false, false, false, false, false, false, false, false];
 
-  var hasBtn = (typeof btn === "function");
-  var hasBtnp = (typeof btnp === "function");
   var i;
   for (i = 0; i < 8; i++) {
-    down[i] = hasBtn ? !!btn(i) : false;
-    pressed[i] = hasBtnp ? !!btnp(i) : false;
+    down[i] = !!btn(i);
+    pressed[i] = !!btnp(i);
   }
 
   var m = null;
-  if (typeof mouse === "function") {
-    var r = mouse();
+  var r = mouse();
+  if (r != null) {
     var x = 0, y = 0;
     var left = false, middle = false, right = false;
     var scrollx = 0, scrolly = 0;

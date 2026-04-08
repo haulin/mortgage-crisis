@@ -31,6 +31,9 @@ Documentation convention (for future phases):
 - **Phase 13 ✅**: Title menu becomes the main entry point (interactive menu + return-to-menu), with dev tools gated behind `Dev: ON/OFF`. See `docs/phase13.md`.
 - **Phase 14 ✅**: In-game How to Play screen (3 pages + scrolling + editable content blocks). See `docs/phase14.md`.
 - **Phase 15 ✅**: MVP animation polish (game-start deal/toast/draw, pay-buffer stack, curated transfer animations + focus stability). See `docs/phase15.md`.
+- **Phase 16 ✅**: Targeting-cycle refactor: directionally consistent L/R ordering across targeting kinds; rent targets cycle spatially. See `docs/phase16.md`.
+- **Phase 17 ✅**: Mouse controls (hover + click + drag-and-drop) layered on top of controller UX. See `docs/phase17.md`.
+- **Phase 18 ✅**: Demo-ready visuals: larger action icons + dithered panel fill + static tiled gameplay background; plasma kept as a separate showcase cart. See `docs/phase18.md`.
 
 ### Deferred-items capture (scope creep safety net)
 
@@ -509,10 +512,13 @@ Done:
   - wheel→nav (configurable, invert knob)
 - See `docs/phase17.md`.
 
-### Phase 18 - Demo ready?
+### Phase 18 ✅ — Demo-ready visuals
 
-- Replace placeholder action icons with larger **~15×15** icons (implemented as a 2×2 sprite block with a colorkey padding row/col to yield an effective 15×15)
-- More exciting animated abstract background; fallback to tiled sprite patterns if per-frame generation is too expensive
+- Replace placeholder action icons with larger **~15×15** icons (2×2 sprite block with a colorkey padding row/col yields an effective 15×15)
+- Gameplay background + center panel polish:
+  - gameplay uses a **static** repeating tile background (motion-safe + cheap)
+  - center panel uses a dither tile fill so the background can subtly show through
+- See `docs/phase18.md`.
 
 ### Phase 19 — Post‑Demo
 

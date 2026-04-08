@@ -88,12 +88,10 @@ MC.debug.eventsToLine = function (events) {
 MC.debug.tickTextMode = function () {
   var d = MC.debug;
 
-  if (typeof btnp === "function") {
-    // A: step, B: next scenario, X: reset
-    if (btnp(4)) MC.debug.step();
-    if (btnp(5)) MC.debug.nextScenario();
-    if (btnp(6)) MC.debug.reset({ pauseAutoFocus: true });
-  }
+  // A: step, B: next scenario, X: reset
+  if (btnp(4)) MC.debug.step();
+  if (btnp(5)) MC.debug.nextScenario();
+  if (btnp(6)) MC.debug.reset({ pauseAutoFocus: true });
 
   var s = d.state;
 
@@ -313,16 +311,6 @@ MC.debug.tickTextMode = function () {
 MC.mainTick = function () {
   var dbgEnabled = !!(MC.config.debug.enabled && MC.debug.toolsOn);
 
-  function clearTitleOverlay() {
-    // Clear vbank(1) overlay so it doesn't persist into DebugText/Render.
-    if (typeof vbank === "function") {
-      vbank(1);
-      if (typeof poke === "function") poke(0x03FF8, 15);
-      cls(15);
-      vbank(0);
-    }
-  }
-
   // Title mode: main entry point.
   if (MC._mainMode === 2) {
     var rawT = MC.controls.pollGlobals();
@@ -331,13 +319,13 @@ MC.mainTick = function () {
 
     if (intentT && intentT.kind) {
       if (intentT.kind === "howToPlay") {
-        clearTitleOverlay();
+        MC.render.vbankClearOverlay();
         MC._mainMode = 3;
         return;
       }
 
       if (intentT.kind === "startNewGame") {
-        clearTitleOverlay();
+        MC.render.vbankClearOverlay();
         if (MC.debug && typeof MC.debug.startNewGame === "function") MC.debug.startNewGame();
         MC._mainMode = 1;
         return;
@@ -345,7 +333,7 @@ MC.mainTick = function () {
 
       if (intentT.kind === "continueGame") {
         if (MC.debug && MC.debug.state != null) {
-          clearTitleOverlay();
+          MC.render.vbankClearOverlay();
           MC._mainMode = 1;
           return;
         }
@@ -359,7 +347,9 @@ MC.mainTick = function () {
   if (MC._mainMode === 3) {
     var rawH = MC.controls.pollGlobals();
     var intentH = null;
+    MC.render.vbankBeginOverlay();
     if (MC.howto && typeof MC.howto.tick === "function") intentH = MC.howto.tick(rawH);
+    vbank(0);
     if (intentH && intentH.kind === "backToTitle") {
       MC._mainMode = 2;
       return;
@@ -368,12 +358,14 @@ MC.mainTick = function () {
   }
 
   // Modes: 0=DebugText, 1=Render. Y toggles DebugText ↔ Render (dev-only).
-  if (dbgEnabled && (MC._mainMode === 0 || MC._mainMode === 1) && typeof btnp === "function" && btnp(7)) {
+  if (dbgEnabled && (MC._mainMode === 0 || MC._mainMode === 1) && btnp(7)) {
     MC._mainMode = MC._mainMode ? 0 : 1;
   }
 
   if (MC._mainMode === 0) {
     if (!dbgEnabled) { MC._mainMode = 1; return; }
+    // DebugText renders only in vbank(0); clear any leftover gameplay UI overlay.
+    MC.render.vbankClearOverlay();
     if (MC.debug.state == null) MC.debug.reset(null);
     MC.debug.tickTextMode();
     return;

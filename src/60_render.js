@@ -44,7 +44,7 @@
   R.propBarColByColor[MC.Color.Cyan] = Pal.Cyan;
   R.propBarColByColor[MC.Color.Magenta] = Pal.Purple;
   R.propBarColByColor[MC.Color.Orange] = Pal.Orange;
-  R.propBarColByColor[MC.Color.Black] = Pal.DarkGrey;
+  R.propBarColByColor[MC.Color.Black] = Pal.Black;
 
   function rectSafe(x, y, w, h, c) {
     rect(x | 0, y | 0, w | 0, h | 0, c | 0);
@@ -64,6 +64,53 @@
 
   function printExSafe(s, x, y, c, fixed, scale, smallfont) {
     print(String(s), x | 0, y | 0, c | 0, !!fixed, (scale == null ? 1 : scale) | 0, !!smallfont);
+  }
+
+  // Fill a rectangle by tiling a sprite block.
+  // Uses clip() so partial tiles at edges don't overdraw outside the region.
+  R.tileFillSpr = function (tid, x0, y0, w, h, sprW, sprH, colorkey) {
+    if (!tid) return;
+    if (!(w > 0) || !(h > 0)) return;
+    if (!(sprW > 0)) sprW = 1;
+    if (!(sprH > 0)) sprH = 1;
+
+    var stepX = sprW * 8;
+    var stepY = sprH * 8;
+    var x1 = x0 + w;
+    var y1 = y0 + h;
+
+    clip(x0 | 0, y0 | 0, w | 0, h | 0);
+    var x, y;
+    for (y = y0; y < y1; y += stepY) {
+      for (x = x0; x < x1; x += stepX) {
+        sprSafe(tid, x, y, colorkey, 1, 0, 0, sprW, sprH);
+      }
+    }
+    clip();
+  };
+
+  // VRAM overlay hygiene: clear vbank(1) to the transparent index so stale UI
+  // can't leak across modes (e.g. gameplay -> title/debug).
+  R.vbankClearOverlay = function () {
+    var t = R.cfg.sprColorkey;
+    vbank(1);
+    poke(0x03FF8, t);
+    cls(t);
+    vbank(0);
+  };
+
+  // Overlay begin: set transparency + clear to the transparent index.
+  // Leaves vbank(1) active for the caller to draw UI.
+  R.vbankBeginOverlay = function () {
+    var t = R.cfg.sprColorkey;
+    vbank(1);
+    poke(0x03FF8, t);
+    cls(t);
+    return t;
+  };
+
+  function drawGameplayBg() {
+    R.tileFillSpr(R.spr.bgTileTL, 0, 0, R.cfg.screenW, R.cfg.screenH, 2, 2, R.cfg.sprColorkey);
   }
 
   function rowY0(row) { return R.cfg.rowY[row]; }
@@ -273,8 +320,14 @@
   function drawCenterIcon(xFace, yFace, iconId, flip180) {
     if (!iconId) return;
     var ck = R.cfg.sprColorkey;
-    var p = cardLocalRectToScreen(xFace, yFace, R.cfg.iconX, R.cfg.iconY, 8, 8, flip180);
-    sprSafe(iconId, p.x, p.y, ck, 1, 0, flip180 ? 2 : 0, 1, 1);
+    // 15x15 effective icon implemented as a 2x2 (16x16) sprite block with
+    // the last row/col padded in the colorkey color.
+    var p = cardLocalRectToScreen(xFace, yFace, R.cfg.iconX, R.cfg.iconY, 15, 15, flip180);
+    // When rotated 180°, the padded colorkey row/col becomes top/left; shift
+    // origin so the visible 15x15 stays anchored at p.x,p.y.
+    var sx = flip180 ? (p.x - 1) : p.x;
+    var sy = flip180 ? (p.y - 1) : p.y;
+    sprSafe(iconId, sx, sy, ck, 1, 0, flip180 ? 2 : 0, 2, 2);
   }
 
   function drawMiniCard(state, uid, xFace, yFace, flip180, assignedColor) {
@@ -319,6 +372,7 @@
       drawRentBars(xFace, yFace, colors, !!flip180);
       var rv = def.bankValue;
       drawValueDigit(xFace, yFace, rv, !!flip180);
+      // Draw icon last so rent stripes never cover it.
       var rIcon = iconForDef(def);
       drawCenterIcon(xFace, yFace, rIcon, !!flip180);
       return;
@@ -336,46 +390,26 @@
   // Expose mini-card drawing so other modes (e.g. How-to-Play) can reuse it.
   R.drawMiniCard = drawMiniCard;
 
-  function drawCardBack(xFace, yFace, flip180) {
+  function drawCardBack(xFace, yFace) {
     var cfg = R.cfg;
-    var id = (R.spr && R.spr.cardBackTL != null) ? R.spr.cardBackTL : 0;
-
-    if (id) {
-      // Card back: 2x3 sprite (16x24) drawn inside the 1px border.
-      // Art convention: last col + last row are colorkey (15) so the effective area is 15x23.
-      drawCardFaceBase(xFace, yFace, cfg.colCardInterior);
-      // When rotated 180°, the padded colorkey row/col becomes the top/left edge.
-      // Shift origin so the visible pattern still starts at (1,1) inside the border.
-      var sx = flip180 ? xFace : (xFace + 1);
-      var sy = flip180 ? yFace : (yFace + 1);
-      sprSafe(id, sx, sy, cfg.sprColorkey, 1, 0, flip180 ? 2 : 0, 2, 3);
-      return;
-    }
-
-    // Fallback back: border + interior + diagonal bars.
-    drawCardFaceBase(xFace, yFace, 1);
-    var p1 = cardLocalRectToScreen(xFace, yFace, 3, 6, 11, 2, flip180);
-    rectSafe(p1.x, p1.y, p1.w, p1.h, 12);
-    var p2 = cardLocalRectToScreen(xFace, yFace, 3, 16, 11, 2, flip180);
-    rectSafe(p2.x, p2.y, p2.w, p2.h, 12);
+    drawCardFaceBase(xFace, yFace, cfg.colCardInterior);
+    // Fill interior (15x23) with the top-left 8x8 tile as a repeatable pattern.
+    R.tileFillSpr(R.spr.cardBackTL, xFace + 1, yFace + 1, 15, 23, 1, 1, cfg.sprColorkey);
   }
 
-  function drawCenter(opts) {
-    if (!opts || !opts.state || !opts.view || !opts.computed) return;
-    var s = opts.state;
-    var view = opts.view;
-    var computed = opts.computed;
-    var selectedItem = opts.selected;
+  function drawCenter(state, view, computed, selectedItem, hlCol) {
+    var s = state;
 
     var cfg = R.cfg;
     var row = R.ROW_CENTER;
     var y0 = rowY0(row);
     var y1 = rowY1(row);
-    rectSafe(0, y0, 239, y1 - y0 + 1, cfg.colCenterPanel);
-    rectbSafe(0, y0, 239, y1 - y0 + 1, cfg.colCenterPanelBorder);
+    var h = y1 - y0 + 1;
+    R.tileFillSpr(R.spr.centerPanelFillTile, 0, y0, 240, h, 1, 1, cfg.sprColorkey);
+    rectbSafe(0, y0, 239, h, cfg.colCenterPanelBorder);
 
     var dbgEnabled = !!(MC.config.debug.enabled && MC.debug.toolsOn);
-    var hlCol = (opts.highlightCol != null) ? opts.highlightCol : cfg.colHighlight;
+    if (hlCol == null) hlCol = cfg.colHighlight;
 
     // Deck/discard pile count digits (3x5 glyphs).
     function drawCountDigits(n, xFace, yFace) {
@@ -412,7 +446,7 @@
       if (layers >= 2) drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx2, cfg.pileUnderDy2);
       if (layers >= 1) drawUnderLayerOutline(xFace, yFace, cfg.pileUnderDx1, cfg.pileUnderDy1);
       drawShadowBar(xFace, yFace);
-      drawCardBack(xFace, yFace, false);
+      drawCardBack(xFace, yFace);
       drawCountDigits(n, xFace, yFace);
     }
 
@@ -461,12 +495,12 @@
           var recommend = false;
           if (it.id === "endTurn" && enabled && (s.activeP === 0) && (s.playsLeft != null) && (s.playsLeft <= 0)) recommend = true;
 
-          var bg = isSel ? hlCol : cfg.colCenterPanel;
           var border = isSel ? MC.Pal.Black : (recommend ? MC.Pal.Green : cfg.colCenterPanelBorder);
           var colText = enabled ? (isSel ? MC.Pal.Black : cfg.colText) : MC.Pal.Grey;
           if (!isSel && recommend && enabled) colText = MC.Pal.Green;
 
-          rectSafe(it.x, it.y, it.w, it.h, bg);
+          // Unselected buttons are transparent so the center-panel dither shows through.
+          if (isSel) rectSafe(it.x, it.y, it.w, it.h, hlCol);
           rectbSafe(it.x, it.y, it.w, it.h, border);
 
           // Vertically center 6px font in button height.
@@ -892,7 +926,7 @@
       var y = it.y;
       if (row === R.ROW_OP_HAND) {
         drawShadowBar(x, y);
-        drawCardBack(x, y, true);
+        drawCardBack(x, y);
       } else if (row === R.ROW_P_HAND) {
         drawShadowBar(x, y);
         drawMiniCard(state, it.uid, x, y, !!flipCards);
@@ -930,7 +964,7 @@
           drawFannedStack(stackO, { state: state, fanDir: sFanO, flip180: true, camX: cam, selectedItem: sel, onlySelected: true, highlightCol: highlightCol });
         } else {
           drawShadowBar(xs, ys);
-          drawCardBack(xs, ys, true);
+          drawCardBack(xs, ys);
           drawHighlight(xs, ys, highlightCol);
         }
       } else if (row === R.ROW_P_HAND) {
@@ -1001,7 +1035,7 @@
       var p = ov.p;
       var uid = ov.uid;
       drawShadowBar(x, y);
-      if (p === 1) drawCardBack(x, y, true);
+      if (p === 1) drawCardBack(x, y);
       else drawMiniCard(state, uid, x, y, false);
     } else if (ov.kind === "moveCard") {
       var x2 = ov.x;
@@ -1017,25 +1051,8 @@
     }
   }
 
-  R.drawFrame = function (args) {
-    if (!args) return;
-    var state = args.state || (args.debug && args.debug.state) || args.state;
-    var view = args.view || (args.debug && args.debug.view) || args.view;
-    if (!state || !view) return;
-
-    var computed = args.computed;
-    if (!computed) computed = MC.ui.computeRowModels(state, view);
-    if (!computed || !computed.models) return;
-
-    var models = computed.models;
-    // UI owns cursor/selection policy (clamping, relocation off empty rows, etc.).
-    // Renderer should trust the computed selection rather than re-deriving from view.cursor.
-    var sel = computed.selected || null;
-
+  function drawGameplayUiScene(state, view, computed, models, sel, hlCol) {
     var cfg = R.cfg;
-    var hlCol = (computed.highlightCol != null) ? computed.highlightCol : cfg.colHighlight;
-
-    cls(cfg.colBg);
 
     // Draw non-center rows.
     var row;
@@ -1049,7 +1066,7 @@
     }
 
     // Center panel last (so text overlays are readable).
-    drawCenter({ state: state, view: view, computed: computed, selected: sel, highlightCol: hlCol });
+    drawCenter(state, view, computed, sel, hlCol);
 
     // Animations on top of scene (but under toasts).
     drawAnimOverlay(state, view, computed);
@@ -1089,6 +1106,38 @@
       }
     }
     drawToasts(view);
+  }
+
+  R.drawFrame = function (args) {
+    if (!args) return;
+    var state = args.state || (args.debug && args.debug.state) || args.state;
+    var view = args.view || (args.debug && args.debug.view) || args.view;
+    if (!state || !view) return;
+
+    var computed = args.computed;
+    if (!computed) computed = MC.ui.computeRowModels(state, view);
+    if (!computed || !computed.models) return;
+
+    var models = computed.models;
+    // UI owns cursor/selection policy (clamping, relocation off empty rows, etc.).
+    // Renderer should trust the computed selection rather than re-deriving from view.cursor.
+    var sel = computed.selected || null;
+
+    var cfg = R.cfg;
+    var hlCol = (computed.highlightCol != null) ? computed.highlightCol : cfg.colHighlight;
+
+    // Base bank: background (uses vbank(0) palette).
+    vbank(0);
+    cls(cfg.colBg);
+    drawGameplayBg();
+
+    // Overlay bank: UI (cleared to transparent index each frame).
+    R.vbankBeginOverlay();
+
+    drawGameplayUiScene(state, view, computed, models, sel, hlCol);
+
+    // Always restore bank 0 so other modes render normally.
+    vbank(0);
   };
 })();
 

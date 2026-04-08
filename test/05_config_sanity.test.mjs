@@ -52,6 +52,14 @@ test("config sanity: render.layout/style/spr/moneyBgByValue shape", async () => 
   const requireNum = (obj, key) =>
     assert.equal(typeof obj[key], "number", `expected ${key} to be a number`);
 
+  const requirePosNum = (obj, key) => {
+    requireNum(obj, key);
+    assert.ok(Number.isFinite(obj[key]), `expected ${key} to be finite`);
+    assert.ok(obj[key] > 0, `expected ${key} > 0`);
+  };
+
+  // (Background + vbank workflow are renderer concerns; config keeps only sprite IDs + style.)
+
   assert.ok(Array.isArray(L.rowY) && L.rowY.length === 5, "expected layout.rowY[5]");
   assert.ok(Array.isArray(L.rowH) && L.rowH.length === 5, "expected layout.rowH[5]");
 
@@ -119,7 +127,6 @@ test("config sanity: render.layout/style/spr/moneyBgByValue shape", async () => 
     "colCardInterior",
     "colShadow",
     "colHighlight",
-    "colCenterPanel",
     "colCenterPanelBorder",
     "colHudLine",
     "colToastBgAi",
@@ -131,8 +138,10 @@ test("config sanity: render.layout/style/spr/moneyBgByValue shape", async () => 
     "pileCountDy"
   ].forEach((k) => requireNum(S, k));
 
-  requireNum(r.spr, "digit0");
-  requireNum(r.spr, "cardBackTL");
+  requirePosNum(r.spr, "digit0");
+  requirePosNum(r.spr, "bgTileTL");
+  requirePosNum(r.spr, "cardBackTL");
+  requirePosNum(r.spr, "centerPanelFillTile");
 });
 
 test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async () => {

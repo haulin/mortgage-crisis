@@ -6,7 +6,7 @@ MC.config = {
 };
 
 MC.config.meta = {
-  version: "MVP v0.17"
+  version: "MVP v0.18"
 };
 
 MC.config.debug = {
@@ -51,7 +51,7 @@ MC.config.ui = {
   navConeKUpDown: 6,
 
   // Debug aid: multiply timings for slow-motion debugging (1 = normal speed).
-  animSpeedMult: 3,
+  animSpeedMult: 1.5,
   dealFramesPerCard: 8,
   dealGapFrames: 2,
   xferFramesPerCard: 8,
@@ -272,8 +272,9 @@ MC.config.render = {
     // Money/Action/House template anchors (card-local).
     valX: 1,
     valY: 1,
-    iconX: 4,
-    iconY: 9,
+    // 15x15 (effective) center icon (2x2 sprite block with colorkey padding row/col).
+    iconX: 1,
+    iconY: 6,
 
     colBg: MC.Pal.Black,
     colText: MC.Pal.White,
@@ -281,8 +282,7 @@ MC.config.render = {
     colCardInterior: MC.Pal.White,
     colShadow: MC.Pal.Black,
     colHighlight: MC.Pal.Yellow,
-    colCenterPanel: MC.Pal.DarkBlue,
-    colCenterPanelBorder: MC.Pal.White,
+    colCenterPanelBorder: MC.Pal.LightGrey,
     colHudLine: MC.Pal.White,
     colToastBgAi: MC.Pal.DarkBlue,
 
@@ -303,17 +303,21 @@ MC.config.render = {
     // Reserve 0 as blank (convention).
     digit0: 1, // digit sprite IDs are digit0 + n
 
-    // Card back (top-left tile id of a 2x3 sprite = 16x24).
-    // Art convention: last column + last row are color 15 (colorkey),
-    // yielding an effective 15x23 interior when drawn at xFace+1,yFace+1.
+    // Gameplay background: top-left tile id of a 2x2 (16x16) tile.
+    bgTileTL: 96,
+
+    // Card back: top-left 8x8 tile id used as a repeatable pattern.
     cardBackTL: 32,
 
+    // Center panel dither fill (8x8 tile; uses colorkey holes so bg shows through).
+    centerPanelFillTile: 78,
+
     // Optional icons (0 = skip).
-    iconMoney: 16,
-    iconRent: 20,
-    iconSlyDeal: 18,
-    iconJSN: 19,
-    iconHouse: 17
+    iconMoney: 36,
+    iconRent: 44,
+    iconSlyDeal: 40,
+    iconJSN: 42,
+    iconHouse: 38
   },
 
   moneyBgByValue: [

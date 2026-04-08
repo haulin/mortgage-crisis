@@ -87,7 +87,7 @@ We work in small increments:
 - **No runtime fallbacks**: avoid `x = x || {}`, `|| []`, “should never happen” defaults in runtime code. Prefer canonical constructors/canonicalizers plus tests.
 - **No runtime shape asserts**: don’t ship “assert shape” helpers in `game.js`; enforce invariants in unit tests.
 - **Numeric coercion**: keep `|0` / `>>>0` localized to TIC-80 draw-call boundary wrappers (e.g. `rectSafe`, `sprSafe`) and deterministic engine/RNG hot spots.
-- **Namespaces**: module namespaces are created once in the prelude; don’t repeat `PD.ui = PD.ui || {}` in modules.
+- **Namespaces**: module namespaces are created once in the prelude; don’t repeat `MC.ui = MC.ui || {}` in modules.
 - **Build artifact rule**: after any change in `src/` or `scripts/build.mjs`, run `npm test` and `npm run build` so committed `game.js` stays in sync.
 
 ## Key Constraints
