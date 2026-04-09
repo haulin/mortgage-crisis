@@ -12,8 +12,8 @@ Phase 16 added **spatial L/R targeting-cycle ordering** driven by cmd profiles (
 
 However, we still have **two parallel implementations** of destination geometry:
 
-- **Overlay/preview placement** inside `MC.ui.computeRowModels()` in `src/65_ui.js` (nested helpers):
-  - `slotNewSet`, `slotSetEnd`, `slotSetTop`, `slotBankEnd`, `slotForCmd`
+- **Overlay/preview placement** inside `MC.ui.computeRowModels()` (implemented in `src/67_ui_row_models.js`):
+  - today, slot math is handled by `MC.ui.rowModels.ops.slotForCmd` and related helpers
 - **Screen-space sorting X** via `MC.cmd.screenXForCmdDest` in `src/54_cmd_profiles.js`
 
 They are consistent today, but any future change to stack layout, slot reservation, or destination semantics risks divergence.
@@ -37,7 +37,7 @@ Define a canonical slot shape (already used implicitly in `computeRowModels`):
 
 ### New helper(s)
 
-Extract the nested slot helpers from `MC.ui.computeRowModels()` into a reusable UI helper:
+Hoist slot helpers from the row-model overlay module into a reusable UI helper:
 
 - `MC.ui.slotForCmd(ctx, cmd, srcSlot)`
   - Inputs:
@@ -65,12 +65,12 @@ Cmd profiles continue to be the “registry” of targeting behavior, but they d
 
 ## Migration plan (incremental, low risk)
 
-### Step 1 — extract without behavior change
+### Step 1 — hoist without behavior change
 
-- In `src/65_ui.js`, extract the nested helpers into top-level functions:
+- In `src/67_ui_row_models.js`, hoist the slot helpers into top-level UI helpers:
   - `MC.ui.slotForCmd(...)`
   - (optionally) `MC.ui.slotForDest(...)` if that reads cleaner
-- Keep `computeRowModels()` calling the extracted helper (no logic change).
+- Keep `MC.ui.computeRowModels()` calling the extracted helper (no logic change).
 
 ### Step 2 — rebase sorting on the same slot math
 

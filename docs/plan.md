@@ -34,6 +34,7 @@ Documentation convention (for future phases):
 - **Phase 16 ✅**: Targeting-cycle refactor: directionally consistent L/R ordering across targeting kinds; rent targets cycle spatially. See `docs/phase16.md`.
 - **Phase 17 ✅**: Mouse controls (hover + click + drag-and-drop) layered on top of controller UX. See `docs/phase17.md`.
 - **Phase 18 ✅**: Demo-ready visuals: larger action icons + dithered panel fill + static tiled gameplay background; plasma kept as a separate showcase cart. See `docs/phase18.md`.
+- **Phase 19 ✅**: Demo polish + targeting/overlay refactor (mouse/controller hint consistency, Wild single-destination nuance fixes, rowModels module). See `docs/phase19.md`.
 
 ### Deferred-items capture (scope creep safety net)
 
@@ -520,33 +521,18 @@ Done:
   - center panel uses a dither tile fill so the background can subtly show through
 - See `docs/phase18.md`.
 
-### Phase 19 — Post‑Demo
+### Phase 19 ✅ — Demo polish + targeting/overlay refactor
 
-- Move cards from one set to another, costing a play
-- scrolling in the banks shuffle stress scenario is not good
-- Seed UX for dev/playtesting:
-  - seed **display** (show the current seed so bug reports are reproducible)
-  - seed **override** (type/select a seed so a run is replayable)
-  - default “release-ish” seeding option (time-based seed from TIC-80 time source)
-- AI strategy picker
-- Music / sound effects (TIC-80 `music()` / `sfx()`)
-- Mouse changing pages in howto is not obvious.
+- Mouse/controller UX polish: consistent targeting titles/help text (drag vs click vs controller).
+- Wild single-destination “Place…” nuance fixed without leaking into prompt flows (`placeReceived`).
+- Cursor-mode (Sly) mouse drag behavior tightened (no sticky target highlight; snapped preview rendered on top).
+- Major cleanup: `MC.ui.computeRowModels` + overlay policy moved into `MC.ui.rowModels` module.
+- See `docs/phase19.md`.
 
-### Content expansion
+### Phase 19.5 - About page
 
-- Add more property colors/sets (new `MC.Color` entries + `MC.SET_RULES` + `CARD_DEFS`)
-- Expand deck composition (properties/money/actions) while keeping turn UX readable
-- Add additional card types **only once the workflow exists** (so no dead draws).
-  - Wild any property
-  - Pass Go
-  - Forced Purchase
-  - Birthday
-  - Debt Collector
-
-Issues:
-- action menu should maybe get rendered as a bigger overlay, similar to inspect and not cover buttons
-- Debt: house first does not auto-focus house when another property is selected
-- Unify wording in various prompts and menus, humanize it.
+- About page - this is a demo, go here to give feedback, find full game later with these features, credits, legal, link to repo, update readme
+- Screenshot-friendly scenario showcasing everything at once
 
 ### Phase 20 — Features wishlist
 
@@ -554,10 +540,10 @@ Issues:
 - Continue Inspect overlay polish as needed (still not “big cards”)
 - Reduce scenario list noise: merge `placeBasic` / `wildBasic` / `houseBasic` into a single “Basics” scenario (or otherwise consolidate) - also placeReceived and replace wild.
 - Deferred: Add an in-game animation speed toggle (slow/medium/fast) wired to `MC.config.ui.animSpeedMult` (the underlying multiplier exists; Phase 15 added the knob).
-- Deferred: Refactor `MC.ui.computeRowModels` overlay/preview logic into smaller helpers (reduce “policy knot” + improve readability)
 - Deferred: Split `MC.ui.step` mode handling (browse/menu/targeting/prompt) into smaller per-mode helpers (reduce nesting + make input rules easier to audit)
 - Deferred: Consolidate UI slot/stack geometry helpers (destination→slot + stack locators) to reduce duplication and keep ghost/reservation rules consistent. See `docs/refactor-targeting-geometry.md`.
 - Deferred: Introduce a UI input-intents layer so `MC.ui.step` consumes device-agnostic intent (confirm/cancel/inspect/grab) instead of device-specific actions. See `docs/refactor-input-intents.md`.
+- Deferred: Consolidate prompt helpers + input-modality plumbing (`autoFocusPausedByMouse`, targeting hint modes, prompt debug buttons) to reduce duplication. See `docs/refactor-ui-input-and-prompts.md`.
 - Deferred: Mouse DnD: avoid the 1-frame “no selection” flash after a drop by adding a post-command view settle (or a small post-apply UI hook) in the debug harness/game loop.
 - Deferred: payDebt focus: when the bank empties mid-prompt, keep selection on a valid payable (rather than falling back to geometry-based preservation onto hand) - make these behaviors into an auto-focus rule so that it can be paused when using mouse.
 - Deferred: AI: add a generic “action move value” heuristic (or shallow 1‑ply simulation) to favor moves that reduce opponent payables/progress (Rent/Sly etc.).
@@ -581,6 +567,33 @@ Issues:
   - Flip a Wild property’s preferred color **in the source** (e.g. via context menu) so you can “pre-set” it before targeting/placing
 - Money/action card faces: dithered / lighter background treatment (sprite pattern or fast overlay)
 - (Optional, later) implement true “big card” rendering for previews once icons exist for all card types (keeps big-card work dependent on art readiness)
+
+### Content expansion
+
+- Add more property colors/sets (new `MC.Color` entries + `MC.SET_RULES` + `CARD_DEFS`)
+- Expand deck composition (properties/money/actions) while keeping turn UX readable
+- Add additional card types **only once the workflow exists** (so no dead draws).
+  - Wild any property
+  - Pass Go
+  - Forced Purchase
+  - Birthday
+  - Debt Collector
+  - Hotel / multi-house on full set
+
+- Move cards from one set to another, costing a play
+- scrolling in the banks shuffle stress scenario is not good
+- Seed UX for dev/playtesting:
+  - seed **display** (show the current seed so bug reports are reproducible)
+  - seed **override** (type/select a seed so a run is replayable)
+  - default “release-ish” seeding option (time-based seed from TIC-80 time source)
+- AI strategy picker
+- Music / sound effects (TIC-80 `music()` / `sfx()`)
+- Mouse changing pages in howto is not obvious.
+
+Issues:
+- action menu should maybe get rendered as a bigger overlay, similar to inspect and not cover buttons
+- Debt: house first does not auto-focus house when another property is selected
+- Unify wording in various prompts and menus, humanize it.
 
 
 ## Code organization (durable)

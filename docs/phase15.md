@@ -48,7 +48,7 @@ Non-goals for MVP polish:
 ## How it works (architecture)
 
 - The engine emits **structured events** (`draw`, `reshuffle`, and now curated `move` events with `{ uid, from, to }`).
-- `src/65_ui.js` snapshots **pre-move screen positions** into `view.anim.lastPosByUid` during model computation so transfers have a reliable on-screen origin even after state mutates.
+- `src/67_ui_row_models.js` snapshots **pre-move screen positions** into `view.anim.lastPosByUid` during model computation so transfers have a reliable on-screen origin even after state mutates.
 - `src/70_anim.js` turns events into a queue of timed steps (input/AI locked while active):
   - `shuffle`, `deal`, `gameStart`
   - `xferHold` (batch pause)
@@ -78,7 +78,7 @@ All animation timings are validated in config sanity tests (avoid runtime fallba
 - `src/05_config.js`: new/expanded animation knobs (see above)
 - `src/45_rules.js`: curated `kind:"move"` events for Sly + payDebt transfers; `selectedByP` hint for AI-chosen selections
 - `src/60_render.js`: center pay-buffer stack rendering + moveCard overlay + outline rendering for hold-at-source
-- `src/65_ui.js`: pay-buffer overlay model + `lastPosByUid` snapshots + selection stability during animation locks
+- `src/67_ui_row_models.js`: pay-buffer overlay model + `lastPosByUid` snapshots + selection stability during animation locks
 - `src/66_focus.js`: `replaceWindow` exit focus rule (`End` when out of plays)
 - `src/70_anim.js`: game-start orchestration + curated transfer queue/lock + hide-by-uid presentation
 - `src/90_debug.js`: debug reset triggers game-start anim for default scenario; tests can pass `{ skipGameStartAnim:true }`

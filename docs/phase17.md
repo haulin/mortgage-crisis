@@ -55,7 +55,7 @@ This allowed simplifying UI code by removing many `if (actions.nav && ...)` styl
   - `mouse()` polling and per-frame mouse edges
   - mouse → A/B/X mapping (LMB/RMB/MMB)
   - `MC.controls.emptyActions()`
-- `src/67_ui_mouse.js`
+- `src/68_ui_mouse.js`
   - UI-specific mouse helpers (hit-testing, menu hover, targeting snap)
   - autofocus pause latch (`syncAutoFocusPause`)
 - `src/65_ui.js`

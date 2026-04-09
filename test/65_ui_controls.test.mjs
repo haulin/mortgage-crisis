@@ -924,13 +924,56 @@ test("ui: menu Place auto-applies when only one destination exists", async () =>
   assert.equal(view.mode, "menu");
   assert.equal(view.menu.items.length, 2);
   assert.equal(view.menu.items[0].id, "place");
-  assert.equal(view.menu.items[0].label, "Place -> New Set");
+  assert.equal(view.menu.items[0].label, "Place -> New set");
   assert.equal(view.menu.items[1].id, "source");
 
   const intent = ctx.MC.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
   assert.ok(intent && intent.kind === "applyCmd", "expected applyCmd intent");
   assert.equal(intent.cmd.kind, "playProp");
   assert.equal(view.mode, "browse");
+});
+
+test("ui: menu Place for Wild enters targeting even when only one destination exists (color choice)", async () => {
+  const ctx = await loadSrcIntoVm();
+
+  const s = ctx.MC.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+  // Ensure Wild has no matching existing set destinations: only New set remains.
+  s.players[0].sets = [];
+
+  const wildUid = s.deck.find((u) => ctx.MC.state.defByUid(s, u).id === "wild_mo");
+  assert.ok(wildUid, "expected wild_mo uid in deck");
+  s.deck = s.deck.filter((u) => u !== wildUid);
+  s.players[0].hand.push(wildUid);
+
+  const view = ctx.MC.ui.newView();
+  view.cursor.row = ctx.MC.render.ROW_P_HAND;
+  view.cursor.i = s.players[0].hand.length - 1;
+
+  // Tap A to open menu, then tap A again to choose Place.
+  ctx.MC.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(view.mode, "menu");
+  assert.equal(view.menu.items[0].id, "place");
+  assert.equal(view.menu.items[0].label, "Place...");
+
+  const intent = ctx.MC.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(intent, null, "expected no immediate apply; should enter targeting for Wild color choice");
+  assert.equal(view.mode, "targeting");
+  assert.equal(view.targeting.kind, "place");
+  assert.equal(view.targeting.cmds.at(-1).kind, "source");
+
+  // Regression guard: while selection starts on Source (only one real destination),
+  // do not preview/ghost the destination on the table row.
+  assert.equal(view.targeting.cmds[view.targeting.cmdI].kind, "source");
+  const computed = ctx.MC.ui.computeRowModels(s, view);
+  const rowT = computed.models[ctx.MC.render.ROW_P_TABLE];
+  const overlaysT = rowT && rowT.overlayItems ? rowT.overlayItems : [];
+  assert.equal(overlaysT.length, 0, "expected no table overlays while on Source for single-dest Wild place");
+
+  const c0 = view.targeting.wildColor;
+  ctx.MC.ui.step(s, view, { nav: { up: true }, a: {}, b: {}, x: {} });
+  assert.notEqual(view.targeting.wildColor, c0, "expected U/D to toggle Wild color while targeting");
 });
 
 test("ui: hold-A targeting includes a Source destination (release-A cancels)", async () => {
@@ -1013,11 +1056,105 @@ test("ui: moveWild targeting includes a Source destination (tap-A cancels)", asy
   view.targeting.cmdI = view.targeting.cmds.length - 1;
   {
     const c = ctx.MC.ui.computeRowModels(s, view);
-    assert.equal(!!(c.meta && c.meta.hideSrc), false, "expected source card visible when Source is selected");
+    assert.equal(!!(c.meta && c.meta.hideSrc), true, "expected source card hidden while Cancel is selected for Wild");
   }
   const intent = ctx.MC.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
   assert.equal(intent, null);
   assert.equal(view.mode, "browse");
+});
+
+test("ui: moveWild targeting cycles leftward in screen space", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.MC.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
+  const view = ctx.MC.ui.newView();
+
+  // Trigger replaceWindow then enter moveWild targeting (tap-A flow).
+  const mv = ctx.MC.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);
+  assert.ok(mv, "expected playProp into set 0");
+  ctx.MC.engine.applyCommand(s, mv);
+
+  // Ensure we have at least one matching-color destination set for one of the eligible Wild colors,
+  // so moveWild has 3+ real destinations (existing + newSet for one color, plus newSet for the other).
+  assert.ok(s.prompt && s.prompt.kind === "replaceWindow" && s.prompt.p === 0);
+  const pr = s.prompt;
+  const srcSetI = pr.srcSetI;
+  const excl = pr.excludeUid;
+  const srcSet = s.players[0].sets[srcSetI];
+  let wildUid = 0;
+  let wildDef = null;
+  let placedColor = ctx.MC.state.NO_COLOR;
+  for (const tup of (srcSet && srcSet.props) ? srcSet.props : []) {
+    const uid = tup ? tup[0] : 0;
+    if (!uid || uid === excl) continue;
+    const def = ctx.MC.state.defByUid(s, uid);
+    if (def && ctx.MC.rules.isWildDef(def)) { wildUid = uid; wildDef = def; placedColor = tup[1]; break; }
+  }
+  assert.ok(wildUid && wildDef, "expected an eligible Wild in src set");
+  const wantColor = placedColor;
+
+  function takeAnyFixedPropUidsFromDeck(n) {
+    const out = [];
+    for (let take = 0; take < n; take++) {
+      let pickI = -1;
+      for (let i = 0; i < s.deck.length; i++) {
+        const uid = s.deck[i];
+        const def = ctx.MC.state.defByUid(s, uid);
+        if (!def) continue;
+        if (def.kind !== ctx.MC.CardKind.Property) continue;
+        if (ctx.MC.rules.isWildDef(def)) continue;
+        pickI = i;
+        break;
+      }
+      if (pickI < 0) break;
+      const uidPicked = s.deck[pickI];
+      s.deck.splice(pickI, 1);
+      out.push(uidPicked);
+    }
+    return out;
+  }
+
+  const propUids = takeAnyFixedPropUidsFromDeck(2);
+  assert.ok(propUids.length === 2, "expected two fixed-color properties in deck");
+  for (const propUid of propUids) {
+    const extraSet = ctx.MC.state.newEmptySet();
+    extraSet.props.push([propUid, wantColor]);
+    s.players[0].sets.push(extraSet);
+  }
+
+  ctx.MC.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  ctx.MC.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(view.mode, "targeting");
+  assert.equal(view.targeting.kind, "moveWild");
+
+  // One tick in targeting mode to allow profile sorting and camera sync.
+  ctx.MC.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+
+  const t = view.targeting;
+  const cmds = t.cmds || [];
+  const srcI2 = cmds.findIndex((c) => c && c.kind === "source");
+  const nReal = srcI2 >= 0 ? srcI2 : cmds.length;
+  assert.ok(nReal >= 3, "expected multiple moveWild destinations");
+
+  function focusX() {
+    const c = ctx.MC.ui.computeRowModels(s, view);
+    assert.ok(c.meta && c.meta.focus, "expected focus preview");
+    return c.meta.focus.x - view.camX[c.meta.focus.row];
+  }
+
+  const xs = [];
+  for (let i = 0; i < nReal; i++) { t.cmdI = i; xs.push(focusX()); }
+
+  // Find an index with a strict left neighbor (avoid ties: newSet slots for both colors can share X).
+  let idx = -1;
+  for (let i = 1; i < xs.length; i++) if (xs[i] > xs[i - 1]) { idx = i; break; }
+  assert.ok(idx >= 1, "expected at least one strict x step in moveWild destinations");
+
+  t.cmdI = idx;
+  const x1 = focusX();
+  ctx.MC.ui.step(s, view, { nav: { left: true }, a: {}, b: {}, x: {} });
+  assert.equal(t.cmdI, idx - 1);
+  const x2 = focusX();
+  assert.ok(x2 < x1, `expected left to move preview left (x2=${x2} < x1=${x1})`);
 });
 
 test("ui: moveWild targeting includes a Source destination (release-A cancels when hold=true)", async () => {
@@ -1040,6 +1177,34 @@ test("ui: moveWild targeting includes a Source destination (release-A cancels wh
   const intent = ctx.MC.ui.step(s, view, { nav: {}, a: { released: true }, b: {}, x: {} });
   assert.equal(intent, null);
   assert.equal(view.mode, "browse");
+});
+
+test("ui: targeting help switches to mouseClick when mouse latch is active", async () => {
+  const ctx = await loadSrcIntoVm();
+  ctx.MC.config.mouse.enabled = true;
+
+  const s = ctx.MC.state.newGame({ scenarioId: "replaceWindow", seedU32: 1 });
+  const view = ctx.MC.ui.newView();
+
+  // Trigger the real prompt by playing into set 0, then enter prompt mode.
+  const mv = ctx.MC.engine.legalMoves(s).find((m) => m.kind === "playProp" && m.dest && m.dest.setI === 0);
+  assert.ok(mv, "expected playProp into set 0");
+  ctx.MC.engine.applyCommand(s, mv);
+  assert.ok(s.prompt && s.prompt.kind === "replaceWindow");
+
+  ctx.MC.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  assert.equal(view.mode, "prompt");
+
+  // Enter moveWild targeting via tap-A flow (controller or mouse tap both map to A tap).
+  ctx.MC.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(view.mode, "targeting");
+  assert.equal(view.targeting.kind, "moveWild");
+
+  // Simulate that the mouse was used recently.
+  view.ux.autoFocusPausedByMouse = true;
+  ctx.MC.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {}, mouse: { avail: true, moved: true, x: 0, y: 0 } });
+  const help = ctx.MC.fmt.targetingHelp(view.targeting);
+  assert.ok(String(help).includes("Click:Confirm"), "expected mouse click hint");
 });
 
 test("ui: winCheck scenario is navigable (cursor relocates off empty hand)", async () => {
@@ -1436,6 +1601,68 @@ test("ui: placeReceived prompt - A on faux-hand enters targeting", async () => {
   assert.equal(view.targeting.kind, "place");
 });
 
+test("ui: placeReceived prompt - Wild single-dest does not use menu-place Source/title nuance", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.MC.state.newGame({ scenarioId: "placeReceived", seedU32: 1 });
+  s.activeP = 0;
+
+  // Ensure placement has only one real destination (New set).
+  s.players[0].sets = [];
+
+  // Swap in a Wild as the received property.
+  assert.ok(s.prompt && s.prompt.kind === "placeReceived" && s.prompt.p === 0);
+  let wildUid = 0;
+  for (let uid = 1; uid <= s.totalUids; uid++) {
+    const def = ctx.MC.state.defByUid(s, uid);
+    if (def && def.id === "wild_mo") { wildUid = uid; break; }
+  }
+  assert.ok(wildUid, "expected wild_mo uid in uid pool");
+  s.deck = s.deck.filter((u) => u !== wildUid);
+  s.discard = s.discard.filter((u) => u !== wildUid);
+  for (let p = 0; p < s.players.length; p++) {
+    const pl = s.players[p];
+    pl.hand = pl.hand.filter((u) => u !== wildUid);
+    pl.bank = pl.bank.filter((u) => u !== wildUid);
+    for (let si = 0; si < pl.sets.length; si++) {
+      const set = pl.sets[si];
+      if (!set) continue;
+      if (set.houseUid === wildUid) set.houseUid = 0;
+      if (set.props) set.props = set.props.filter(([u]) => u !== wildUid);
+    }
+  }
+  if (s.prompt && s.prompt.kind === "placeReceived" && s.prompt.uids) {
+    s.prompt.uids = s.prompt.uids.filter((u) => u !== wildUid);
+  }
+  s.prompt.uids = [wildUid];
+
+  const view = ctx.MC.ui.newView();
+  ctx.MC.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });
+  assert.equal(view.mode, "prompt");
+
+  // Tap-A workflow: enter place targeting from recvProps.
+  view.cursor.row = ctx.MC.render.ROW_P_HAND;
+  view.cursor.i = 0;
+  ctx.MC.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
+  assert.equal(view.mode, "targeting");
+  assert.ok(view.targeting && view.targeting.active);
+  assert.equal(view.targeting.kind, "place");
+  assert.ok(view.targeting.card && view.targeting.card.loc && view.targeting.card.loc.zone === "recvProps");
+
+  // Unlike menu-place from hand, we should start on the (only) real destination, not Source.
+  const srcI = ctx.MC.ui.findSourceCmdI(view.targeting.cmds);
+  assert.ok(srcI >= 0, "expected Source option");
+  assert.notEqual(view.targeting.cmdI, srcI, "expected cmdI to not start on Source in placeReceived");
+
+  // And if we do move to Source, the title should be Cancel (not Place).
+  const title = ctx.MC.fmt.targetingTitle(view.targeting, { kind: "source" });
+  assert.equal(title, "Cancel");
+
+  // Ensure we show a destination preview focus (otherwise click/tap flow feels like it has no targets).
+  const computed = ctx.MC.ui.computeRowModels(s, view);
+  assert.ok(computed.meta && computed.meta.focus, "expected destination preview focus");
+  assert.equal(computed.meta.focus.row, ctx.MC.render.ROW_P_TABLE);
+});
+
 test("ui: placeReceived prompt - auto-focus snaps to a received property", async () => {
   const ctx = await loadSrcIntoVm();
   const s = ctx.MC.state.newGame({ scenarioId: "placeReceived", seedU32: 1 });
@@ -1752,6 +1979,74 @@ test("ui: menu Sly Deal with one target previews destination and auto-applies on
   const intent = ctx.MC.ui.step(s, view, { nav: {}, a: { tap: true }, b: {}, x: {} });
   assert.ok(intent && intent.kind === "applyCmd", "expected applyCmd intent");
   assert.ok(intent.cmd && intent.cmd.kind === "playSlyDeal", "expected playSlyDeal cmd");
+});
+
+test("ui: mouse-drag unsnapped in cursor-mode targeting does not preselect a target", async () => {
+  const ctx = await loadSrcIntoVm();
+  ctx.MC.config.mouse.enabled = true;
+  ctx.MC.config.mouse.dragStartPx = 3;
+
+  const s = ctx.MC.state.newGame({ seedU32: 1 });
+  s.activeP = 0;
+  s.playsLeft = 3;
+  ctx.MC.state.clearPrompt(s);
+
+  // Give P0 a Sly Deal in hand.
+  const slyUid = s.deck.find((u) => ctx.MC.state.defByUid(s, u).id === "sly_deal");
+  assert.ok(slyUid, "expected sly_deal uid");
+  s.deck = s.deck.filter((u) => u !== slyUid);
+  s.players[0].hand.push(slyUid);
+
+  // Give opponent two separate 1-card sets so we have multiple targets.
+  const u0 = s.deck.find((u) => ctx.MC.state.defByUid(s, u).id === "prop_orange");
+  assert.ok(u0);
+  s.deck = s.deck.filter((u) => u !== u0);
+  const u1 = s.deck.find((u) => ctx.MC.state.defByUid(s, u).id === "prop_magenta");
+  assert.ok(u1);
+  s.deck = s.deck.filter((u) => u !== u1);
+  const set0 = ctx.MC.state.newEmptySet();
+  set0.props.push([u0, ctx.MC.Color.Orange]);
+  const set1 = ctx.MC.state.newEmptySet();
+  set1.props.push([u1, ctx.MC.Color.Magenta]);
+  s.players[1].sets = [set0, set1];
+
+  const view = ctx.MC.ui.newView();
+  view.cursor.row = ctx.MC.render.ROW_P_HAND;
+  view.cursor.i = s.players[0].hand.indexOf(slyUid);
+
+  // Initialize cameras and find screen position of the sly card.
+  let c0 = ctx.MC.ui.computeRowModels(s, view);
+  ctx.MC.ui.updateCameras(s, view, c0);
+  c0 = ctx.MC.ui.computeRowModels(s, view);
+  const rmH = c0.models[ctx.MC.render.ROW_P_HAND];
+  const itSly = rmH.items.find((it) => it && it.uid === slyUid);
+  assert.ok(itSly, "expected sly card item in row model");
+  const x0 = itSly.x - view.camX[itSly.row] + 2;
+  const y0 = itSly.y + 2;
+
+  const st = ctx.MC.controls.newState();
+  const cfg = ctx.MC.config.controls;
+
+  // Frame 1: mouse press down on the sly card.
+  let a = ctx.MC.controls.actions(st, rawInput({ mouse: rawMouse({ x: x0, y: y0, left: true }) }), cfg);
+  ctx.MC.ui.step(s, view, a);
+
+  // Frame 2: move enough while held to trigger dragStart/grabStart.
+  a = ctx.MC.controls.actions(st, rawInput({ mouse: rawMouse({ x: x0 + 10, y: y0, left: true }) }), cfg);
+  ctx.MC.ui.step(s, view, a);
+  assert.equal(view.mode, "targeting");
+  assert.ok(view.targeting && view.targeting.active);
+  assert.equal(view.targeting.kind, "sly");
+  assert.ok(view.targeting.mouse && view.targeting.mouse.dragMode, "expected drag mode");
+  assert.ok(view.targeting.mouse.dragging, "expected dragging");
+  assert.equal(view.targeting.mouse.snapped, false, "expected unsnapped at drag start");
+
+  const srcCursor = view.targeting.srcCursor;
+
+  // Frame 3: while still unsnapped, cursor should not jump to an opponent target.
+  a = ctx.MC.controls.actions(st, rawInput({ mouse: rawMouse({ x: x0 + 11, y: y0, left: true }) }), cfg);
+  ctx.MC.ui.step(s, view, a);
+  assert.equal(view.cursor.row, srcCursor.row);
 });
 
 test("ui: hold-A on Sly Deal enters hold-chain: sly targets -> bank -> source", async () => {
@@ -2550,7 +2845,7 @@ test("ui: empty-hand invalid action can nudge back to End (error-triggered)", as
   view.cursor.i = resetI;
 
   // Simulate an invalid action happening (e.g. player tried to do something impossible).
-  ctx.MC.anim.feedbackError(view, "no_actions", "No actions");
+  ctx.MC.anim.feedbackError(view, "no_actions", "No moves left");
   assert.equal(view.ux.pendingFocusErrorCode, "no_actions");
 
   ctx.MC.ui.step(s, view, { nav: {}, a: {}, b: {}, x: {} });

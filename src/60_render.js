@@ -659,7 +659,9 @@
           printSafe(label, xDesc, yy, cfg.colText);
         }
       }
-      printExSafe("A:Select  B:Back", xDesc, hintY, cfg.colText, false, 1, true);
+      var useMouse = !!view.ux.autoFocusPausedByMouse;
+      var hint = useMouse ? "Click:Select  Right:Back" : "A:Select  B:Back";
+      printExSafe(hint, xDesc, hintY, cfg.colText, false, 1, true);
     }
 
     function drawTargetingOverlay() {
@@ -1011,7 +1013,7 @@
           var c1 = def.wildColors[1];
           line2 = "Wild:" + MC.fmt.colorName(c0) + "/" + MC.fmt.colorName(c1);
           if (it.color != null && it.color !== MC.state.NO_COLOR) {
-            line2 += " As:" + MC.fmt.colorName(it.color);
+            line2 += " as " + MC.fmt.colorName(it.color);
           }
         } else {
           line2 = "Prop:" + MC.fmt.colorName(def.propertyColor);

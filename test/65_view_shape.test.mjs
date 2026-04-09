@@ -85,6 +85,23 @@ test("ui: syncPromptToast inserts/removes persistent prompt toast", async () => 
   assert.ok(v.toasts.every((t) => t.id !== "prompt"));
 });
 
+test("ui: replaceWindow prompt toast uses mouse hint when mouse is active", async () => {
+  const ctx = await loadSrcIntoVm();
+  const s = ctx.MC.state.newGame({ seedU32: 1 });
+  const v = ctx.MC.ui.newView();
+
+  ctx.MC.state.setPrompt(s, { kind: "replaceWindow", p: 0, srcSetI: 0, excludeUid: 0, resume: null });
+
+  v.ux.autoFocusPausedByMouse = true;
+  ctx.MC.ui.syncPromptToast(s, v);
+  assert.ok(v.toasts.length >= 1);
+  assert.ok(String(v.toasts[0].text).includes("Click:move"), "expected mouse prompt hint");
+
+  v.ux.autoFocusPausedByMouse = false;
+  ctx.MC.ui.syncPromptToast(s, v);
+  assert.ok(String(v.toasts[0].text).includes("A:move"), "expected controller prompt hint");
+});
+
 test("ui: view numeric invariants stay finite across flows", async () => {
   const ctx = await loadSrcIntoVm();
   const s = ctx.MC.state.newGame({ seedU32: 1 });

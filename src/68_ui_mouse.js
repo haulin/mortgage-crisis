@@ -86,7 +86,15 @@ MC.ui.mouse.syncAutoFocusPause = function (view, actions) {
   // Important: when the debug harness suppresses player input (AI turn), it passes emptyActions()
   // which sets mouse.avail=false. Don't clear the latch in that case; keep "last input wins"
   // semantics until controller input happens.
-  if (!mAvail) return;
+  if (!mAvail) {
+    var nav0 = actions.nav;
+    var a0 = actions.a;
+    var hasNav0 = !!(nav0 && (nav0.up || nav0.down || nav0.left || nav0.right));
+    var hasA0 = !!(a0 && (a0.tap || a0.grabStart));
+    var hasB0 = !!(actions.b && actions.b.pressed);
+    if (hasNav0 || hasA0 || hasB0) view.ux.autoFocusPausedByMouse = false;
+    return;
+  }
 
   var nav = actions.nav;
   var a = actions.a;
@@ -341,6 +349,7 @@ MC.ui.mouse.dragModeEnter = function (view, actions) {
   view.targeting.mouse.y = m ? m.y : 0;
   view.targeting.mouse.snapped = false;
   view.targeting.mouse.leftSource = false;
+  view.targeting.hintMode = "mouseDrag";
   return true;
 };
 

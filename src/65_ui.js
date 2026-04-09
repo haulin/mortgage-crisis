@@ -23,6 +23,8 @@ MC.ui.newView = function () {
       kind: "",
       // true if entered from A-hold (confirm on A release)
       hold: false,
+      // "controller" | "mouseClick" | "mouseDrag"
+      hintMode: "controller",
       // source: { uid, loc }
       card: null,
       // for wilds
@@ -110,6 +112,58 @@ MC.ui.toastPush = function (view, toast) {
   view.toasts.push(t);
 };
 
+MC.ui.feedbackNoMovesLeft = function (state, view) {
+  MC.anim.feedbackError(view, "no_actions", "No moves left");
+};
+
+MC.ui.findSourceCmdI = function (cmds) {
+  var i;
+  for (i = 0; i < cmds.length; i++) if (cmds[i] && cmds[i].kind === "source") return i;
+  return 0;
+};
+
+MC.ui.kindAllowsAutoApply = function (kind, def) {
+  kind = String(kind || "");
+  // Wild Place always implies a follow-up choice (color), even when exactly one real destination exists.
+  if (kind === "place" && def && MC.rules.isWildDef(def)) return false;
+  return true;
+};
+
+MC.ui.menuLabelForKind = function (kind, baseLabel, def) {
+  kind = String(kind || "");
+  // Wild Place always leads to targeting (color choice).
+  if (kind === "place" && def && MC.rules.isWildDef(def)) return "Place...";
+  return String(baseLabel || "");
+};
+
+MC.ui.targetingResetCommon = function (state, view, hold, uid, loc) {
+  if (!view || !view.targeting) return null;
+  var t = view.targeting;
+  t.active = true;
+  t._profileSorted = false;
+  t._profileSyncCmdI = -1;
+  t.hold = !!hold;
+  t.hintMode = "controller";
+  t.cmds = [];
+  t.cmdI = 0;
+  t.wildColor = MC.state.NO_COLOR;
+  t.srcCursor = { row: view.cursor ? view.cursor.row : 4, i: view.cursor ? view.cursor.i : 0 };
+  MC.ui.mouse.resetTargeting(t);
+
+  var def = MC.state.defByUid(state, uid);
+  t.card = { uid: uid, loc: loc || null, def: def || null };
+  return t;
+};
+
+MC.ui.targetingApplyProfileDefaultCmdI = function (state, t) {
+  if (!t || !t.cmds || t.cmds.length === 0) return;
+  var profD = MC.cmd.getProfile(t.kind);
+  if (profD && typeof profD.defaultCmdI === "function") {
+    var di = profD.defaultCmdI(state, t.cmds, t.card ? t.card.loc : null);
+    if (di != null) t.cmdI = MC.ui.clampI(di, t.cmds.length);
+  }
+};
+
 MC.ui.toastsTick = function (view) {
   var out = [];
   var i;
@@ -164,7 +218,8 @@ MC.ui.syncPromptToast = function (state, view) {
   } else if (pr.kind === "placeReceived") {
     txt = "Place received properties: " + pr.uids.length;
   } else if (pr.kind === "replaceWindow") {
-    txt = "Move a Wild? A:move B:skip";
+    var useMouseRW = !!(view && view.ux && view.ux.autoFocusPausedByMouse);
+    txt = useMouseRW ? "Move a Wild? Click:move  Right:skip" : "Move a Wild? A:move B:skip";
   } else if (pr.kind === "respondAction") {
     var col = MC.state.NO_COLOR;
     if (pr.target && pr.target.loc && pr.target.loc.zone === "setProps") {
@@ -894,440 +949,7 @@ MC.ui.buildRowItems = function (state, view, row, hint) {
   return out;
 };
 
-MC.ui.computeRowModels = function (state, view) {
-  var hint = MC.ui.layoutHint(state, view);
-  var models = [
-    MC.ui.buildRowItems(state, view, 0, hint),
-    MC.ui.buildRowItems(state, view, 1, hint),
-    MC.ui.buildRowItems(state, view, 2, hint),
-    MC.ui.buildRowItems(state, view, 3, hint),
-    MC.ui.buildRowItems(state, view, 4, hint)
-  ];
-
-  // Render overlays (ghosts/previews) live alongside row models, not in the renderer.
-  var ri;
-  for (ri = 0; ri < models.length; ri++) models[ri].overlayItems = [];
-
-  // Small render meta so the renderer doesn't have to rediscover intent.
-  var meta = { hideSrc: null, focus: null };
-
-  // Clamp cursor to existing rows/items.
-  if (!view || !view.cursor) return { models: models, selected: null, meta: meta };
-  var row = view.cursor.row;
-  if (row < 0) row = 0;
-  if (row > 4) row = 4;
-  view.cursor.row = row;
-
-  var rm = models[row];
-  var n = (rm && rm.items) ? rm.items.length : 0;
-  view.cursor.i = MC.ui.clampI(view.cursor.i, n);
-
-  var sel = (rm && rm.items && rm.items.length) ? rm.items[view.cursor.i] : null;
-
-  // Note: cursor relocation off empty selections is handled by MC.ui.focus.preserve().
-
-  var L = MC.config.render.layout;
-  var yTable = MC.layout.faceYForRow(3);
-
-  function pushOverlay(row0, it0) {
-    if (row0 == null) return;
-    var rm0 = models[row0];
-    if (!rm0 || !rm0.overlayItems) return;
-    rm0.overlayItems.push(it0);
-  }
-
-  function findItemByUidLoc(uid, loc) {
-    if (!uid || !loc) return null;
-    var row;
-    for (row = 0; row < models.length; row++) {
-      var rm = models[row];
-      if (!rm || !rm.items) continue;
-      var i;
-      for (i = 0; i < rm.items.length; i++) {
-        var it = rm.items[i];
-        if (!it || it.uid !== uid || !it.loc) continue;
-        if (it.loc.p !== loc.p) continue;
-        if (String(it.loc.zone) !== String(loc.zone)) continue;
-        if ((it.loc.setI != null) && (loc.setI != null) && it.loc.setI !== loc.setI) continue;
-        if ((it.loc.i != null) && (loc.i != null) && it.loc.i !== loc.i) continue;
-        return it;
-      }
-    }
-    return null;
-  }
-
-  function stackX(st, depth) {
-    if (!st) return 0;
-    return st.x0 + depth * st.stride * st.fanDir;
-  }
-
-  function tableStack(setI) {
-    var rmTable = models[MC.render.ROW_P_TABLE];
-    var stacks = (rmTable && rmTable.stacks) ? rmTable.stacks : null;
-    return stacks ? stacks["set:p0:set" + setI] : null;
-  }
-
-  function slotNewSet() {
-    var rmTable = models[MC.render.ROW_P_TABLE];
-    var newSetX = (rmTable && rmTable.newSetX != null) ? rmTable.newSetX : L.rowPadX;
-    return { row: 3, x: newSetX, y: yTable, stackKey: "newSet:p0:row3", depth: 0 };
-  }
-
-  function slotSetEnd(setI) {
-    var st = tableStack(setI);
-    if (!st) return null;
-    return { row: 3, x: stackX(st, st.nReal), y: st.y, stackKey: "set:p0:set" + setI, depth: st.nReal };
-  }
-
-  function slotSetTop(setI) {
-    var st = tableStack(setI);
-    if (!st || st.nReal <= 0) return null;
-    return { row: 3, x: stackX(st, st.nReal - 1), y: st.y, stackKey: "set:p0:set" + setI, depth: st.nReal };
-  }
-
-  function slotBankEnd() {
-    var rmHand = models[MC.render.ROW_P_HAND];
-    var bankSt = (rmHand && rmHand.stacks) ? rmHand.stacks["bank:p0:row4"] : null;
-    if (!bankSt) return null;
-    return { row: 4, x: stackX(bankSt, bankSt.nReal), y: bankSt.y, stackKey: "bank:p0:row4", depth: bankSt.nReal };
-  }
-
-  function slotForCmd(cmd, srcSlot) {
-    var d = MC.moves.destForCmd(cmd);
-    if (!d) return null;
-    if (d.kind === "newSet") return slotNewSet();
-    if (d.kind === "setEnd") return slotSetEnd(d.setI);
-    if (d.kind === "setTop") return slotSetTop(d.setI);
-    if (d.kind === "bankEnd") return slotBankEnd();
-    if (d.kind === "source") return srcSlot || null;
-    return null;
-  }
-
-  function pushGhost(slot) {
-    if (!slot) return;
-    pushOverlay(slot.row, { kind: "ghost", x: slot.x, y: slot.y, stackKey: slot.stackKey, depth: slot.depth });
-  }
-
-  function setFocus(slot, uid, color, forCmdKind, focusSrcGhost) {
-    if (!slot) return;
-    meta.focus = {
-      kind: "preview",
-      row: slot.row,
-      forCmdKind: forCmdKind,
-      focusSrcGhost: !!focusSrcGhost,
-      uid: uid,
-      color: color,
-      x: slot.x,
-      y: slot.y,
-      w: L.faceW,
-      h: L.faceH,
-      stackKey: slot.stackKey,
-      depth: slot.depth
-    };
-    pushOverlay(slot.row, meta.focus);
-  }
-
-  function previewForCmd(cmd, srcSlot, card) {
-    if (!cmd || !cmd.kind) return null;
-    var slot = slotForCmd(cmd, srcSlot);
-    if (!slot) return null;
-    var prev = MC.cmd.previewForCmd(state, cmd, card);
-    if (!prev) return null;
-    return { slot: slot, uid: prev.uid, color: prev.color, forCmdKind: prev.forCmdKind, focusSrcGhost: prev.focusSrcGhost };
-  }
-
-  function setFocusForCmd(cmd, srcSlot, card) {
-    var prev = previewForCmd(cmd, srcSlot, card);
-    if (!prev) return;
-    setFocus(prev.slot, prev.uid, prev.color, prev.forCmdKind, prev.focusSrcGhost);
-  }
-
-  // Targeting overlays: ghosts + preview-in-stack for the selected destination.
-  if (view.mode === "targeting" && view.targeting && view.targeting.active) {
-    var t = view.targeting;
-    var cmds = t.cmds;
-    var cmdI = MC.ui.clampI(t.cmdI, cmds.length);
-    t.cmdI = cmdI;
-    var cmdSel0 = (cmds && cmds.length) ? cmds[cmdI] : null;
-    var profT = MC.cmd.getProfile(t.kind);
-    var uiT = (profT && profT.ui) ? profT.ui : null;
-    var uiMode = (uiT && uiT.mode) ? String(uiT.mode) : "preview";
-    var isCursorMode = (uiMode === "cursor");
-    var isSourceSel = !!(cmdSel0 && cmdSel0.kind === "source");
-    var mouseDragNoSnap = !!(t.mouse && t.mouse.dragMode && t.mouse.dragging && !t.mouse.snapped);
-
-    // Find source slot in models (for hold-targeting Source destination).
-    var srcX = null, srcY = null, srcRow = null;
-    if (t.card && t.card.uid && t.card.loc) {
-      var srcLoc = t.card.loc;
-      var z = String(srcLoc.zone || "");
-      if (z === "hand" || z === "recvProps") {
-        var rowHand = MC.render.ROW_P_HAND;
-        var rmHand = models[rowHand];
-        if (rmHand && rmHand.items) {
-          var hi;
-          for (hi = 0; hi < rmHand.items.length; hi++) {
-            var itH = rmHand.items[hi];
-            if (!itH || itH.kind !== "hand" || !itH.loc) continue;
-            if (itH.loc.p !== srcLoc.p) continue;
-            if (String(itH.loc.zone) !== String(srcLoc.zone)) continue;
-            if (itH.loc.i !== srcLoc.i) continue;
-            if (itH.uid !== t.card.uid) continue;
-            srcX = itH.x;
-            srcY = itH.y;
-            srcRow = rowHand;
-            break;
-          }
-        }
-      } else {
-        // Generic fallback: locate source in current models (supports setProps moveWild targeting).
-        var itSrc = findItemByUidLoc(t.card.uid, srcLoc);
-        if (itSrc) {
-          srcX = itSrc.x;
-          srcY = itSrc.y;
-          srcRow = itSrc.row;
-        }
-      }
-    }
-
-    // While targeting, hide the source card so the source slot can be represented by a ghost/preview.
-    // Exception: when the selected destination is Source, show the real source card + normal highlight.
-    // Mouse DnD nuance: while dragging unsnapped, keep hiding the source even if cmdI is Source,
-    // otherwise the real source would duplicate against the floating card under the cursor.
-    var showRealSource = !!(isSourceSel && !mouseDragNoSnap);
-    if (!showRealSource) if (t.card && t.card.uid && t.card.loc && (t.card.loc.zone === "hand" || t.card.loc.zone === "recvProps" || t.card.loc.zone === "setProps")) {
-      meta.hideSrc = { uid: t.card.uid, loc: t.card.loc };
-    }
-
-    var srcSlot = (srcX != null && srcY != null && srcRow != null)
-      ? { row: srcRow, x: srcX, y: srcY, stackKey: "overlay:src:row" + srcRow, depth: 0 }
-      : null;
-
-    // Hold-chain: ghost non-selected segment destinations so the player can see the full cycle
-    // (e.g. Sly targets while Bank segment exists, or Rent sets while Bank segment exists).
-    if (t.chainActive && t.chainSegs && t.chainSegs.length) {
-      var sgi;
-      for (sgi = 0; sgi < t.chainSegs.length; sgi++) {
-        var segG = t.chainSegs[sgi];
-        if (!segG || !segG.kind || !segG.cmds) continue;
-        var kindG = String(segG.kind);
-        if (kindG === String(t.kind || "")) continue;
-        if (kindG === "source") continue;
-
-        var profG = MC.cmd.getProfile(kindG);
-        var uiG = (profG && profG.ui) ? profG.ui : null;
-        var modeG = (uiG && uiG.mode) ? String(uiG.mode) : "preview";
-        if (modeG === "cursor") continue; // cursor-mode cross-ghosting handled separately (optional)
-
-        var ciG;
-        for (ciG = 0; ciG < segG.cmds.length; ciG++) {
-          var cmdG = segG.cmds[ciG];
-          if (!cmdG || !cmdG.kind) continue;
-          pushGhost(slotForCmd(cmdG, srcSlot));
-        }
-      }
-    }
-
-    if (isCursorMode) {
-      // Cursor-moving targeting: no preview card (avoid “two cursors” look). Cursor moves to the target instead.
-      // Source slot is still represented by a ghost when the real source card is hidden.
-      if (meta.hideSrc && srcRow != null && srcX != null && srcY != null) {
-        pushOverlay(srcRow, { kind: "ghost", x: srcX, y: srcY, stackKey: "overlay:src:row" + srcRow, depth: 0 });
-      }
-
-      // Optional: ghost outlines for non-selected targets.
-      var showGhosts = !!MC.config.ui.slyShowTargetGhosts;
-      if (showGhosts && cmds && cmds.length && uiT && uiT.findItemForCmd) {
-        var ctxC = { state: state, view: view, computed: computed };
-        var jS;
-        for (jS = 0; jS < cmds.length; jS++) {
-          var cS = cmds[jS];
-          if (!cS || cS.kind === "source") continue;
-          if (!isSourceSel && jS === cmdI) continue;
-          var pick = uiT.findItemForCmd(ctxC, cS);
-          if (!pick || !pick.item) continue;
-          var itT = pick.item;
-          // Draw the outline late so it stays readable.
-          pushOverlay(itT.row, { kind: "ghost", x: itT.x, y: itT.y, stackKey: itT.stackKey, depth: (itT.depth != null ? itT.depth + 100 : 100) });
-        }
-      }
-    } else {
-      // Ghosts for all non-selected legal destinations in this targeting mode.
-      var hasSourceCmd = false;
-      var j;
-      for (j = 0; j < cmds.length; j++) if (cmds[j] && cmds[j].kind === "source") { hasSourceCmd = true; break; }
-
-      // When dragging but not snapped, still show a ghost at the source slot so it doesn't look like the card vanished.
-      if (mouseDragNoSnap && meta.hideSrc && srcRow != null && srcX != null && srcY != null) {
-        pushOverlay(srcRow, { kind: "ghost", x: srcX, y: srcY, stackKey: "overlay:src:row" + srcRow, depth: 0 });
-      }
-
-      for (j = 0; j < cmds.length; j++) {
-        // While dragging but not snapped, ghost *all* destinations (including the default `cmdI`)
-        // so the player sees every legal drop target even before a snap occurs.
-        if (!mouseDragNoSnap && j === cmdI) continue;
-        var c = cmds[j];
-        if (!c || !c.kind) continue;
-        if (mouseDragNoSnap && c.kind === "source") continue; // source is represented by the separate source ghost above
-        pushGhost(slotForCmd(c, srcSlot));
-      }
-
-      // Preview-in-stack for selected destination. If Source is selected, rely on the real card + highlight
-      // (otherwise we would double-render the same card at the same position).
-      var cmdSel = cmds[cmdI];
-      if (!mouseDragNoSnap && cmdSel && cmdSel.kind !== "source") {
-        setFocusForCmd(cmdSel, srcSlot, { uid: (t.card && t.card.uid) ? t.card.uid : 0, def: (t.card && t.card.def) ? t.card.def : null, wildColor: t.wildColor });
-      }
-
-      // If the selected destination previews the same uid elsewhere, ensure the source slot is still readable.
-      // (This keeps menu-targeting and recvProps placement consistent with hold-targeting: source becomes a ghost.)
-      if (
-        t.card &&
-        t.card.uid &&
-        srcX != null &&
-        srcY != null &&
-        srcRow != null &&
-        meta.focus &&
-        (meta.focus.uid === t.card.uid || meta.focus.focusSrcGhost) &&
-        !hasSourceCmd
-      ) {
-        pushOverlay(srcRow, { kind: "ghost", x: srcX, y: srcY, stackKey: "overlay:src:row" + srcRow, depth: 0 });
-      }
-    }
-  }
-
-  // Menu-hover destination preview (only when unambiguous).
-  if (!meta.focus && view.mode === "menu" && view.menu && view.menu.items && view.menu.items.length > 0 && view.menu.src) {
-    var srcM = view.menu.src;
-    var uidM = (srcM && srcM.uid) ? srcM.uid : 0;
-    var cm = (hint && hint.menuHoverCmd) ? hint.menuHoverCmd : null;
-    if (uidM && cm) {
-      if (cm.kind === "playSlyDeal" && cm.target && cm.target.loc) {
-        // Cursor-mode menu hover preview: highlight the (single) target and ghost the source card.
-        var itT = findItemByUidLoc(cm.target.uid, cm.target.loc);
-        // Reuse preview overlay to get the standard yellow highlight (no new overlay kinds).
-        if (itT) {
-          var slotT = { row: itT.row, x: itT.x, y: itT.y, stackKey: itT.stackKey, depth: (itT.depth != null ? itT.depth + 100 : 100) };
-          setFocus(slotT, cm.target.uid, null, "playSlyDeal", false);
-        }
-
-        if (srcM.uid && srcM.loc && (srcM.loc.zone === "hand" || srcM.loc.zone === "recvProps")) {
-          meta.hideSrc = { uid: srcM.uid, loc: srcM.loc };
-          var rowHandS = MC.render.ROW_P_HAND;
-          var rmHandS = models[rowHandS];
-          if (rmHandS && rmHandS.items) {
-            var hiS;
-            for (hiS = 0; hiS < rmHandS.items.length; hiS++) {
-              var itHS = rmHandS.items[hiS];
-              if (!itHS || itHS.kind !== "hand" || !itHS.loc) continue;
-              if (itHS.uid !== uidM) continue;
-              if (itHS.loc.p !== srcM.loc.p) continue;
-              if (String(itHS.loc.zone) !== String(srcM.loc.zone)) continue;
-              if (itHS.loc.i !== srcM.loc.i) continue;
-              models[rowHandS].overlayItems.push({ kind: "ghost", x: itHS.x, y: itHS.y, stackKey: "overlay:menuSrc:row" + rowHandS, depth: 0 });
-              break;
-            }
-          }
-        }
-      } else {
-        var defM = MC.state.defByUid(state, uidM);
-        setFocusForCmd(cm, null, { uid: uidM, def: defM, wildColor: (defM && MC.rules.isWildDef(defM)) ? cm.color : null });
-      }
-    }
-
-    // When menu hover produces a preview of the same uid (or Rent preview where the preview card differs),
-    // ghost the source slot so it doesn't look duplicated.
-    if (meta.focus && uidM && srcM && srcM.loc && (meta.focus.uid === uidM || meta.focus.focusSrcGhost)) {
-      if (srcM.uid && srcM.loc && (srcM.loc.zone === "hand" || srcM.loc.zone === "recvProps")) {
-        meta.hideSrc = { uid: srcM.uid, loc: srcM.loc };
-      }
-      var rowHandM = MC.render.ROW_P_HAND;
-      var rmHandM = models[rowHandM];
-      if (rmHandM && rmHandM.items) {
-        var hiM;
-        for (hiM = 0; hiM < rmHandM.items.length; hiM++) {
-          var itHM = rmHandM.items[hiM];
-          if (!itHM || itHM.kind !== "hand" || !itHM.loc) continue;
-          if (itHM.uid !== uidM) continue;
-          if (itHM.loc.p !== srcM.loc.p) continue;
-          if (String(itHM.loc.zone) !== String(srcM.loc.zone)) continue;
-          if (itHM.loc.i !== srcM.loc.i) continue;
-          models[rowHandM].overlayItems.push({ kind: "ghost", x: itHM.x, y: itHM.y, stackKey: "overlay:menuSrc:row" + rowHandM, depth: 0 });
-          break;
-        }
-      }
-    }
-  }
-
-  // RespondAction prompt: keep a ghost outline on the forced target when cursor is away.
-  var pr = state ? state.prompt : null;
-  if (pr && pr.kind === "respondAction" && pr.p === 0 && pr.target && pr.target.loc) {
-    var tgt = pr.target;
-    var onTarget = false;
-    if (sel && sel.loc) {
-      onTarget = MC.ui.itemMatchesUidLoc(sel, tgt.uid, tgt.loc);
-    }
-    if (!onTarget) {
-      var itT2 = findItemByUidLoc(tgt.uid, tgt.loc);
-      if (itT2) {
-        pushOverlay(itT2.row, { kind: "ghost", x: itT2.x, y: itT2.y, stackKey: itT2.stackKey, depth: (itT2.depth != null ? itT2.depth + 100 : 100) });
-      }
-    }
-  }
-
-  // Visualize the pay/transfer buffer as a non-selectable center-row stack.
-  // - During payDebt: show prompt.buf (what has been committed so far).
-  // - While draining: show view.anim.payBufUids even after the prompt clears.
-  var payBufUids = null;
-  if (pr && pr.kind === "payDebt" && pr.buf && pr.buf.length > 0) {
-    payBufUids = pr.buf.slice();
-  } else if (view.anim.payBufUids.length > 0) {
-    payBufUids = view.anim.payBufUids.slice();
-  }
-
-  if (payBufUids && payBufUids.length > 0) {
-    var rowCenter2 = MC.render.ROW_CENTER;
-    var rmCenter2 = models[rowCenter2];
-    if (rmCenter2 && rmCenter2.overlayItems) {
-      var topC = L.rowY[rowCenter2] + L.centerTopInsetY;
-      rmCenter2.overlayItems.push({
-        kind: "payBuf",
-        row: rowCenter2,
-        x: L.centerPayBufX,
-        y: topC,
-        w: L.faceW,
-        h: L.faceH,
-        uids: payBufUids,
-        nVis: payBufUids.length
-      });
-    }
-  }
-
-  var computed = { models: models, selected: sel, meta: meta };
-  computed = MC.anim.present(state, view, computed) || computed;
-
-  // Snapshot last-seen screen-space positions for transfer animations.
-  if (view && view.anim && view.anim.lastPosByUid && computed && computed.models) {
-    var posByUid = view.anim.lastPosByUid;
-    var k;
-    for (k in posByUid) delete posByUid[k];
-
-    var row;
-    for (row = 0; row < computed.models.length; row++) {
-      var rmSnap = computed.models[row];
-      if (!rmSnap || !rmSnap.items) continue;
-      var camSnap = (view.camX && view.camX[row] != null) ? view.camX[row] : 0;
-      var iSnap;
-      for (iSnap = 0; iSnap < rmSnap.items.length; iSnap++) {
-        var itSnap = rmSnap.items[iSnap];
-        if (!itSnap || !itSnap.uid) continue;
-        posByUid[itSnap.uid] = { x: (itSnap.x - camSnap), y: itSnap.y, row: row };
-      }
-    }
-  }
-
-  return computed;
-};
+// `MC.ui.computeRowModels` lives in `src/67_ui_row_models.js`.
 
 MC.ui.ensureCamForSelection = function (rowModel, row, selItem, camArr) {
   var L = MC.config.render.layout;
@@ -1404,6 +1026,7 @@ MC.ui.menuOpenForSelection = function (state, view, sel) {
   if (sel.loc.p !== 0) return;
 
   var uid = sel.uid;
+  var defSel = MC.state.defByUid(state, uid);
   var kinds = MC.cmd.menuKinds;
   var iKind;
   for (iKind = 0; iKind < kinds.length; iKind++) {
@@ -1417,6 +1040,7 @@ MC.ui.menuOpenForSelection = function (state, view, sel) {
     if (!realCmds || realCmds.length === 0) continue; // actionable-only
 
     var label = prof.menuLabel(state, realCmds);
+    label = MC.ui.menuLabelForKind(kind, label, defSel);
     view.menu.items.push({ id: kind, label: label });
   }
 
@@ -1429,22 +1053,12 @@ MC.ui.menuOpenForSelection = function (state, view, sel) {
 
 MC.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
   if (!view || !view.targeting) return;
-  var t = view.targeting;
-  t.active = true;
+  var t = MC.ui.targetingResetCommon(state, view, hold, uid, loc);
+  if (!t) return;
   t.kind = String(kind || "");
-  t._profileSorted = false;
-  t._profileSyncCmdI = -1;
-  t.hold = !!hold;
-  t.cmds = [];
-  t.cmdI = 0;
   t.chainActive = false;
   t.chainSegs = [];
   t.chainI = 0;
-  t.srcCursor = { row: view.cursor ? view.cursor.row : 4, i: view.cursor ? view.cursor.i : 0 };
-  MC.ui.mouse.resetTargeting(t);
-
-  var def = MC.state.defByUid(state, uid);
-  t.card = { uid: uid, loc: loc || null, def: def || null };
 
   var r = MC.moves.cmdsForTargeting(state, t.kind, uid, t.card ? t.card.loc : null);
   if (!r) {
@@ -1466,48 +1080,35 @@ MC.ui.targetingEnter = function (state, view, kind, hold, uid, loc) {
 
   // If the only legal destination is Source/cancel, disallow entering targeting.
   if (MC.moves.cmdsWithoutSource(t.cmds).length === 0) {
-    MC.anim.feedbackError(view, "no_actions", "No actions");
+    MC.ui.feedbackNoMovesLeft(state, view);
     t.active = false;
     view.mode = "browse";
     return;
   }
 
   // Profile-driven default selection (e.g. Rent: highest amount, without changing cycle order).
-  var profD = MC.cmd.getProfile(t.kind);
-  if (profD && typeof profD.defaultCmdI === "function") {
-    var di = profD.defaultCmdI(state, t.cmds, t.card ? t.card.loc : null);
-    if (di != null) t.cmdI = MC.ui.clampI(di, t.cmds.length);
-  }
+  MC.ui.targetingApplyProfileDefaultCmdI(state, t);
+
+  // Wild menu-place nuance: if only one real destination exists, start at Source so it doesn't
+  // look like we pre-selected the drop target (ellipsis implies follow-up choice).
+  if (MC.cmd.wildSingleDestPlaceCmd(t)) t.cmdI = MC.ui.findSourceCmdI(t.cmds);
 
   view.mode = "targeting";
 };
 
 MC.ui.targetingEnterHoldChain = function (state, view, kinds, uid, loc) {
   if (!view || !view.targeting) return;
-  var t = view.targeting;
-
-  t.active = true;
-  t._profileSorted = false;
-  t._profileSyncCmdI = -1;
-  t.hold = true;
-  t.cmds = [];
-  t.cmdI = 0;
-  t.wildColor = MC.state.NO_COLOR;
-
+  var t = MC.ui.targetingResetCommon(state, view, true, uid, loc);
+  if (!t) return;
   t.chainActive = true;
   t.chainSegs = [];
   t.chainI = 0;
-  t.srcCursor = { row: view.cursor ? view.cursor.row : 4, i: view.cursor ? view.cursor.i : 0 };
-  MC.ui.mouse.resetTargeting(t);
-
-  var def = MC.state.defByUid(state, uid);
-  t.card = { uid: uid, loc: loc || null, def: def || null };
 
   var chain = MC.cmd.buildHoldChain(state, uid, t.card ? t.card.loc : null, kinds);
   if (chain && chain.segs) t.chainSegs = chain.segs;
 
   if (!t.chainSegs || t.chainSegs.length === 0) {
-    MC.anim.feedbackError(view, "no_actions", "No actions");
+    MC.ui.feedbackNoMovesLeft(state, view);
     t.active = false;
     view.mode = "browse";
     return;
@@ -1522,12 +1123,8 @@ MC.ui.targetingEnterHoldChain = function (state, view, kinds, uid, loc) {
   t.wildColor = (chain && chain.wildColor != null) ? chain.wildColor : MC.state.NO_COLOR;
 
   // Profile-driven default selection for the first segment (notably Rent).
-  var prof0 = MC.cmd.getProfile(t.kind);
-  if (prof0 && typeof prof0.defaultCmdI === "function") {
-    var di0 = prof0.defaultCmdI(state, t.cmds, t.card ? t.card.loc : null);
-    if (di0 != null) t.cmdI = MC.ui.clampI(di0, t.cmds.length);
-    seg0.cmdI = t.cmdI;
-  }
+  MC.ui.targetingApplyProfileDefaultCmdI(state, t);
+  seg0.cmdI = t.cmdI;
 
   view.mode = "targeting";
 };
@@ -1630,6 +1227,17 @@ MC.ui.step = function (state, view, actions) {
 
   // Track recent mouse usage (for hover UX + focus policy).
   MC.ui.mouse.syncAutoFocusPause(view, actions);
+
+  // Targeting overlay hint mode should follow the "last input device" latch.
+  // (Prompt toasts already use view.ux.autoFocusPausedByMouse; keep targeting hints consistent.)
+  if (view && view.mode === "targeting" && view.targeting && view.targeting.active) {
+    var tHm = view.targeting;
+    var isDraggingHm = !!(tHm.mouse && tHm.mouse.dragMode && tHm.mouse.dragging);
+    if (!isDraggingHm) {
+      if (!tHm.hold && view.ux && view.ux.autoFocusPausedByMouse) tHm.hintMode = "mouseClick";
+      else tHm.hintMode = "controller";
+    }
+  }
 
   var gameOver = (state.winnerP !== MC.state.NO_WINNER);
   var prevWinner = (view.ux && view.ux.lastWinnerP != null) ? view.ux.lastWinnerP : MC.state.NO_WINNER;
@@ -1851,12 +1459,16 @@ MC.ui.step = function (state, view, actions) {
       if (!realCmds || realCmds.length === 0) return null;
 
       // Auto-apply when unambiguous.
-      if (realCmds.length === 1) {
+      var def = MC.state.defByUid(state, uid);
+      var allowAutoApply = MC.ui.kindAllowsAutoApply(kind, def);
+      if (realCmds.length === 1 && allowAutoApply) {
         focusSnapshot();
         return { kind: "applyCmd", cmd: realCmds[0] };
       }
 
       MC.ui.targetingEnter(state, view, kind, false, uid, src.loc);
+      // If entered via mouse click, keep mouse-centric help text.
+      if (MC.ui.mouse.leftTap(actions)) view.targeting.hintMode = "mouseClick";
       return null;
     }
 
@@ -1973,6 +1585,10 @@ MC.ui.step = function (state, view, actions) {
       var ui = curUi();
       if (!ui || ui.mode !== "cursor" || !ui.findItemForCmd) return false;
       if (!t.cmds || t.cmds.length === 0) return false;
+      // Mouse-driven targeting: don't move the cursor highlight onto targets.
+      // Cursor highlight is a strong "selection" signal; use preview overlays on snap instead.
+      if (view.ux && view.ux.autoFocusPausedByMouse) return false;
+      if (t.mouse && t.mouse.dragMode && t.mouse.dragging) return false;
       var cmdI = MC.ui.clampI(t.cmdI, t.cmds.length);
       t.cmdI = cmdI;
       if (t._profileSyncCmdI === cmdI) return false;
@@ -2059,7 +1675,7 @@ MC.ui.step = function (state, view, actions) {
     if (!t.hold && actions.a.tap) {
       // Mouse click should only confirm when the pointer is over a destination/target.
       if (mouseTap && t.mouse && t.mouse.active && !mouseSnapped) {
-        MC.anim.feedbackError(view, "no_targets", "Pick a destination");
+        MC.anim.feedbackError(view, "no_targets", "Pick a target");
         return null;
       }
       shouldConfirm = true;
@@ -2087,7 +1703,7 @@ MC.ui.step = function (state, view, actions) {
     }
 
     if (!t.cmds || t.cmds.length === 0) {
-      MC.anim.feedbackError(view, "no_targets", "No valid destination");
+      MC.anim.feedbackError(view, "no_targets", "No valid target");
       t.active = false;
       view.mode = "browse";
       return null;
@@ -2101,6 +1717,10 @@ MC.ui.step = function (state, view, actions) {
     if (!cmdSel) return null;
     // Mouse DnD: snapping back to Source should behave like cancel (restore cursor).
     if (cmdSel.kind === "source") {
+      // Wild menu-place nuance: if only one real destination exists, allow confirm while "on source"
+      // so the player can pick color first without cycling to the (only) destination.
+      var onlyReal = MC.cmd.wildSingleDestPlaceCmd(t);
+      if (onlyReal) { focusSnapshot(); return { kind: "applyCmd", cmd: onlyReal }; }
       if (mouseReleased && t.mouse && t.mouse.dragMode && t.srcCursor) {
         view.cursor.row = t.srcCursor.row;
         view.cursor.i = t.srcCursor.i;
@@ -2143,9 +1763,12 @@ MC.ui.step = function (state, view, actions) {
       if (pick) MC.ui.cursorMoveTo(view, pick);
     }
 
-    function snapCursorToFirstReplaceWild() {
+    function snapReplaceWildAndResync() {
       var pick = MC.ui.pickReplaceWindowWild(state, computed);
       if (pick) MC.ui.cursorMoveTo(view, pick);
+      computed = MC.ui.computeRowModels(state, view);
+      MC.ui.updateCameras(state, view, computed);
+      MC.ui.focus.snapshot(state, view, computed);
     }
 
     // Mouse hover selection in prompts (discardDown is handled separately below).
@@ -2221,10 +1844,10 @@ MC.ui.step = function (state, view, actions) {
         MC.ui.updateCameras(state, view, computed);
       }
       var selGrabP = currentSelection();
-      if (!selGrabP || !selGrabP.loc) { MC.anim.feedbackError(view, "no_actions", "No actions"); snapCursorToFirstRecv(); return null; }
+      if (!selGrabP || !selGrabP.loc) { MC.ui.feedbackNoMovesLeft(state, view); if (!MC.ui.mouse.dragStart(actions)) snapCursorToFirstRecv(); return null; }
       if (selGrabP.loc.zone !== "recvProps") {
         MC.anim.feedbackError(view, "place_recv_only", "Select a received property");
-        snapCursorToFirstRecv();
+        if (!MC.ui.mouse.dragStart(actions)) snapCursorToFirstRecv();
         return null;
       }
       MC.ui.targetingEnter(state, view, "place", true, selGrabP.uid, selGrabP.loc);
@@ -2243,21 +1866,27 @@ MC.ui.step = function (state, view, actions) {
         MC.ui.updateCameras(state, view, computed);
       }
       var selGrabW = currentSelection();
-      if (!selGrabW || !selGrabW.loc) { MC.anim.feedbackError(view, "no_actions", "No actions"); snapCursorToFirstReplaceWild(); return null; }
+      if (!selGrabW || !selGrabW.loc) { MC.ui.feedbackNoMovesLeft(state, view); if (!MC.ui.mouse.dragStart(actions)) snapReplaceWildAndResync(); return null; }
       if (selGrabW.loc.zone !== "setProps" || selGrabW.loc.p !== 0 || selGrabW.loc.setI == null || selGrabW.loc.setI !== prompt.srcSetI) {
         MC.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
-        snapCursorToFirstReplaceWild();
+        if (!MC.ui.mouse.dragStart(actions)) {
+          snapReplaceWildAndResync();
+        }
         return null;
       }
       if (selGrabW.uid === prompt.excludeUid) {
         MC.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
-        snapCursorToFirstReplaceWild();
+        if (!MC.ui.mouse.dragStart(actions)) {
+          snapReplaceWildAndResync();
+        }
         return null;
       }
       var defW = MC.state.defByUid(state, selGrabW.uid);
       if (!defW || !MC.rules.isWildDef(defW)) {
         MC.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
-        snapCursorToFirstReplaceWild();
+        if (!MC.ui.mouse.dragStart(actions)) {
+          snapReplaceWildAndResync();
+        }
         return null;
       }
       MC.ui.targetingEnter(state, view, "moveWild", true, selGrabW.uid, selGrabW.loc);
@@ -2296,7 +1925,7 @@ MC.ui.step = function (state, view, actions) {
           if (selD.id === "nextScenario") { setAutoFocusPauseForCenterBtn("nextScenario"); focusSnapshot(); return { kind: "debug", action: "nextScenario" }; }
           if (selD.id === "endTurn") { MC.anim.feedbackError(view, "prompt_forced", "Must pay"); return null; }
         }
-        if (!selD || !selD.loc) { MC.anim.feedbackError(view, "no_actions", "No actions"); return null; }
+        if (!selD || !selD.loc) { MC.ui.feedbackNoMovesLeft(state, view); return null; }
 
         if (selD.loc.zone === "hand" && selD.loc.p === 0) {
           var canJsn = !!(prompt.srcAction && prompt.buf && prompt.buf.length === 0);
@@ -2353,7 +1982,17 @@ MC.ui.step = function (state, view, actions) {
 
       if (actions.a.tap) {
         var selR0 = currentSelection();
-        if (!selR0 || !selR0.loc) { MC.anim.feedbackError(view, "no_actions", "No actions"); return null; }
+        // Allow debug buttons (Step/Reset/Next) during this prompt; End remains disallowed.
+        if (selR0 && selR0.kind === "btn") {
+          if (selR0.id === "step") { setAutoFocusPauseForCenterBtn("step"); focusSnapshot(); return { kind: "debug", action: "step" }; }
+          if (selR0.id === "reset") { setAutoFocusPauseForCenterBtn("reset"); focusSnapshot(); return { kind: "debug", action: "reset" }; }
+          if (selR0.id === "nextScenario") { setAutoFocusPauseForCenterBtn("nextScenario"); focusSnapshot(); return { kind: "debug", action: "nextScenario" }; }
+          if (selR0.id === "endTurn") { MC.anim.feedbackError(view, "must_respond", "Select the target or Just Say No"); return null; }
+          // Any other center widget: treat as invalid selection for this prompt.
+          MC.anim.feedbackError(view, "must_respond", "Select the target or Just Say No");
+          return null;
+        }
+        if (!selR0 || !selR0.loc) { MC.anim.feedbackError(view, "must_respond", "Select the target or Just Say No"); return null; }
 
         var tgt = prompt.target;
         var isTarget =
@@ -2393,6 +2032,7 @@ MC.ui.step = function (state, view, actions) {
       }
 
       if (actions.a.tap) {
+        var mouseTapPR = MC.ui.mouse.leftTap(actions);
         var selR = currentSelection();
         // Allow debug buttons (Step/Reset/Next) during this prompt; End remains disallowed.
         if (selR && selR.kind === "btn") {
@@ -2401,18 +2041,19 @@ MC.ui.step = function (state, view, actions) {
           if (selR.id === "nextScenario") { setAutoFocusPauseForCenterBtn("nextScenario"); focusSnapshot(); return { kind: "debug", action: "nextScenario" }; }
           if (selR.id === "endTurn") {
             MC.anim.feedbackError(view, "prompt_forced", "Must place");
-            snapCursorToFirstRecv();
+            if (!mouseTapPR) snapCursorToFirstRecv();
             return null;
           }
         }
-        if (!selR || !selR.loc) { MC.anim.feedbackError(view, "no_actions", "No actions"); snapCursorToFirstRecv(); return null; }
+        if (!selR || !selR.loc) { MC.ui.feedbackNoMovesLeft(state, view); if (!mouseTapPR) snapCursorToFirstRecv(); return null; }
         if (selR.loc.zone !== "recvProps") {
           MC.anim.feedbackError(view, "place_recv_only", "Select a received property");
-          snapCursorToFirstRecv();
+          if (!mouseTapPR) snapCursorToFirstRecv();
           return null;
         }
         // Tap-A workflow: go directly to placement targeting (only action in this prompt).
         MC.ui.targetingEnter(state, view, "place", false, selR.uid, selR.loc);
+        if (MC.ui.mouse.leftTap(actions)) view.targeting.hintMode = "mouseClick";
         return null;
       }
 
@@ -2426,33 +2067,41 @@ MC.ui.step = function (state, view, actions) {
       }
 
       if (actions.a.tap) {
+        var mouseTapRW = MC.ui.mouse.leftTap(actions);
         var selW = currentSelection();
         // Allow debug buttons (Step/Reset/Next) during this prompt; End remains disallowed.
         if (selW && selW.kind === "btn") {
           if (selW.id === "step") { setAutoFocusPauseForCenterBtn("step"); focusSnapshot(); return { kind: "debug", action: "step" }; }
           if (selW.id === "reset") { setAutoFocusPauseForCenterBtn("reset"); focusSnapshot(); return { kind: "debug", action: "reset" }; }
           if (selW.id === "nextScenario") { setAutoFocusPauseForCenterBtn("nextScenario"); focusSnapshot(); return { kind: "debug", action: "nextScenario" }; }
-          if (selW.id === "endTurn") { MC.anim.feedbackError(view, "prompt_forced", "Move a Wild or skip"); snapCursorToFirstReplaceWild(); return null; }
+          if (selW.id === "endTurn") { MC.anim.feedbackError(view, "prompt_forced", "Move a Wild or skip"); if (!mouseTapRW) snapReplaceWildAndResync(); return null; }
         }
-        if (!selW || !selW.loc) { MC.anim.feedbackError(view, "no_actions", "No actions"); snapCursorToFirstReplaceWild(); return null; }
+        if (!selW || !selW.loc) { MC.ui.feedbackNoMovesLeft(state, view); if (!mouseTapRW) snapReplaceWildAndResync(); return null; }
         if (selW.loc.zone !== "setProps" || selW.loc.p !== 0 || selW.loc.setI == null || selW.loc.setI !== prompt.srcSetI) {
           MC.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
-          snapCursorToFirstReplaceWild();
+          if (!mouseTapRW) {
+            snapReplaceWildAndResync();
+          }
           return null;
         }
         if (selW.uid === prompt.excludeUid) {
           MC.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
-          snapCursorToFirstReplaceWild();
+          if (!mouseTapRW) {
+            snapReplaceWildAndResync();
+          }
           return null;
         }
         var defW2 = MC.state.defByUid(state, selW.uid);
         if (!defW2 || !MC.rules.isWildDef(defW2)) {
           MC.anim.feedbackError(view, "replace_pick_wild", "Select a Wild");
-          snapCursorToFirstReplaceWild();
+          if (!mouseTapRW) {
+            snapReplaceWildAndResync();
+          }
           return null;
         }
         // Tap-A workflow: enter moveWild targeting.
         MC.ui.targetingEnter(state, view, "moveWild", false, selW.uid, selW.loc);
+        if (MC.ui.mouse.leftTap(actions)) view.targeting.hintMode = "mouseClick";
         return null;
       }
 
@@ -2590,7 +2239,7 @@ MC.ui.step = function (state, view, actions) {
       if (view.menu.items && view.menu.items.length > 0) {
         view.mode = "menu";
       } else {
-        MC.anim.feedbackError(view, "no_actions", "No actions");
+        MC.ui.feedbackNoMovesLeft(state, view);
       }
     }
   }

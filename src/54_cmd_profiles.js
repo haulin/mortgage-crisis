@@ -38,8 +38,39 @@ MC.cmd.titleForCmdKind = function (cmd) {
   if (k === "playProp") return "Place";
   if (k === "moveWild") return "Place";
   if (k === "playSlyDeal") return "Sly Deal";
-  if (k === "source") return "Source";
+  if (k === "source") return "Cancel";
   return "Target";
+};
+
+MC.cmd.wildSingleDestPlaceCmd = function (t) {
+  if (!t || t.hold || t.kind !== "place") return null;
+  if (!t.card || !t.card.def) return null;
+  // This nuance is intended for menu-place from hand: when a Wild has only one real destination,
+  // starting on Source avoids looking like we pre-selected the drop target (since the label is "Place...").
+  // Do not apply it to other place flows (e.g. placeReceived prompt using recvProps).
+  if (!t.card.loc || String(t.card.loc.zone || "") !== "hand") return null;
+  if (!MC.rules.isWildDef(t.card.def)) return null;
+  var realCmds = MC.moves.cmdsWithoutSource(t.cmds);
+  if (realCmds.length !== 1) return null;
+  return realCmds[0];
+};
+
+MC.cmd.titleForTargeting = function (targeting, cmd) {
+  if (cmd && cmd.kind === "source") {
+    // Wild menu-place nuance: when there's only one destination, UI may start on Source to avoid
+    // looking like it auto-picked a destination. In that case, keep the action title.
+    if (MC.cmd.wildSingleDestPlaceCmd(targeting)) return "Place";
+    return "Cancel";
+  }
+
+  var kind = targeting && targeting.kind ? String(targeting.kind) : "";
+  var prof = MC.cmd.getProfile(kind);
+  if (prof && prof.title) {
+    if (typeof prof.title === "function") return String(prof.title(targeting || null, cmd || null));
+    return String(prof.title);
+  }
+
+  return MC.cmd.titleForCmdKind(cmd);
 };
 
 MC.cmd.destLineForCmd = function (state, targeting, cmd) {
@@ -54,7 +85,7 @@ MC.cmd.destLineForCmd = function (state, targeting, cmd) {
     if (!dH || dH.kind !== "setEnd") return "(no destination)";
     var setH = state.players[dH.p].sets[dH.setI];
     var colH = setH ? MC.rules.getSetColor(setH.props) : MC.state.NO_COLOR;
-    return "Dest: " + MC.fmt.colorName(colH) + " set";
+    return "On " + MC.fmt.colorName(colH) + " set";
   }
 
   if (k === "playRent") {
@@ -62,7 +93,7 @@ MC.cmd.destLineForCmd = function (state, targeting, cmd) {
     var setR = state.players[p].sets[cmd.setI];
     var colR = setR ? MC.rules.getSetColor(setR.props) : MC.state.NO_COLOR;
     var amt = MC.rules.rentAmountForSet(state, p, cmd.setI);
-    return "From: " + MC.fmt.colorName(colR) + " set\nAmt: $" + amt;
+    return "From: " + MC.fmt.colorName(colR) + " set\nAmount: $" + amt;
   }
 
   if (k === "playSlyDeal") {
@@ -78,28 +109,33 @@ MC.cmd.destLineForCmd = function (state, targeting, cmd) {
     return "Target: " + MC.fmt.colorName(colT);
   }
 
-  if (k === "bank") return "Dest: Bank";
-  if (k === "source") return "Dest: Source";
+  if (k === "bank") {
+    var uidB = cmd.card.uid;
+    var defB = MC.state.defByUid(state, uidB);
+    if (!defB || defB.bankValue == null) return "";
+    return "Value: $" + String(defB.bankValue);
+  }
+  if (k === "source") return "Cancel";
   return "(no destination)";
 };
 
 MC.cmd.destLinePlaceLike = function (state, targeting, cmd) {
   var t = targeting || null;
   if (!cmd || !cmd.kind) return "(no destination)";
-  if (cmd.kind === "source") return "Dest: Source";
+  if (cmd.kind === "source") return "Cancel";
 
   var d = MC.moves.destForCmd(cmd);
   var out = "";
   if (d) {
-    if (d.kind === "newSet") out = "Dest: New set";
+    if (d.kind === "newSet") out = "Into new set";
     else if (d.kind === "setEnd") {
       var set = state.players[d.p].sets[d.setI];
       var col = set ? MC.rules.getSetColor(set.props) : MC.state.NO_COLOR;
-      out = "Dest: " + MC.fmt.colorName(col) + " set";
+      out = "Into " + MC.fmt.colorName(col) + " set";
     }
   }
 
-  if (t && t.card && t.card.def && MC.rules.isWildDef(t.card.def)) out += "\nAs: " + MC.fmt.colorName(t.wildColor);
+  if (t && t.card && t.card.def && MC.rules.isWildDef(t.card.def)) out += "\nas " + MC.fmt.colorName(t.wildColor);
   return out || "(no destination)";
 };
 
@@ -189,7 +225,7 @@ MC.cmd.buildHoldChain = function (state, uid, loc, kinds) {
 MC.cmdProfiles.place = {
   id: "place",
   title: "Place",
-  helpLR: "L/R: Dest",
+  helpLR: "L/R: Target",
   menuLabel: function (state, cmds) { return MC.fmt.menuLabelForCmds("Place", state, cmds); },
   menuHoverPreview: true,
   includeSource: function (loc) {
@@ -216,7 +252,7 @@ MC.cmdProfiles.place = {
 MC.cmdProfiles.moveWild = {
   id: "moveWild",
   title: "Place",
-  helpLR: "L/R: Dest",
+  helpLR: "L/R: Target",
   includeSource: function () {
     // Replace-window moveWild originates from setProps; still allow Source-cancel for consistency.
     return true;
@@ -242,8 +278,15 @@ MC.cmdProfiles.moveWild = {
 MC.cmdProfiles.bank = {
   id: "bank",
   title: "Bank",
-  helpLR: "L/R: Dest",
-  menuLabel: function (state, cmds) { return MC.fmt.menuLabelForCmds("Bank", state, cmds); },
+  helpLR: "L/R: Target",
+  menuLabel: function (state, cmds) {
+    if (!cmds || cmds.length !== 1) return "Bank...";
+    var c = cmds[0];
+    if (!c || !c.card || !c.card.uid) return "Bank";
+    var def = MC.state.defByUid(state, c.card.uid);
+    if (!def || def.bankValue == null) return "Bank";
+    return "Bank ($" + String(def.bankValue) + ")";
+  },
   menuHoverPreview: true,
   includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },
   cmdsForUid: function (state, uid) { return MC.moves.bankCmdsForUid(state, uid); },
@@ -258,7 +301,7 @@ MC.cmdProfiles.bank = {
 MC.cmdProfiles.build = {
   id: "build",
   title: "Build",
-  helpLR: "L/R: Dest",
+  helpLR: "L/R: Target",
   menuLabel: function (state, cmds) { return MC.fmt.menuLabelForCmds("Build", state, cmds); },
   menuHoverPreview: true,
   includeSource: function (loc) { return MC.moves.locAllowsSource(loc); },

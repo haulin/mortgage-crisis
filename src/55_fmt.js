@@ -25,7 +25,7 @@ MC.fmt.errorMessage = function (code) {
   if (code === "set_not_complete") return "Set not complete";
   if (code === "set_color_mismatch") return "Wrong set color";
   if (code === "wild_color_illegal") return "Wild color illegal";
-  if (code === "no_targets") return "No valid destination";
+  if (code === "no_targets") return "No valid target";
   if (code === "house_pay_first") return "House must be paid first";
   if (code === "not_sly") return "Not a Sly Deal";
   if (code === "sly_full_set") return "Can't steal from a complete set";
@@ -99,7 +99,7 @@ MC.fmt.destLabelForCmd = function (state, cmd) {
   }
   var d = MC.moves.destForCmd(cmd);
   if (!d) return "";
-  if (d.kind === "newSet") return "New Set";
+  if (d.kind === "newSet") return "New set";
   if (d.kind === "setEnd") return MC.fmt.setLabelForSetI(state, d.p, d.setI);
   return "";
 };
@@ -107,7 +107,7 @@ MC.fmt.destLabelForCmd = function (state, cmd) {
 MC.fmt.setLabelForSetI = function (state, p, setI) {
   var set = state.players[p].sets[setI];
   var col = set ? MC.rules.getSetColor(set.props) : MC.state.NO_COLOR;
-  return MC.fmt.colorName(col) + " Set";
+  return MC.fmt.colorName(col) + " set";
 };
 
 MC.fmt.menuLabelForCmds = function (baseLabel, state, cmds) {
@@ -123,47 +123,53 @@ MC.fmt.menuLabelForRentMoves = function (state, rentMoves) {
   if (!rentMoves || rentMoves.length === 0) return "";
   if (rentMoves.length !== 1) return "Rent...";
   var onlyR = rentMoves[0];
-  var sl = MC.fmt.setLabelForSetI(state, 0, onlyR.setI);
-  return sl ? ("Rent -> " + sl) : "Rent";
+  var p = onlyR.card.loc.p;
+  var sl = MC.fmt.setLabelForSetI(state, p, onlyR.setI);
+  var amt = MC.rules.rentAmountForSet(state, p, onlyR.setI);
+  if (sl) return "Rent -> " + sl + " ($" + amt + ")";
+  return "Rent ($" + amt + ")";
 };
 
 MC.fmt.targetingTitle = function (targeting, cmd) {
-  var tKind = targeting && targeting.kind ? String(targeting.kind) : "";
-
-  var prof = MC.cmd.getProfile(tKind);
-  if (prof && prof.title) {
-    if (typeof prof.title === "function") return String(prof.title(targeting || null, cmd || null));
-    return String(prof.title);
+  if (targeting.mouse.dragMode && targeting.mouse.dragging && !targeting.mouse.snapped) {
+    return "Drop";
   }
-
-  return MC.cmd.titleForCmdKind(cmd);
+  return MC.cmd.titleForTargeting(targeting, cmd);
 };
 
 MC.fmt.targetingDestLine = function (state, targeting, cmd) {
-  var t = targeting || null;
-  if (t && t.mouse && t.mouse.dragMode && t.mouse.dragging && !t.mouse.snapped) {
-    return "Hover dest\nto snap";
+  if (targeting.mouse.dragMode && targeting.mouse.dragging && !targeting.mouse.snapped) {
+    return "Onto a target";
   }
+  if (cmd && cmd.kind === "source") return "";
 
-  var tKind = t && t.kind ? String(t.kind) : "";
+  var tKind = targeting.kind ? String(targeting.kind) : "";
   var prof = MC.cmd.getProfile(tKind);
-  if (prof && prof.destLine) return prof.destLine(state, t, cmd);
-  return MC.cmd.destLineForCmd(state, t, cmd);
+  if (prof && prof.destLine) return prof.destLine(state, targeting, cmd);
+  return MC.cmd.destLineForCmd(state, targeting, cmd);
 };
 
 MC.fmt.targetingHelp = function (targeting) {
-  var t = targeting || null;
-  if (t && t.mouse && t.mouse.dragMode && t.mouse.dragging && !t.mouse.snapped) {
-    var help = "Hover:Snap";
-    if (t.card && t.card.def && MC.rules.isWildDef(t.card.def)) help += "  U/D:Color";
-    help += "\nRelease:Cancel  Right:Cancel";
-    return help;
+  var t = targeting;
+  if (t.mouse.dragMode && t.mouse.dragging) {
+    var isWild = MC.rules.isWildDef(t.card.def);
+    var line0 = isWild ? "Scroll:Color" : "Right:Cancel";
+    var line1 = (t.mouse && t.mouse.snapped) ? "Release:Confirm" : "Release:Cancel";
+    // Avoid duplicating Right:Cancel when already shown on line 0.
+    if (!isWild) return line0 + "\n" + line1;
+    line1 += "  Right:Cancel";
+    return line0 + "\n" + line1;
   }
-  var kind = t && t.kind ? String(t.kind) : "";
+  if (t.hintMode === "mouseClick") {
+    var isWildC = MC.rules.isWildDef(t.card.def);
+    if (!isWildC) return "Click:Confirm\nRight:Cancel";
+    return "Click:Confirm  Scroll:Color\nRight:Cancel";
+  }
+  var kind = t.kind ? String(t.kind) : "";
   var prof = MC.cmd.getProfile(kind);
-  var help = (prof && prof.helpLR) ? String(prof.helpLR) : "L/R: Dest";
-  if (t && t.card && t.card.def && MC.rules.isWildDef(t.card.def)) help += "  U/D: Color";
-  help += (t && t.hold) ? "\nRelease A: Drop  B:Cancel" : "\nA:Confirm  B:Cancel";
+  var help = (prof && prof.helpLR) ? String(prof.helpLR) : "L/R: Target";
+  if (MC.rules.isWildDef(t.card.def)) help += "  U/D: Color";
+  help += (t.hold) ? "\nRelease A: Confirm  B:Cancel" : "\nA:Confirm  B:Cancel";
   return help;
 };
 

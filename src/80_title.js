@@ -76,10 +76,12 @@
     return menuItems;
   }
 
-  function titleEnterConfirmOverwrite(st, toastView) {
+  function titleEnterConfirmOverwrite(st, toastView, mouseHint) {
     st.confirm = "overwriteNewGame";
     titleClearToasts(toastView);
-    var text = "Overwrite current game?\nA:Confirm  B:Cancel";
+    var text = mouseHint
+      ? "Overwrite current game?\nClick:Confirm  Right:Cancel"
+      : "Overwrite current game?\nA:Confirm  B:Cancel";
     MC.ui.toastPush(toastView, { id: "title:" + text, kind: "prompt", text: text, persistent: true });
   }
 
@@ -155,7 +157,7 @@
       if (itSel && itSel.enabled) {
         if (itSel.id === "startNewGame") {
           if (hasSession) {
-            titleEnterConfirmOverwrite(st, toastView);
+            titleEnterConfirmOverwrite(st, toastView, !!mouseTap);
           } else {
             titleClearToasts(toastView);
             intent = { kind: "startNewGame" };
@@ -196,7 +198,7 @@
       rect(xBox, y0 - padY, wBox, hBox + padY, Pal.Black);
       rectb(xBox, y0 - padY, wBox, hBox + padY, colB);
     }
-    if (selected) printShadow(">", mxA, y0, enabled ? Pal.White : Pal.Grey, { shadowCol: Pal.Black });
+    if (selected) printShadow(">", mxA, y0, Pal.White, { shadowCol: Pal.Black });
     printShadow(text, mxT, y0, colT, { shadowCol: Pal.Black });
   }
 

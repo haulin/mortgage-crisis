@@ -1189,7 +1189,7 @@ test("render: feedback message draws a screen-top toast with background, border,
 
   const s = ctx.MC.state.newGame({ scenarioId: "placeBasic", seedU32: 1 });
   const view = newView(ctx);
-  view.toasts = [{ kind: "error", text: "No actions", frames: 10 }];
+  view.toasts = [{ kind: "error", text: "No moves left", frames: 10 }];
 
   drawFrame(ctx, s, view);
 
@@ -1203,7 +1203,7 @@ test("render: feedback message draws a screen-top toast with background, border,
   const redX = rec.calls.find((c) => c.kind === "print" && c.args[0] === "X" && c.args[3] === ctx.MC.Pal.Red);
   assert.ok(redX, "expected red X print in toast");
 
-  const msg = rec.calls.find((c) => c.kind === "print" && c.args[0] === "No actions");
+  const msg = rec.calls.find((c) => c.kind === "print" && c.args[0] === "No moves left");
   assert.ok(msg, "expected toast message print");
 });
 
