@@ -1053,6 +1053,53 @@
     }
   }
 
+  function drawGameOverFx(computed) {
+    if (!computed || !computed.gameOverFx) return;
+    var fx = computed.gameOverFx;
+    if (!fx || !fx.parts || fx.parts.length === 0) return;
+
+    var cfg = R.cfg;
+    var W = cfg.screenW;
+    var H = cfg.screenH;
+
+    var parts = fx.parts;
+    var i;
+    for (i = 0; i < parts.length; i++) {
+      var p = parts[i];
+      if (!p || p.delay > 0 || p.done) continue;
+      var x = p.x;
+      var y = p.y;
+      var w = p.w;
+      var h = p.h;
+      if (!(w > 0)) w = 1;
+      if (!(h > 0)) h = 1;
+      if (w > 3) w = 3;
+      if (h > 3) h = 3;
+
+      // Clip vertically.
+      var y0 = y;
+      var y1 = y + h - 1;
+      if (y1 < 0 || y0 >= H) continue;
+      if (y0 < 0) y0 = 0;
+      if (y1 >= H) y1 = H - 1;
+      var hh = y1 - y0 + 1;
+      if (!(hh > 0)) continue;
+
+      // Note: x is wrapped during tick; clamp defensively.
+      if (x < 0 || x >= W) continue;
+      if (x + w > W) w = W - x;
+      if (!(w > 0)) continue;
+
+      rectSafe(x, y0, w, hh, p.col);
+
+      // Glisten band (more noticeable than a single pixel).
+      if (p.flash > 0 && hh > 0) {
+        var yH = ((p.flash % 2) === 0) ? y0 : (y0 + hh - 1);
+        rectSafe(x, yH, w, 1, MC.Pal.White);
+      }
+    }
+  }
+
   function drawGameplayUiScene(state, view, computed, models, sel, hlCol) {
     var cfg = R.cfg;
 
@@ -1072,6 +1119,9 @@
 
     // Animations on top of scene (but under toasts).
     drawAnimOverlay(state, view, computed);
+
+    // Game-over FX on top of scene (under UI chrome + toasts).
+    drawGameOverFx(computed);
 
     // Highlight center widgets if selected.
     if (sel && sel.row === R.ROW_CENTER) {

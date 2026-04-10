@@ -271,6 +271,9 @@ MC.anim.tick = function (state, view) {
   if (!view) return;
   var anim = view.anim;
 
+  // Tick non-locking FX (independent of the main anim queue).
+  MC.anim.tickGameOverFx(state, view);
+
   // Start next step if idle.
   if (!anim.active && anim.q && anim.q.length > 0) {
     anim.active = anim.q.shift();
@@ -451,6 +454,8 @@ MC.anim.present = function (state, view, computed) {
 
   // Reset any prior overlay presentation (computed is rebuilt each call, but be explicit).
   computed.animOverlay = null;
+  computed.gameOverFx = null;
+  if (anim && anim.gameOverFx) computed.gameOverFx = anim.gameOverFx;
 
   // Provide highlight color for render (cursor flash on disallowed actions).
   // Default highlight color lives in render config.
@@ -806,5 +811,140 @@ MC.anim.present = function (state, view, computed) {
   }
 
   return computed;
+};
+
+// Game-over FX (non-locking): “golden rain” sparks behind the winner toast.
+MC.anim._fxRespawnGameOverParticle = function (fx, p) {
+  var W = MC.config.screenW;
+
+  // Particle size: {2,3}×{1,2,3}
+  p.w = (fx.rng.nextInt(10) < 3) ? 3 : 2;
+  var rh = fx.rng.nextInt(10);
+  if (rh <= 2) p.h = 1;
+  else if (rh <= 7) p.h = 2;
+  else p.h = 3;
+
+  var maxX = W - p.w;
+  p.x = fx.rng.nextInt(maxX + 1);
+
+  // Spawn just above the viewport; delay staggers entry.
+  // Keep the tail short so the effect can finish naturally without an abrupt cut.
+  p.y = -1 - fx.rng.nextInt(24);
+  p.delay = fx.rng.nextInt(120);
+
+  // Base fall speed (weighted): 2-3 most common, with a few slower/faster.
+  var rv = fx.rng.nextInt(10);
+  if (rv === 0) p.vy = 1;
+  else if (rv <= 4) p.vy = 2;
+  else if (rv <= 8) p.vy = 3;
+  else p.vy = 4;
+
+  // Cohesive palette by winner (white is reserved for glisten).
+  if (fx.winnerP === 0) {
+    p.col = (fx.rng.nextInt(10) < 8) ? MC.Pal.Yellow : MC.Pal.Orange;
+  } else {
+    p.col = (fx.rng.nextInt(10) < 7) ? MC.Pal.Blue : MC.Pal.Purple;
+  }
+
+  p.flash = 0;
+  p.done = false;
+};
+
+MC.anim.beginGameOverFx = function (state, view) {
+  if (!state || !view || !view.anim) return false;
+  var anim = view.anim;
+  var winnerP = state.winnerP;
+  if (winnerP === MC.state.NO_WINNER) { anim.gameOverFx = null; return false; }
+
+  // Only arm once per game-over entry (don’t re-arm during animation locks).
+  var ex = anim.gameOverFx;
+  if (ex && ex.winnerP === winnerP) return false;
+
+  var nParts = Math.floor(MC.config.ui.gameOverFxParticles);
+
+  // Derive an effect RNG seed from the state RNG + winner to make it stable/replayable.
+  var seed = state.rngS + 1337 + winnerP * 99991 + Math.floor(tstamp());
+
+  var fx = {
+    winnerP: winnerP,
+    rng: new MC.rng.RNG(seed),
+    parts: []
+  };
+
+  var i;
+  for (i = 0; i < nParts; i++) {
+    var p = { x: 0, y: 0, vy: 2, delay: 0, w: 2, h: 2, col: MC.Pal.Yellow, flash: 0, done: false };
+    MC.anim._fxRespawnGameOverParticle(fx, p);
+    fx.parts.push(p);
+  }
+
+  anim.gameOverFx = fx;
+  return true;
+};
+
+MC.anim.tickGameOverFx = function (state, view) {
+  if (!view || !view.anim) return;
+  var anim = view.anim;
+  var fx = anim.gameOverFx;
+  if (!fx) return;
+
+  // If game-over cleared (e.g., reset) but view persisted, drop the FX.
+  if (!state || state.winnerP === MC.state.NO_WINNER) { anim.gameOverFx = null; return; }
+  if (fx.winnerP !== state.winnerP) { anim.gameOverFx = null; return; }
+
+  var W = MC.config.screenW;
+  var H = MC.config.screenH;
+
+  var parts = fx.parts;
+  if (!parts || parts.length === 0) return;
+
+  var remaining = 0;
+  var i;
+  for (i = 0; i < parts.length; i++) {
+    var p = parts[i];
+    if (!p) continue;
+    if (p.done) continue;
+
+    if (p.delay > 0) { p.delay -= 1; remaining += 1; continue; }
+
+    // Glisten: more frequent + longer, as a shimmer band in render (not full white blocks).
+    if (p.flash > 0) {
+      p.flash -= 1;
+    } else {
+      var kFlash = MC.config.ui.gameOverFxFlashChance1In;
+      var fFlash = MC.config.ui.gameOverFxFlashFrames;
+      if (fx.rng.nextInt(kFlash) === 0) {
+        p.flash = fFlash;
+      }
+    }
+
+    // Random horizontal nudge (rare; avoids constant diagonal drift).
+    var kNudge = MC.config.ui.gameOverFxNudgeChance1In;
+    if (fx.rng.nextInt(kNudge) === 0) {
+      p.x += (fx.rng.nextInt(2) === 0) ? -1 : 1;
+    }
+
+    // Fall.
+    var vy = p.vy;
+    // Occasional small jitter so the fall doesn't read as uniform.
+    var rJ = fx.rng.nextInt(12);
+    if (rJ === 0) vy += 2;
+    else if (rJ <= 2) vy += 1;
+    else if (rJ === 3 && vy > 1) vy -= 1;
+    if (vy < 1) vy = 1;
+    if (vy > 6) vy = 6;
+    p.y += vy;
+
+    // Wrap X, respawn on Y out-of-bounds.
+    var maxX = W - p.w;
+    if (p.x < 0) p.x = maxX;
+    else if (p.x > maxX) p.x = 0;
+
+    if (p.y > H + 2) { p.done = true; continue; }
+    remaining += 1;
+  }
+
+  // Natural finish: stop once everything has drained.
+  if (remaining === 0) anim.gameOverFx = null;
 };
 

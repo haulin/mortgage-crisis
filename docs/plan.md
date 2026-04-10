@@ -6,7 +6,7 @@ Documentation convention (for future phases):
 
 - `docs/phaseXX.md` should record **everything implemented** in that phase (detailed).
 - `docs/plan.md` should include **minimal Phase summary bullets** (scan-friendly; link to the phase doc).
-- `docs/refactor-*.md` captures **deferred refactor proposals** (design notes for Phase 20+).
+- `docs/refactor-*.md` captures **deferred refactor proposals** (design notes for Phase 50+).
 - Keep phase docs **current and non-contradictory**. It’s fine to edit older phase docs to correct factual statements when architecture/conventions change.
 
 ## Current progress
@@ -35,12 +35,13 @@ Documentation convention (for future phases):
 - **Phase 17 ✅**: Mouse controls (hover + click + drag-and-drop) layered on top of controller UX. See `docs/phase17.md`.
 - **Phase 18 ✅**: Demo-ready visuals: larger action icons + dithered panel fill + static tiled gameplay background; plasma kept as a separate showcase cart. See `docs/phase18.md`.
 - **Phase 19 ✅**: Demo polish + targeting/overlay refactor (mouse/controller hint consistency, Wild single-destination nuance fixes, rowModels module). See `docs/phase19.md`.
+- **Phase 20 ✅**: Demo polish 2: deck rebalance, new `showcase` scenario, game-over golden rain FX, and how-to rent-cap note. See `docs/plan.md` Phase 20 section.
 
 ### Deferred-items capture (scope creep safety net)
 
-When we decide “this is post‑Demo / Phase 20”, we must **immediately** capture it in this doc so it doesn’t get lost.
+When we decide “this is post‑Demo / Phase 50”, we must **immediately** capture it in this doc so it doesn’t get lost.
 
-- Add a bullet under **Phase 20 — Features wishlist** (or a later phase if more appropriate).
+- Add a bullet under **Phase 50 — Features wishlist** (or a later phase if more appropriate).
 - Prefix with `Deferred:` and keep it concrete (1 sentence, includes where it shows up).
 - If we end up implementing it earlier (e.g. Phase 09), delete/move the deferred bullet.
 
@@ -529,12 +530,19 @@ Done:
 - Major cleanup: `MC.ui.computeRowModels` + overlay policy moved into `MC.ui.rowModels` module.
 - See `docs/phase19.md`.
 
-### Phase 19.5 - About page
+### Phase 20 ✅ - Demo polish 2
+
+- Increase card pool + rebalance money density (money_1×2, money_2×2, money_3×3, money_4×2, money_5×1; `rent_any` bank value $2)
+- "adding a property to a full set does not increase the rent" - add to how to, maybe paying a debt section. Wording is flexible.
+- Screenshot-friendly scenario showcasing everything at once (`showcase`)
+- Game over more exciting - non-blocking golden rain sparks animation
+
+### Phase 21 - About page
 
 - About page - this is a demo, go here to give feedback, find full game later with these features, credits, legal, link to repo, update readme
-- Screenshot-friendly scenario showcasing everything at once
+- Add as a separate menu item, reusing howto rendering engine, write new content (I have a content draft already)
 
-### Phase 20 — Features wishlist
+### Phase 50 — Features wishlist
 
 - Optional vertical area labels explaining the different zones (hand/bank/properties/opponent areas)
 - Continue Inspect overlay polish as needed (still not “big cards”)

@@ -31,10 +31,10 @@ function collectAllUids(state) {
 }
 
 function assertStateInvariants(ctx, state) {
-  assert.equal(state.totalUids, 35);
+  assert.equal(state.totalUids, 42);
 
   const all = collectAllUids(state);
-  assert.equal(all.length, 35, "every uid should live in exactly one place");
+  assert.equal(all.length, 42, "every uid should live in exactly one place");
 
   const seen = new Set();
   for (const uid of all) {
@@ -66,22 +66,22 @@ test("newGame expands correct deck composition (defId counts) + invariants", asy
   }
 
   const expected = {
-    money_1: 3,
-    money_2: 3,
-    money_3: 2,
-    money_4: 1,
+    money_1: 2,
+    money_2: 2,
+    money_3: 3,
+    money_4: 2,
     money_5: 1,
     prop_cyan: 2,
-    prop_magenta: 3,
+    prop_magenta: 4,
     prop_orange: 3,
-    prop_black: 4,
+    prop_black: 5,
     wild_mo: 1,
     wild_cb: 1,
-    house: 2,
-    rent_mo: 2,
-    rent_cb: 2,
-    rent_any: 1,
-    sly_deal: 2,
+    house: 3,
+    rent_mo: 3,
+    rent_cb: 3,
+    rent_any: 2,
+    sly_deal: 3,
     just_say_no: 2
   };
 
@@ -110,7 +110,7 @@ test("newGame deals 5 each and draws 2 for the starting player", async () => {
 
   assert.equal(s.players[p].hand.length, 7);
   assert.equal(s.players[o].hand.length, 5);
-  assert.equal(s.deck.length, 23);
+  assert.equal(s.deck.length, 30);
   assert.equal(s.playsLeft, 3);
 });
 

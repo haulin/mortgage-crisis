@@ -1,6 +1,6 @@
 # Deferred proposal — UI input intents (decouple devices from UI logic)
 
-This doc captures a **post‑Demo / Phase 20+** refactor idea: introduce an explicit “UI intent” layer so the UI step logic doesn’t care whether an action came from a controller button, keyboard mapping, or mouse click/drag.
+This doc captures a **post‑Demo / Phase 50+** refactor idea: introduce an explicit “UI intent” layer so the UI step logic doesn’t care whether an action came from a controller button, keyboard mapping, or mouse click/drag.
 
 The goal is to make `MC.ui.step` easier to reason about and reduce device-specific branching (“if mouse then…”) while preserving the current mouse UX (hover + real drag-and-drop).
 

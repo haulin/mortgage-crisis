@@ -6,7 +6,7 @@ MC.config = {
 };
 
 MC.config.meta = {
-  version: "Demo v0.19"
+  version: "Demo v0.20"
 };
 
 MC.config.debug = {
@@ -61,6 +61,12 @@ MC.config.ui = {
   gameStartToastFrames: 60,
   shuffleAnimFrames: 42,
   shuffleToastFrames: 42,
+
+  // Game-over presentation FX (purely visual; should not lock input).
+  gameOverFxParticles: 420,
+  gameOverFxFlashChance1In: 20,
+  gameOverFxFlashFrames: 18,
+  gameOverFxNudgeChance1In: 12,
 
   aiStepDelayFrames: 60,
   aiNarrateToastFrames: 60,

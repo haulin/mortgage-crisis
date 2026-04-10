@@ -66,7 +66,10 @@ MC.ui.newView = function () {
       lastPosByUid: {},
       // Visual list of cards in the pay/transfer buffer stack (center row).
       // Used to keep the buffer visible while promptBuf-sourced transfers drain after the prompt clears.
-      payBufUids: []
+      payBufUids: [],
+
+      // Game-over presentation FX state (owned by MC.anim; purely visual).
+      gameOverFx: null
     },
 
     // Feedback: blink + message, plus attempt counts.
@@ -1242,6 +1245,9 @@ MC.ui.step = function (state, view, actions) {
   var gameOver = (state.winnerP !== MC.state.NO_WINNER);
   var prevWinner = (view.ux && view.ux.lastWinnerP != null) ? view.ux.lastWinnerP : MC.state.NO_WINNER;
   var justEnded = (gameOver && prevWinner === MC.state.NO_WINNER);
+
+  // Game over: arm a short celebration FX (visual only; does not lock input).
+  if (justEnded) MC.anim.beginGameOverFx(state, view);
 
   // Game over: close overlays and allow free navigation/inspect.
   if (gameOver) {

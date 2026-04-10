@@ -39,4 +39,4 @@ This repo commits `game.js` as a generated artifact.
 
 ## Scope-creep defense
 
-When the human proposes a new feature or UX improvement not in the current phase plan, do not implement it. Instead respond with: 'Noted as post-MVP idea. Adding to phase 20. Continuing with current phase.' Only implement features explicitly listed in the current phase document.
+When the human proposes a new feature or UX improvement not in the current phase plan, do not implement it. Instead respond with: 'Noted as post-MVP idea. Adding to phase 50. Continuing with current phase.' Only implement features explicitly listed in the current phase document.

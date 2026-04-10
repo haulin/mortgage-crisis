@@ -777,12 +777,18 @@ test("Sly Deal: cannot target properties in a complete set", async () => {
   s.players[0].hand.push(slyUid);
 
   // Build a complete Cyan set (2) for opponent.
-  const c0 = s.deck.find((u) => ctx.MC.state.defByUid(s, u).id === "prop_cyan");
+  const takeFromDeckOrHand = (defId) => {
+    const zones = [s.deck, s.players[0].hand, s.players[1].hand];
+    for (const z of zones) {
+      const i = z.findIndex((u) => ctx.MC.state.defByUid(s, u).id === defId);
+      if (i >= 0) return z.splice(i, 1)[0];
+    }
+    return 0;
+  };
+  const c0 = takeFromDeckOrHand("prop_cyan");
   assert.ok(c0);
-  s.deck = s.deck.filter((u) => u !== c0);
-  const c1 = s.deck.find((u) => ctx.MC.state.defByUid(s, u).id === "prop_cyan");
+  const c1 = takeFromDeckOrHand("prop_cyan");
   assert.ok(c1);
-  s.deck = s.deck.filter((u) => u !== c1);
   const setC = ctx.MC.state.newEmptySet();
   setC.props.push([c0, ctx.MC.Color.Cyan]);
   setC.props.push([c1, ctx.MC.Color.Cyan]);

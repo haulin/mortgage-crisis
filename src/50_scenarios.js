@@ -16,6 +16,20 @@ MC.scenarios.resetForScenario = function (state) {
   MC.state.cardPoolInit(state);
 };
 
+// Scenario helpers (keep scenario bodies small/readable).
+MC.scenarios.pushUids = function (state, out, defIds) {
+  var i;
+  for (i = 0; i < defIds.length; i++) {
+    out.push(MC.state.takeUid(state, defIds[i]));
+  }
+};
+
+MC.scenarios.takeUids = function (state, defIds) {
+  var out = [];
+  MC.scenarios.pushUids(state, out, defIds);
+  return out;
+};
+
 MC.scenarios.setAddFixedProp = function (set, uid, color) {
   set.props.push([uid, color]);
 };
@@ -77,6 +91,8 @@ MC.scenarios.IDS = [
   "placeReceived",
   // Move generation smoke / AI policy stress
   "moveStress",
+  // Screenshot/demo board
+  "showcase",
   // Actions + responses
   "slyJSN",
   // Anim edge cases
@@ -94,6 +110,7 @@ MC.scenarios.INFO = {
   debtHouseFirst: { title: "Debt: house-first", desc: "Debt prompt where House must be paid before set properties (includes a JSN in hand to test action-sourced payDebt response gating)." },
   placeReceived: { title: "Place received", desc: "Faux-turn placement buffer (includes Wild color choice)." },
   moveStress: { title: "Move stress", desc: "Many partial sets + 9-card hand (props + wilds + rent-any + house) to maximize legalMoves fanout for smoke testing + AI policy tuning." },
+  showcase: { title: "Showcase", desc: "Busy mid-game board for screenshots: full sets, a House bonus, a banked action, stealable vs protected properties, and a mixed hand (Rent/Sly/JSN)." },
   slyJSN: { title: "Sly+JSN+SlySingle", desc: "RespondAction prompt for Sly Deal (Allow vs Just Say No). Also includes a single-target Sly situation in parallel." },
   payDebtShuffleDeal: { title: "PayDebt shuffle deal", desc: "Repro helper: start in a rent-sourced payDebt prompt with empty hand + bank payment, then opponent is forced to endTurn and your next startTurn triggers deck reshuffle + staged deal animation." },
 };
@@ -116,8 +133,7 @@ MC.scenarios._applyById = {
     state.players[0].sets.push(setM);
 
     // Hand: play Orange into the source set to trigger replace-window.
-    state.players[0].hand.push(MC.state.takeUid(state, "prop_orange"));
-    state.players[0].hand.push(MC.state.takeUid(state, "money_1"));
+    MC.scenarios.pushUids(state, state.players[0].hand, ["prop_orange", "money_1"]);
   },
 
   placeBasic: function (state) {
@@ -126,31 +142,24 @@ MC.scenarios._applyById = {
     MC.scenarios.setAddPropByDefId(state, setO, "prop_orange", MC.state.NO_COLOR);
     state.players[0].sets.push(setO);
 
-    state.players[0].hand.push(MC.state.takeUid(state, "prop_orange"));
-    state.players[0].hand.push(MC.state.takeUid(state, "prop_orange"));
-    state.players[0].hand.push(MC.state.takeUid(state, "money_1"));
-    // Add a rent card that matches Orange (Magenta/Orange rent).
-    state.players[0].hand.push(MC.state.takeUid(state, "rent_mo"));
+    // Hand: 2 orange properties + $1 + rent card (Magenta/Orange rent).
+    MC.scenarios.pushUids(state, state.players[0].hand, ["prop_orange", "prop_orange", "money_1", "rent_mo"]);
 
     // Ensure opponent has something payable so Rent triggers payDebt.
-    state.players[1].bank.push(MC.state.takeUid(state, "money_1"));
+    state.players[1].bank.push(MC.state.takeUid(state, "money_2"));
   },
 
   wildBasic: function (state) {
     // P0 has Wild(M/O) and $1.
-    state.players[0].hand.push(MC.state.takeUid(state, "wild_mo"));
-    state.players[0].hand.push(MC.state.takeUid(state, "money_1"));
+    MC.scenarios.pushUids(state, state.players[0].hand, ["wild_mo", "money_1"]);
 
     // Discard demo (depth=3): top card is last.
-    state.discard.push(MC.state.takeUid(state, "money_2"));
-    state.discard.push(MC.state.takeUid(state, "money_1"));
-    state.discard.push(MC.state.takeUid(state, "rent_cb"));
+    MC.scenarios.pushUids(state, state.discard, ["money_2", "money_1", "rent_cb"]);
   },
 
   houseBasic: function (state) {
     // P0 has two Houses in hand.
-    state.players[0].hand.push(MC.state.takeUid(state, "house"));
-    state.players[0].hand.push(MC.state.takeUid(state, "house"));
+    MC.scenarios.pushUids(state, state.players[0].hand, ["house", "house"]);
 
     // One complete Cyan set (2).
     var setC = MC.state.newEmptySet();
@@ -249,8 +258,7 @@ MC.scenarios._applyById = {
     state.players[0].bank = [];
 
     // Add a little hand so the UI isn't empty.
-    state.players[0].hand.push(MC.state.takeUid(state, "rent_cb"));
-    state.players[0].hand.push(MC.state.takeUid(state, "just_say_no"));
+    MC.scenarios.pushUids(state, state.players[0].hand, ["rent_cb", "just_say_no"]);
 
     // Pay a small debt to P1; paying the House overpays and resolves immediately.
     var rentUid = MC.state.takeUid(state, "rent_any");
@@ -265,14 +273,11 @@ MC.scenarios._applyById = {
     state.players[0].sets.push(setO);
 
     // Prompt buffer: one fixed property + one Wild to place (wild assignment chosen during placement).
-    var recv = [];
-    recv.push(MC.state.takeUid(state, "prop_orange"));
-    recv.push(MC.state.takeUid(state, "wild_mo"));
+    var recv = MC.scenarios.takeUids(state, ["prop_orange", "wild_mo"]);
     MC.state.setPrompt(state, { kind: "placeReceived", p: 0, uids: recv });
 
     // Keep normal hand visible for the “faux-hand + real hand” row layout.
-    state.players[0].hand.push(MC.state.takeUid(state, "money_1"));
-    state.players[0].hand.push(MC.state.takeUid(state, "rent_mo"));
+    MC.scenarios.pushUids(state, state.players[0].hand, ["money_1", "rent_mo"]);
   },
 
   moveStress: function (state) {
@@ -323,16 +328,76 @@ MC.scenarios._applyById = {
     state.players[0].sets.push(setB2);
 
     // Hand: one of each base property (remaining), one wild, plus rent-any + house + $1 + one action.
-    state.players[0].hand.push(MC.state.takeUid(state, "prop_magenta"));
     // Keep Orange out of hand here so we can use it for opponent Sly targets above.
-    state.players[0].hand.push(MC.state.takeUid(state, "money_2"));
-    state.players[0].hand.push(MC.state.takeUid(state, "prop_black"));
-    state.players[0].hand.push(MC.state.takeUid(state, "wild_cb"));
+    MC.scenarios.pushUids(state, state.players[0].hand, [
+      "prop_magenta",
+      "money_2",
+      "prop_black",
+      "wild_cb",
+      "house",
+      "rent_any",
+      "money_1",
+      "sly_deal"
+    ]);
+  },
 
-    state.players[0].hand.push(MC.state.takeUid(state, "house"));
-    state.players[0].hand.push(MC.state.takeUid(state, "rent_any"));
-    state.players[0].hand.push(MC.state.takeUid(state, "money_1"));
-    state.players[0].hand.push(MC.state.takeUid(state, "sly_deal"));
+  showcase: function (state) {
+    // Player board:
+    // - Cyan full (2)
+    // - Magenta full (3) + House
+    // - Orange partial (2/3)
+    // - Black partial (2/4) using wild_cb as Black
+    var p0 = state.players[0];
+    var p1 = state.players[1];
+
+    var setC = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setC, "prop_cyan", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setC, "prop_cyan", MC.state.NO_COLOR);
+    p0.sets.push(setC);
+
+    var setM = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setM, "prop_magenta", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setM, "prop_magenta", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setM, "prop_magenta", MC.state.NO_COLOR);
+    setM.houseUid = MC.state.takeUid(state, "house");
+    p0.sets.push(setM);
+
+    var setO = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setO, "prop_orange", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setO, "prop_orange", MC.state.NO_COLOR);
+    p0.sets.push(setO);
+
+    var setB = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setB, "prop_black", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setB, "wild_cb", MC.Color.Black);
+    p0.sets.push(setB);
+
+    // Opponent board:
+    // - Black full (protected from Sly)
+    // - Magenta 1/3 (stealable)
+    var setB1 = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setB1, "prop_black", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setB1, "prop_black", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setB1, "prop_black", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setB1, "prop_black", MC.state.NO_COLOR);
+    p1.sets.push(setB1);
+
+    var setM1 = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setM1, "prop_magenta", MC.state.NO_COLOR);
+    p1.sets.push(setM1);
+
+    // Bank: include at least one banked action.
+    MC.scenarios.pushUids(state, p0.bank, ["rent_cb", "money_2", "money_4"]);
+    MC.scenarios.pushUids(state, p1.bank, ["money_1", "rent_mo", "money_3"]);
+
+    // Hand (7), with Rent Any at index 2 for nicer screenshots.
+    MC.scenarios.pushUids(state, p0.hand, ["sly_deal", "just_say_no", "rent_any", "wild_mo", "prop_orange", "money_5", "house"]);
+
+    // Opponent hand: keep it non-empty / busy.
+    MC.scenarios.pushUids(state, p1.hand, ["money_4", "sly_deal", "rent_cb", "money_2"]);
+
+    // Discard demo (depth=4): top card is last.
+    MC.scenarios.pushUids(state, state.discard, ["money_1", "rent_mo", "money_3", "sly_deal"]);
   },
 
   slyJSN: function (state) {
@@ -343,8 +408,7 @@ MC.scenarios._applyById = {
     state.players[0].sets.push(setO);
 
     // P0 has JSN in hand to respond with.
-    state.players[0].hand.push(MC.state.takeUid(state, "just_say_no"));
-    state.players[0].hand.push(MC.state.takeUid(state, "money_1"));
+    MC.scenarios.pushUids(state, state.players[0].hand, ["just_say_no", "money_1"]);
 
     // Opponent played Sly Deal; the action card is already discarded.
     var slyUid = MC.state.takeUid(state, "sly_deal");

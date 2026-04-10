@@ -204,6 +204,10 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   requirePosNum(MC.config.ui, "gameStartToastFrames");
   requirePosNum(MC.config.ui, "shuffleAnimFrames");
   requirePosNum(MC.config.ui, "shuffleToastFrames");
+  requirePosNum(MC.config.ui, "gameOverFxParticles");
+  requirePosNum(MC.config.ui, "gameOverFxFlashChance1In");
+  requirePosNum(MC.config.ui, "gameOverFxFlashFrames");
+  requirePosNum(MC.config.ui, "gameOverFxNudgeChance1In");
   requirePosNum(MC.config.ui, "aiStepDelayFrames");
   requirePosNum(MC.config.ui, "aiNarrateToastFrames");
 

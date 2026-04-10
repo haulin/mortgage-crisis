@@ -72,16 +72,21 @@
               "<c4>A (hold)</c>: enter quick play (use D-pad to cycle options, release A confirms).",
               "<c4>B</c>: back / cancel (when allowed).",
               "<c4>X (hold)</c>: Inspect cards, buttons, deck for more information.",
-              "Similarly with keyboard, use arrow keys for navigation, Z for action/confirm, X for back/cancel, and A for inspect."
+              "Similarly with <c12>keyboard</c>, use <c4>arrow keys</c> for navigation, <c4>Z</c4> for action/confirm, <c4>X</c4> for back/cancel, and <c4>A</c4> for inspect."
             ],
-            demo: { layout: "above", w: 60, h: 14, draw: function (ctx) {
+            demo: { layout: "left", w: 37, h: 37, draw: function (ctx) {
               // Tiny button legend mock.
-              rect(ctx.x, ctx.y, 60, 14, MC.Pal.Black);
-              rectb(ctx.x, ctx.y, 60, 14, MC.Pal.Grey);
-              print("A", ctx.x + 6, ctx.y + 4, MC.Pal.Yellow);
-              print("B", ctx.x + 20, ctx.y + 4, MC.Pal.Red);
-              print("X", ctx.x + 34, ctx.y + 4, MC.Pal.Cyan);
-              print("Y", ctx.x + 48, ctx.y + 4, MC.Pal.LightGrey);
+              rectb(ctx.x + 13, ctx.y, 11, 11, MC.Pal.Grey);
+              print("Y", ctx.x + 16, ctx.y + 3, MC.Pal.LightGrey);
+
+              rectb(ctx.x, ctx.y + 13, 11, 11, MC.Pal.Grey);
+              print("X", ctx.x + 3, ctx.y + 16, MC.Pal.Cyan);
+
+              rectb(ctx.x + 26, ctx.y + 13, 11, 11, MC.Pal.Grey);
+              print("B", ctx.x + 29, ctx.y + 16, MC.Pal.Red);
+
+              rectb(ctx.x + 13, ctx.y + 26, 11, 11, MC.Pal.Grey);
+              print("A", ctx.x + 16, ctx.y + 29, MC.Pal.Yellow);
             } }
           },
 
@@ -159,7 +164,8 @@
               "You can pay using cards from your <c4>Bank</c> and <c4>Properties</c> (not from hand).",
               "If you pay with a <c4>Property</c>, the opponent receives it and must place it.",
               "If a set has a <c4>House</c>, that House must be paid first before properties from that set.",
-              "Overpay is allowed. <c4>No change</c> is returned."
+              "Overpay is allowed. <c4>No change</c> is returned.",
+              "<c4>Rent</c> is capped once a set is complete - extra properties don't raise it."
             ]
           },
 

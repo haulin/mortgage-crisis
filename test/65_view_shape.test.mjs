@@ -34,6 +34,8 @@ test("ui.newView returns canonical view shape (no runtime fallbacks)", async () 
   assert.equal(typeof v.anim.hiddenByUid, "object");
   assert.equal(typeof v.anim.lastPosByUid, "object");
   assert.ok(Array.isArray(v.anim.payBufUids));
+  assert.ok("gameOverFx" in v.anim, "expected anim.gameOverFx field");
+  assert.equal(v.anim.gameOverFx, null);
 });
 
 test("ui: toast contract - push replaces by id, tick decrements frames", async () => {
@@ -131,8 +133,12 @@ test("ui: view numeric invariants stay finite across flows", async () => {
 
   // Open a menu on a real hand card (menu requires sel.loc.zone hand/recvProps).
   const rmHand = computed.models[ctx.MC.render.ROW_P_HAND];
-  const handSel = rmHand && rmHand.items && rmHand.items.find((it) => it && it.kind === "hand" && it.loc && it.loc.zone === "hand" && it.loc.p === 0);
-  assert.ok(handSel, "expected at least 1 hand card in row model");
+  const handSel = rmHand && rmHand.items && rmHand.items.find((it) => {
+    if (!(it && it.kind === "hand" && it.loc && it.loc.zone === "hand" && it.loc.p === 0)) return false;
+    const def = ctx.MC.state.defByUid(s, it.uid);
+    return ctx.MC.rules.isBankableDef(def);
+  });
+  assert.ok(handSel, "expected at least 1 bankable hand card in row model");
   ctx.MC.ui.cursorMoveTo(v, { row: handSel.row, i: handSel.depth, item: handSel });
   computed = ctx.MC.ui.computeRowModels(s, v);
   const sel = computed.selected;

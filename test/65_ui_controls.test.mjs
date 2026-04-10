@@ -719,9 +719,16 @@ test("ui: browse directional nav - Up from End picks opponent table if present",
 
   const s = ctx.MC.state.newGame({ seedU32: 1 });
   // Give opponent a single table property; clear opponent hand so table is the only Up candidate.
-  const uid = s.deck.find((u) => ctx.MC.state.defByUid(s, u).id === "prop_cyan");
-  assert.ok(uid, "expected prop_cyan uid in deck");
-  s.deck = s.deck.filter((u) => u !== uid);
+  const takeFromDeckOrHand = (defId) => {
+    const zones = [s.deck, s.players[0].hand, s.players[1].hand];
+    for (const z of zones) {
+      const i = z.findIndex((u) => ctx.MC.state.defByUid(s, u).id === defId);
+      if (i >= 0) return z.splice(i, 1)[0];
+    }
+    return 0;
+  };
+  const uid = takeFromDeckOrHand("prop_cyan");
+  assert.ok(uid, "expected prop_cyan uid in deck or hand");
 
   const set = ctx.MC.state.newEmptySet();
   set.props.push([uid, ctx.MC.Color.Cyan]);

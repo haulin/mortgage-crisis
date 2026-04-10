@@ -93,7 +93,7 @@ MC.CARD_DEFS = [
     name: "Money",
     desc: "Spend to pay debts.\nBank as money.",
     kind: MC.CardKind.Money,
-    count: 3,
+    count: 2,
     bankValue: 1,
   },
   {
@@ -101,7 +101,7 @@ MC.CARD_DEFS = [
     name: "Money",
     desc: "Spend to pay debts.\nBank as money.",
     kind: MC.CardKind.Money,
-    count: 3,
+    count: 2,
     bankValue: 2,
   },
   {
@@ -109,7 +109,7 @@ MC.CARD_DEFS = [
     name: "Money",
     desc: "Spend to pay debts.\nBank as money.",
     kind: MC.CardKind.Money,
-    count: 2,
+    count: 3,
     bankValue: 3,
   },
   {
@@ -117,7 +117,7 @@ MC.CARD_DEFS = [
     name: "Money",
     desc: "Spend to pay debts.\nBank as money.",
     kind: MC.CardKind.Money,
-    count: 1,
+    count: 2,
     bankValue: 4,
   },
   {
@@ -129,7 +129,7 @@ MC.CARD_DEFS = [
     bankValue: 5,
   },
 
-  // Properties (12 fixed + 2 wild = 14)
+  // Properties (14 fixed + 2 wild = 16)
   {
     id: "prop_cyan",
     name: "Property Cyan",
@@ -144,7 +144,7 @@ MC.CARD_DEFS = [
     name: "Property Magenta",
     desc: "Full set: 3 required.\nRent for 1 property: $1\nRent for 2 properties: $2\nRent for 3 properties: $4",
     kind: MC.CardKind.Property,
-    count: 3,
+    count: 4,
     propertyColor: MC.Color.Magenta,
     propertyPayValue: 2,
   },
@@ -162,7 +162,7 @@ MC.CARD_DEFS = [
     name: "Property Black",
     desc: "Full set: 4 required.\nRent for 1 property: $1\nRent for 2 properties: $2\nRent for 3 properties: $3\nRent for 4 properties: $6",
     kind: MC.CardKind.Property,
-    count: 4,
+    count: 5,
     propertyColor: MC.Color.Black,
     propertyPayValue: 1,
   },
@@ -185,25 +185,25 @@ MC.CARD_DEFS = [
     propertyPayValue: 2,
   },
 
-  // Buildings (2)
+  // Buildings (3)
   {
     id: "house",
     name: "House",
     desc: "Action card. Add onto any\nfull set you own to add\n$3 to the rent value.",
     kind: MC.CardKind.House,
-    count: 2,
+    count: 3,
     bankValue: 3,
     ruleNotes: [MC.RuleNote.House_StationsUtilities]
   },
 
-  // Actions (9)
+  // Actions (13)
   {
     id: "rent_mo",
     name: "Rent Magenta/Orange",
     desc: "Action card. Your opponent\npays you rent for your\nMagenta or Orange sets.\n(Play into center to use)",
     kind: MC.CardKind.Action,
     actionKind: MC.ActionKind.Rent,
-    count: 2,
+    count: 3,
     bankValue: 1,
     rentAllowedColors: [MC.Color.Magenta, MC.Color.Orange],
   },
@@ -213,7 +213,7 @@ MC.CARD_DEFS = [
     desc: "Action card. Your opponent\npays you rent for your\nCyan or Black sets.\n(Play into center to use)",
     kind: MC.CardKind.Action,
     actionKind: MC.ActionKind.Rent,
-    count: 2,
+    count: 3,
     bankValue: 1,
     rentAllowedColors: [MC.Color.Cyan, MC.Color.Black],
   },
@@ -223,8 +223,8 @@ MC.CARD_DEFS = [
     desc: "Action card. Your opponent\npays you rent for one set\nof your choice.\n(Play into center to use)",
     kind: MC.CardKind.Action,
     actionKind: MC.ActionKind.Rent,
-    count: 1,
-    bankValue: 1,
+    count: 2,
+    bankValue: 2,
     rentAllowedColors: null,
   },
   {
@@ -233,7 +233,7 @@ MC.CARD_DEFS = [
     desc: "Action card. Steal 1 property\nfrom your opponent.\n(Play into center to use)",
     kind: MC.CardKind.Action,
     actionKind: MC.ActionKind.SlyDeal,
-    count: 2,
+    count: 3,
     bankValue: 3,
     ruleNotes: [MC.RuleNote.SlyDeal_NotFromFullSet]
   },
@@ -270,7 +270,7 @@ MC.config = {
 };
 
 MC.config.meta = {
-  version: "Demo v0.19"
+  version: "Demo v0.20"
 };
 
 MC.config.debug = {
@@ -325,6 +325,12 @@ MC.config.ui = {
   gameStartToastFrames: 60,
   shuffleAnimFrames: 42,
   shuffleToastFrames: 42,
+
+  // Game-over presentation FX (purely visual; should not lock input).
+  gameOverFxParticles: 420,
+  gameOverFxFlashChance1In: 20,
+  gameOverFxFlashFrames: 18,
+  gameOverFxNudgeChance1In: 12,
 
   aiStepDelayFrames: 60,
   aiNarrateToastFrames: 60,
@@ -2376,6 +2382,20 @@ MC.scenarios.resetForScenario = function (state) {
   MC.state.cardPoolInit(state);
 };
 
+// Scenario helpers (keep scenario bodies small/readable).
+MC.scenarios.pushUids = function (state, out, defIds) {
+  var i;
+  for (i = 0; i < defIds.length; i++) {
+    out.push(MC.state.takeUid(state, defIds[i]));
+  }
+};
+
+MC.scenarios.takeUids = function (state, defIds) {
+  var out = [];
+  MC.scenarios.pushUids(state, out, defIds);
+  return out;
+};
+
 MC.scenarios.setAddFixedProp = function (set, uid, color) {
   set.props.push([uid, color]);
 };
@@ -2437,6 +2457,8 @@ MC.scenarios.IDS = [
   "placeReceived",
   // Move generation smoke / AI policy stress
   "moveStress",
+  // Screenshot/demo board
+  "showcase",
   // Actions + responses
   "slyJSN",
   // Anim edge cases
@@ -2454,6 +2476,7 @@ MC.scenarios.INFO = {
   debtHouseFirst: { title: "Debt: house-first", desc: "Debt prompt where House must be paid before set properties (includes a JSN in hand to test action-sourced payDebt response gating)." },
   placeReceived: { title: "Place received", desc: "Faux-turn placement buffer (includes Wild color choice)." },
   moveStress: { title: "Move stress", desc: "Many partial sets + 9-card hand (props + wilds + rent-any + house) to maximize legalMoves fanout for smoke testing + AI policy tuning." },
+  showcase: { title: "Showcase", desc: "Busy mid-game board for screenshots: full sets, a House bonus, a banked action, stealable vs protected properties, and a mixed hand (Rent/Sly/JSN)." },
   slyJSN: { title: "Sly+JSN+SlySingle", desc: "RespondAction prompt for Sly Deal (Allow vs Just Say No). Also includes a single-target Sly situation in parallel." },
   payDebtShuffleDeal: { title: "PayDebt shuffle deal", desc: "Repro helper: start in a rent-sourced payDebt prompt with empty hand + bank payment, then opponent is forced to endTurn and your next startTurn triggers deck reshuffle + staged deal animation." },
 };
@@ -2476,8 +2499,7 @@ MC.scenarios._applyById = {
     state.players[0].sets.push(setM);
 
     // Hand: play Orange into the source set to trigger replace-window.
-    state.players[0].hand.push(MC.state.takeUid(state, "prop_orange"));
-    state.players[0].hand.push(MC.state.takeUid(state, "money_1"));
+    MC.scenarios.pushUids(state, state.players[0].hand, ["prop_orange", "money_1"]);
   },
 
   placeBasic: function (state) {
@@ -2486,31 +2508,24 @@ MC.scenarios._applyById = {
     MC.scenarios.setAddPropByDefId(state, setO, "prop_orange", MC.state.NO_COLOR);
     state.players[0].sets.push(setO);
 
-    state.players[0].hand.push(MC.state.takeUid(state, "prop_orange"));
-    state.players[0].hand.push(MC.state.takeUid(state, "prop_orange"));
-    state.players[0].hand.push(MC.state.takeUid(state, "money_1"));
-    // Add a rent card that matches Orange (Magenta/Orange rent).
-    state.players[0].hand.push(MC.state.takeUid(state, "rent_mo"));
+    // Hand: 2 orange properties + $1 + rent card (Magenta/Orange rent).
+    MC.scenarios.pushUids(state, state.players[0].hand, ["prop_orange", "prop_orange", "money_1", "rent_mo"]);
 
     // Ensure opponent has something payable so Rent triggers payDebt.
-    state.players[1].bank.push(MC.state.takeUid(state, "money_1"));
+    state.players[1].bank.push(MC.state.takeUid(state, "money_2"));
   },
 
   wildBasic: function (state) {
     // P0 has Wild(M/O) and $1.
-    state.players[0].hand.push(MC.state.takeUid(state, "wild_mo"));
-    state.players[0].hand.push(MC.state.takeUid(state, "money_1"));
+    MC.scenarios.pushUids(state, state.players[0].hand, ["wild_mo", "money_1"]);
 
     // Discard demo (depth=3): top card is last.
-    state.discard.push(MC.state.takeUid(state, "money_2"));
-    state.discard.push(MC.state.takeUid(state, "money_1"));
-    state.discard.push(MC.state.takeUid(state, "rent_cb"));
+    MC.scenarios.pushUids(state, state.discard, ["money_2", "money_1", "rent_cb"]);
   },
 
   houseBasic: function (state) {
     // P0 has two Houses in hand.
-    state.players[0].hand.push(MC.state.takeUid(state, "house"));
-    state.players[0].hand.push(MC.state.takeUid(state, "house"));
+    MC.scenarios.pushUids(state, state.players[0].hand, ["house", "house"]);
 
     // One complete Cyan set (2).
     var setC = MC.state.newEmptySet();
@@ -2609,8 +2624,7 @@ MC.scenarios._applyById = {
     state.players[0].bank = [];
 
     // Add a little hand so the UI isn't empty.
-    state.players[0].hand.push(MC.state.takeUid(state, "rent_cb"));
-    state.players[0].hand.push(MC.state.takeUid(state, "just_say_no"));
+    MC.scenarios.pushUids(state, state.players[0].hand, ["rent_cb", "just_say_no"]);
 
     // Pay a small debt to P1; paying the House overpays and resolves immediately.
     var rentUid = MC.state.takeUid(state, "rent_any");
@@ -2625,14 +2639,11 @@ MC.scenarios._applyById = {
     state.players[0].sets.push(setO);
 
     // Prompt buffer: one fixed property + one Wild to place (wild assignment chosen during placement).
-    var recv = [];
-    recv.push(MC.state.takeUid(state, "prop_orange"));
-    recv.push(MC.state.takeUid(state, "wild_mo"));
+    var recv = MC.scenarios.takeUids(state, ["prop_orange", "wild_mo"]);
     MC.state.setPrompt(state, { kind: "placeReceived", p: 0, uids: recv });
 
     // Keep normal hand visible for the “faux-hand + real hand” row layout.
-    state.players[0].hand.push(MC.state.takeUid(state, "money_1"));
-    state.players[0].hand.push(MC.state.takeUid(state, "rent_mo"));
+    MC.scenarios.pushUids(state, state.players[0].hand, ["money_1", "rent_mo"]);
   },
 
   moveStress: function (state) {
@@ -2683,16 +2694,76 @@ MC.scenarios._applyById = {
     state.players[0].sets.push(setB2);
 
     // Hand: one of each base property (remaining), one wild, plus rent-any + house + $1 + one action.
-    state.players[0].hand.push(MC.state.takeUid(state, "prop_magenta"));
     // Keep Orange out of hand here so we can use it for opponent Sly targets above.
-    state.players[0].hand.push(MC.state.takeUid(state, "money_2"));
-    state.players[0].hand.push(MC.state.takeUid(state, "prop_black"));
-    state.players[0].hand.push(MC.state.takeUid(state, "wild_cb"));
+    MC.scenarios.pushUids(state, state.players[0].hand, [
+      "prop_magenta",
+      "money_2",
+      "prop_black",
+      "wild_cb",
+      "house",
+      "rent_any",
+      "money_1",
+      "sly_deal"
+    ]);
+  },
 
-    state.players[0].hand.push(MC.state.takeUid(state, "house"));
-    state.players[0].hand.push(MC.state.takeUid(state, "rent_any"));
-    state.players[0].hand.push(MC.state.takeUid(state, "money_1"));
-    state.players[0].hand.push(MC.state.takeUid(state, "sly_deal"));
+  showcase: function (state) {
+    // Player board:
+    // - Cyan full (2)
+    // - Magenta full (3) + House
+    // - Orange partial (2/3)
+    // - Black partial (2/4) using wild_cb as Black
+    var p0 = state.players[0];
+    var p1 = state.players[1];
+
+    var setC = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setC, "prop_cyan", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setC, "prop_cyan", MC.state.NO_COLOR);
+    p0.sets.push(setC);
+
+    var setM = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setM, "prop_magenta", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setM, "prop_magenta", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setM, "prop_magenta", MC.state.NO_COLOR);
+    setM.houseUid = MC.state.takeUid(state, "house");
+    p0.sets.push(setM);
+
+    var setO = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setO, "prop_orange", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setO, "prop_orange", MC.state.NO_COLOR);
+    p0.sets.push(setO);
+
+    var setB = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setB, "prop_black", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setB, "wild_cb", MC.Color.Black);
+    p0.sets.push(setB);
+
+    // Opponent board:
+    // - Black full (protected from Sly)
+    // - Magenta 1/3 (stealable)
+    var setB1 = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setB1, "prop_black", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setB1, "prop_black", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setB1, "prop_black", MC.state.NO_COLOR);
+    MC.scenarios.setAddPropByDefId(state, setB1, "prop_black", MC.state.NO_COLOR);
+    p1.sets.push(setB1);
+
+    var setM1 = MC.state.newEmptySet();
+    MC.scenarios.setAddPropByDefId(state, setM1, "prop_magenta", MC.state.NO_COLOR);
+    p1.sets.push(setM1);
+
+    // Bank: include at least one banked action.
+    MC.scenarios.pushUids(state, p0.bank, ["rent_cb", "money_2", "money_4"]);
+    MC.scenarios.pushUids(state, p1.bank, ["money_1", "rent_mo", "money_3"]);
+
+    // Hand (7), with Rent Any at index 2 for nicer screenshots.
+    MC.scenarios.pushUids(state, p0.hand, ["sly_deal", "just_say_no", "rent_any", "wild_mo", "prop_orange", "money_5", "house"]);
+
+    // Opponent hand: keep it non-empty / busy.
+    MC.scenarios.pushUids(state, p1.hand, ["money_4", "sly_deal", "rent_cb", "money_2"]);
+
+    // Discard demo (depth=4): top card is last.
+    MC.scenarios.pushUids(state, state.discard, ["money_1", "rent_mo", "money_3", "sly_deal"]);
   },
 
   slyJSN: function (state) {
@@ -2703,8 +2774,7 @@ MC.scenarios._applyById = {
     state.players[0].sets.push(setO);
 
     // P0 has JSN in hand to respond with.
-    state.players[0].hand.push(MC.state.takeUid(state, "just_say_no"));
-    state.players[0].hand.push(MC.state.takeUid(state, "money_1"));
+    MC.scenarios.pushUids(state, state.players[0].hand, ["just_say_no", "money_1"]);
 
     // Opponent played Sly Deal; the action card is already discarded.
     var slyUid = MC.state.takeUid(state, "sly_deal");
@@ -4932,6 +5002,53 @@ MC.layout.playerForRow = function (row) {
     }
   }
 
+  function drawGameOverFx(computed) {
+    if (!computed || !computed.gameOverFx) return;
+    var fx = computed.gameOverFx;
+    if (!fx || !fx.parts || fx.parts.length === 0) return;
+
+    var cfg = R.cfg;
+    var W = cfg.screenW;
+    var H = cfg.screenH;
+
+    var parts = fx.parts;
+    var i;
+    for (i = 0; i < parts.length; i++) {
+      var p = parts[i];
+      if (!p || p.delay > 0 || p.done) continue;
+      var x = p.x;
+      var y = p.y;
+      var w = p.w;
+      var h = p.h;
+      if (!(w > 0)) w = 1;
+      if (!(h > 0)) h = 1;
+      if (w > 3) w = 3;
+      if (h > 3) h = 3;
+
+      // Clip vertically.
+      var y0 = y;
+      var y1 = y + h - 1;
+      if (y1 < 0 || y0 >= H) continue;
+      if (y0 < 0) y0 = 0;
+      if (y1 >= H) y1 = H - 1;
+      var hh = y1 - y0 + 1;
+      if (!(hh > 0)) continue;
+
+      // Note: x is wrapped during tick; clamp defensively.
+      if (x < 0 || x >= W) continue;
+      if (x + w > W) w = W - x;
+      if (!(w > 0)) continue;
+
+      rectSafe(x, y0, w, hh, p.col);
+
+      // Glisten band (more noticeable than a single pixel).
+      if (p.flash > 0 && hh > 0) {
+        var yH = ((p.flash % 2) === 0) ? y0 : (y0 + hh - 1);
+        rectSafe(x, yH, w, 1, MC.Pal.White);
+      }
+    }
+  }
+
   function drawGameplayUiScene(state, view, computed, models, sel, hlCol) {
     var cfg = R.cfg;
 
@@ -4951,6 +5068,9 @@ MC.layout.playerForRow = function (row) {
 
     // Animations on top of scene (but under toasts).
     drawAnimOverlay(state, view, computed);
+
+    // Game-over FX on top of scene (under UI chrome + toasts).
+    drawGameOverFx(computed);
 
     // Highlight center widgets if selected.
     if (sel && sel.row === R.ROW_CENTER) {
@@ -5091,7 +5211,10 @@ MC.ui.newView = function () {
       lastPosByUid: {},
       // Visual list of cards in the pay/transfer buffer stack (center row).
       // Used to keep the buffer visible while promptBuf-sourced transfers drain after the prompt clears.
-      payBufUids: []
+      payBufUids: [],
+
+      // Game-over presentation FX state (owned by MC.anim; purely visual).
+      gameOverFx: null
     },
 
     // Feedback: blink + message, plus attempt counts.
@@ -6267,6 +6390,9 @@ MC.ui.step = function (state, view, actions) {
   var gameOver = (state.winnerP !== MC.state.NO_WINNER);
   var prevWinner = (view.ux && view.ux.lastWinnerP != null) ? view.ux.lastWinnerP : MC.state.NO_WINNER;
   var justEnded = (gameOver && prevWinner === MC.state.NO_WINNER);
+
+  // Game over: arm a short celebration FX (visual only; does not lock input).
+  if (justEnded) MC.anim.beginGameOverFx(state, view);
 
   // Game over: close overlays and allow free navigation/inspect.
   if (gameOver) {
@@ -8990,6 +9116,9 @@ MC.anim.tick = function (state, view) {
   if (!view) return;
   var anim = view.anim;
 
+  // Tick non-locking FX (independent of the main anim queue).
+  MC.anim.tickGameOverFx(state, view);
+
   // Start next step if idle.
   if (!anim.active && anim.q && anim.q.length > 0) {
     anim.active = anim.q.shift();
@@ -9170,6 +9299,8 @@ MC.anim.present = function (state, view, computed) {
 
   // Reset any prior overlay presentation (computed is rebuilt each call, but be explicit).
   computed.animOverlay = null;
+  computed.gameOverFx = null;
+  if (anim && anim.gameOverFx) computed.gameOverFx = anim.gameOverFx;
 
   // Provide highlight color for render (cursor flash on disallowed actions).
   // Default highlight color lives in render config.
@@ -9527,6 +9658,141 @@ MC.anim.present = function (state, view, computed) {
   return computed;
 };
 
+// Game-over FX (non-locking): “golden rain” sparks behind the winner toast.
+MC.anim._fxRespawnGameOverParticle = function (fx, p) {
+  var W = MC.config.screenW;
+
+  // Particle size: {2,3}×{1,2,3}
+  p.w = (fx.rng.nextInt(10) < 3) ? 3 : 2;
+  var rh = fx.rng.nextInt(10);
+  if (rh <= 2) p.h = 1;
+  else if (rh <= 7) p.h = 2;
+  else p.h = 3;
+
+  var maxX = W - p.w;
+  p.x = fx.rng.nextInt(maxX + 1);
+
+  // Spawn just above the viewport; delay staggers entry.
+  // Keep the tail short so the effect can finish naturally without an abrupt cut.
+  p.y = -1 - fx.rng.nextInt(24);
+  p.delay = fx.rng.nextInt(120);
+
+  // Base fall speed (weighted): 2-3 most common, with a few slower/faster.
+  var rv = fx.rng.nextInt(10);
+  if (rv === 0) p.vy = 1;
+  else if (rv <= 4) p.vy = 2;
+  else if (rv <= 8) p.vy = 3;
+  else p.vy = 4;
+
+  // Cohesive palette by winner (white is reserved for glisten).
+  if (fx.winnerP === 0) {
+    p.col = (fx.rng.nextInt(10) < 8) ? MC.Pal.Yellow : MC.Pal.Orange;
+  } else {
+    p.col = (fx.rng.nextInt(10) < 7) ? MC.Pal.Blue : MC.Pal.Purple;
+  }
+
+  p.flash = 0;
+  p.done = false;
+};
+
+MC.anim.beginGameOverFx = function (state, view) {
+  if (!state || !view || !view.anim) return false;
+  var anim = view.anim;
+  var winnerP = state.winnerP;
+  if (winnerP === MC.state.NO_WINNER) { anim.gameOverFx = null; return false; }
+
+  // Only arm once per game-over entry (don’t re-arm during animation locks).
+  var ex = anim.gameOverFx;
+  if (ex && ex.winnerP === winnerP) return false;
+
+  var nParts = Math.floor(MC.config.ui.gameOverFxParticles);
+
+  // Derive an effect RNG seed from the state RNG + winner to make it stable/replayable.
+  var seed = state.rngS + 1337 + winnerP * 99991 + Math.floor(tstamp());
+
+  var fx = {
+    winnerP: winnerP,
+    rng: new MC.rng.RNG(seed),
+    parts: []
+  };
+
+  var i;
+  for (i = 0; i < nParts; i++) {
+    var p = { x: 0, y: 0, vy: 2, delay: 0, w: 2, h: 2, col: MC.Pal.Yellow, flash: 0, done: false };
+    MC.anim._fxRespawnGameOverParticle(fx, p);
+    fx.parts.push(p);
+  }
+
+  anim.gameOverFx = fx;
+  return true;
+};
+
+MC.anim.tickGameOverFx = function (state, view) {
+  if (!view || !view.anim) return;
+  var anim = view.anim;
+  var fx = anim.gameOverFx;
+  if (!fx) return;
+
+  // If game-over cleared (e.g., reset) but view persisted, drop the FX.
+  if (!state || state.winnerP === MC.state.NO_WINNER) { anim.gameOverFx = null; return; }
+  if (fx.winnerP !== state.winnerP) { anim.gameOverFx = null; return; }
+
+  var W = MC.config.screenW;
+  var H = MC.config.screenH;
+
+  var parts = fx.parts;
+  if (!parts || parts.length === 0) return;
+
+  var remaining = 0;
+  var i;
+  for (i = 0; i < parts.length; i++) {
+    var p = parts[i];
+    if (!p) continue;
+    if (p.done) continue;
+
+    if (p.delay > 0) { p.delay -= 1; remaining += 1; continue; }
+
+    // Glisten: more frequent + longer, as a shimmer band in render (not full white blocks).
+    if (p.flash > 0) {
+      p.flash -= 1;
+    } else {
+      var kFlash = MC.config.ui.gameOverFxFlashChance1In;
+      var fFlash = MC.config.ui.gameOverFxFlashFrames;
+      if (fx.rng.nextInt(kFlash) === 0) {
+        p.flash = fFlash;
+      }
+    }
+
+    // Random horizontal nudge (rare; avoids constant diagonal drift).
+    var kNudge = MC.config.ui.gameOverFxNudgeChance1In;
+    if (fx.rng.nextInt(kNudge) === 0) {
+      p.x += (fx.rng.nextInt(2) === 0) ? -1 : 1;
+    }
+
+    // Fall.
+    var vy = p.vy;
+    // Occasional small jitter so the fall doesn't read as uniform.
+    var rJ = fx.rng.nextInt(12);
+    if (rJ === 0) vy += 2;
+    else if (rJ <= 2) vy += 1;
+    else if (rJ === 3 && vy > 1) vy -= 1;
+    if (vy < 1) vy = 1;
+    if (vy > 6) vy = 6;
+    p.y += vy;
+
+    // Wrap X, respawn on Y out-of-bounds.
+    var maxX = W - p.w;
+    if (p.x < 0) p.x = maxX;
+    else if (p.x > maxX) p.x = 0;
+
+    if (p.y > H + 2) { p.done = true; continue; }
+    remaining += 1;
+  }
+
+  // Natural finish: stop once everything has drained.
+  if (remaining === 0) anim.gameOverFx = null;
+};
+
 // ---- src/80_title.js ----
 // MC.title: boot title screen.
 (function initTitleModule() {
@@ -9778,7 +10044,9 @@ MC.anim.present = function (state, view, computed) {
     var mi;
     for (mi = 0; mi < menuItems.length; mi++) {
       var it = menuItems[mi];
-      var selI = st.mouseMode ? st.hoverI : st.menuI;
+      // Keep a stable selection even when the mouse is active but not hovering an item.
+      // (TIC-80 mouse input may report "moved" on boot; don't render an unselected menu.)
+      var selI = (st.mouseMode && st.hoverI >= 0) ? st.hoverI : st.menuI;
       drawMenuItem(tc, Pal, leftW, menuW, mxA, mxT, my0, dy, gap, mi, it.text, (mi === selI), !!it.enabled);
     }
 
@@ -10451,16 +10719,21 @@ MC.anim.present = function (state, view, computed) {
               "<c4>A (hold)</c>: enter quick play (use D-pad to cycle options, release A confirms).",
               "<c4>B</c>: back / cancel (when allowed).",
               "<c4>X (hold)</c>: Inspect cards, buttons, deck for more information.",
-              "Similarly with keyboard, use arrow keys for navigation, Z for action/confirm, X for back/cancel, and A for inspect."
+              "Similarly with <c12>keyboard</c>, use <c4>arrow keys</c> for navigation, <c4>Z</c4> for action/confirm, <c4>X</c4> for back/cancel, and <c4>A</c4> for inspect."
             ],
-            demo: { layout: "above", w: 60, h: 14, draw: function (ctx) {
+            demo: { layout: "left", w: 37, h: 37, draw: function (ctx) {
               // Tiny button legend mock.
-              rect(ctx.x, ctx.y, 60, 14, MC.Pal.Black);
-              rectb(ctx.x, ctx.y, 60, 14, MC.Pal.Grey);
-              print("A", ctx.x + 6, ctx.y + 4, MC.Pal.Yellow);
-              print("B", ctx.x + 20, ctx.y + 4, MC.Pal.Red);
-              print("X", ctx.x + 34, ctx.y + 4, MC.Pal.Cyan);
-              print("Y", ctx.x + 48, ctx.y + 4, MC.Pal.LightGrey);
+              rectb(ctx.x + 13, ctx.y, 11, 11, MC.Pal.Grey);
+              print("Y", ctx.x + 16, ctx.y + 3, MC.Pal.LightGrey);
+
+              rectb(ctx.x, ctx.y + 13, 11, 11, MC.Pal.Grey);
+              print("X", ctx.x + 3, ctx.y + 16, MC.Pal.Cyan);
+
+              rectb(ctx.x + 26, ctx.y + 13, 11, 11, MC.Pal.Grey);
+              print("B", ctx.x + 29, ctx.y + 16, MC.Pal.Red);
+
+              rectb(ctx.x + 13, ctx.y + 26, 11, 11, MC.Pal.Grey);
+              print("A", ctx.x + 16, ctx.y + 29, MC.Pal.Yellow);
             } }
           },
 
@@ -10538,7 +10811,8 @@ MC.anim.present = function (state, view, computed) {
               "You can pay using cards from your <c4>Bank</c> and <c4>Properties</c> (not from hand).",
               "If you pay with a <c4>Property</c>, the opponent receives it and must place it.",
               "If a set has a <c4>House</c>, that House must be paid first before properties from that set.",
-              "Overpay is allowed. <c4>No change</c> is returned."
+              "Overpay is allowed. <c4>No change</c> is returned.",
+              "<c4>Rent</c> is capped once a set is complete - extra properties don't raise it."
             ]
           },
 

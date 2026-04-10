@@ -1,6 +1,6 @@
 # Deferred proposal — unify targeting geometry (slot + screenX)
 
-This doc captures a **post‑MVP / Phase 20** refactor idea: unify “cmd destination → on‑screen position” logic so we don’t maintain the same geometry rules in multiple places.
+This doc captures a **post‑MVP / Phase 50** refactor idea: unify “cmd destination → on‑screen position” logic so we don’t maintain the same geometry rules in multiple places.
 
 It expands on the existing deferred bullet in `docs/plan.md` (“Consolidate UI slot/stack geometry helpers…”).
 

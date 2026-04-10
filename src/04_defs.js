@@ -59,7 +59,7 @@ MC.CARD_DEFS = [
     name: "Money",
     desc: "Spend to pay debts.\nBank as money.",
     kind: MC.CardKind.Money,
-    count: 3,
+    count: 2,
     bankValue: 1,
   },
   {
@@ -67,7 +67,7 @@ MC.CARD_DEFS = [
     name: "Money",
     desc: "Spend to pay debts.\nBank as money.",
     kind: MC.CardKind.Money,
-    count: 3,
+    count: 2,
     bankValue: 2,
   },
   {
@@ -75,7 +75,7 @@ MC.CARD_DEFS = [
     name: "Money",
     desc: "Spend to pay debts.\nBank as money.",
     kind: MC.CardKind.Money,
-    count: 2,
+    count: 3,
     bankValue: 3,
   },
   {
@@ -83,7 +83,7 @@ MC.CARD_DEFS = [
     name: "Money",
     desc: "Spend to pay debts.\nBank as money.",
     kind: MC.CardKind.Money,
-    count: 1,
+    count: 2,
     bankValue: 4,
   },
   {
@@ -95,7 +95,7 @@ MC.CARD_DEFS = [
     bankValue: 5,
   },
 
-  // Properties (12 fixed + 2 wild = 14)
+  // Properties (14 fixed + 2 wild = 16)
   {
     id: "prop_cyan",
     name: "Property Cyan",
@@ -110,7 +110,7 @@ MC.CARD_DEFS = [
     name: "Property Magenta",
     desc: "Full set: 3 required.\nRent for 1 property: $1\nRent for 2 properties: $2\nRent for 3 properties: $4",
     kind: MC.CardKind.Property,
-    count: 3,
+    count: 4,
     propertyColor: MC.Color.Magenta,
     propertyPayValue: 2,
   },
@@ -128,7 +128,7 @@ MC.CARD_DEFS = [
     name: "Property Black",
     desc: "Full set: 4 required.\nRent for 1 property: $1\nRent for 2 properties: $2\nRent for 3 properties: $3\nRent for 4 properties: $6",
     kind: MC.CardKind.Property,
-    count: 4,
+    count: 5,
     propertyColor: MC.Color.Black,
     propertyPayValue: 1,
   },
@@ -151,25 +151,25 @@ MC.CARD_DEFS = [
     propertyPayValue: 2,
   },
 
-  // Buildings (2)
+  // Buildings (3)
   {
     id: "house",
     name: "House",
     desc: "Action card. Add onto any\nfull set you own to add\n$3 to the rent value.",
     kind: MC.CardKind.House,
-    count: 2,
+    count: 3,
     bankValue: 3,
     ruleNotes: [MC.RuleNote.House_StationsUtilities]
   },
 
-  // Actions (9)
+  // Actions (13)
   {
     id: "rent_mo",
     name: "Rent Magenta/Orange",
     desc: "Action card. Your opponent\npays you rent for your\nMagenta or Orange sets.\n(Play into center to use)",
     kind: MC.CardKind.Action,
     actionKind: MC.ActionKind.Rent,
-    count: 2,
+    count: 3,
     bankValue: 1,
     rentAllowedColors: [MC.Color.Magenta, MC.Color.Orange],
   },
@@ -179,7 +179,7 @@ MC.CARD_DEFS = [
     desc: "Action card. Your opponent\npays you rent for your\nCyan or Black sets.\n(Play into center to use)",
     kind: MC.CardKind.Action,
     actionKind: MC.ActionKind.Rent,
-    count: 2,
+    count: 3,
     bankValue: 1,
     rentAllowedColors: [MC.Color.Cyan, MC.Color.Black],
   },
@@ -189,8 +189,8 @@ MC.CARD_DEFS = [
     desc: "Action card. Your opponent\npays you rent for one set\nof your choice.\n(Play into center to use)",
     kind: MC.CardKind.Action,
     actionKind: MC.ActionKind.Rent,
-    count: 1,
-    bankValue: 1,
+    count: 2,
+    bankValue: 2,
     rentAllowedColors: null,
   },
   {
@@ -199,7 +199,7 @@ MC.CARD_DEFS = [
     desc: "Action card. Steal 1 property\nfrom your opponent.\n(Play into center to use)",
     kind: MC.CardKind.Action,
     actionKind: MC.ActionKind.SlyDeal,
-    count: 2,
+    count: 3,
     bankValue: 3,
     ruleNotes: [MC.RuleNote.SlyDeal_NotFromFullSet]
   },

@@ -248,7 +248,9 @@
     var mi;
     for (mi = 0; mi < menuItems.length; mi++) {
       var it = menuItems[mi];
-      var selI = st.mouseMode ? st.hoverI : st.menuI;
+      // Keep a stable selection even when the mouse is active but not hovering an item.
+      // (TIC-80 mouse input may report "moved" on boot; don't render an unselected menu.)
+      var selI = (st.mouseMode && st.hoverI >= 0) ? st.hoverI : st.menuI;
       drawMenuItem(tc, Pal, leftW, menuW, mxA, mxT, my0, dy, gap, mi, it.text, (mi === selI), !!it.enabled);
     }
 
