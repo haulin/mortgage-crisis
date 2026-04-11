@@ -210,6 +210,7 @@
   function drawTitle(cfg, st, menuItems, toastView) {
     var tc = cfg.title;
     var Pal = MC.Pal;
+    var captureMode = !!tc.marketingCaptureMode;
 
     var W = cfg.screenW;
     var H = cfg.screenH;
@@ -228,20 +229,22 @@
     printShadow("MORTGAGE", logoX, logoY, Pal.White, { scale: logoScale, dx: 2, dy: 2 });
     printShadow("CRISIS", logoX + 20, logoY + 20, Pal.Yellow, { scale: logoScale, dx: 2, dy: 2 });
 
-    if (tc.subtitleText) {
+    if (!captureMode && tc.subtitleText) {
       rect(tc.subtitleX - 1, tc.subtitleY - 1, 12 * 8 - 1, 8, Pal.DarkBlue);
       printShadow(String(tc.subtitleText), tc.subtitleX, tc.subtitleY, Pal.LightGrey, { small: true, shadowCol: Pal.Black });
     }
 
-    var cx = tc.controlsX;
-    var ch = tc.controlsH;
-    var cy = H - tc.controlsBottomY - ch;
-    var cw = tc.controlsW;
-    if (cw > leftW - cx - 6) cw = leftW - cx - 6;
-    if (cw < 60) cw = 60;
-    rect(cx - 2, cy - 2, cw + 4, ch + 4, Pal.Black);
-    rectb(cx - 2, cy - 2, cw + 4, ch + 4, Pal.Grey);
-    drawControlsTable(tc, Pal, cx, cy, cw);
+    if (!captureMode) {
+      var cx = tc.controlsX;
+      var ch = tc.controlsH;
+      var cy = H - tc.controlsBottomY - ch;
+      var cw = tc.controlsW;
+      if (cw > leftW - cx - 6) cw = leftW - cx - 6;
+      if (cw < 60) cw = 60;
+      rect(cx - 2, cy - 2, cw + 4, ch + 4, Pal.Black);
+      rectb(cx - 2, cy - 2, cw + 4, ch + 4, Pal.Grey);
+      drawControlsTable(tc, Pal, cx, cy, cw);
+    }
 
     var mxA = leftW + tc.menuArrowX;
     var mxT = leftW + tc.menuTextX;
@@ -250,25 +253,31 @@
     var gap = tc.menuItemGapY;
     if (gap == null) gap = 0;
 
-    var mi;
-    for (mi = 0; mi < menuItems.length; mi++) {
-      var it = menuItems[mi];
-      // Keep a stable selection even when the mouse is active but not hovering an item.
-      // (TIC-80 mouse input may report "moved" on boot; don't render an unselected menu.)
-      var selI = (st.mouseMode && st.hoverI >= 0) ? st.hoverI : st.menuI;
-      drawMenuItem(tc, Pal, leftW, menuW, mxA, mxT, my0, dy, gap, mi, it.text, (mi === selI), !!it.enabled);
+    if (!captureMode) {
+      var mi;
+      for (mi = 0; mi < menuItems.length; mi++) {
+        var it = menuItems[mi];
+        // Keep a stable selection even when the mouse is active but not hovering an item.
+        // (TIC-80 mouse input may report "moved" on boot; don't render an unselected menu.)
+        var selI = (st.mouseMode && st.hoverI >= 0) ? st.hoverI : st.menuI;
+        drawMenuItem(tc, Pal, leftW, menuW, mxA, mxT, my0, dy, gap, mi, it.text, (mi === selI), !!it.enabled);
+      }
     }
 
-    var ver = String(cfg.meta.version || "");
-    if (ver) {
-      var xVer = W + 3 - ver.length * 4;
-      if (xVer < 0) xVer = 0;
-      var yVer = H - 7;
-      if (yVer < 0) yVer = 0;
-      printShadow(ver, xVer, yVer, Pal.LightGrey, { small: true });
+    if (!captureMode) {
+      var ver = String(cfg.meta.version || "");
+      if (ver) {
+        var xVer = W + 3 - ver.length * 4;
+        if (xVer < 0) xVer = 0;
+        var yVer = H - 7;
+        if (yVer < 0) yVer = 0;
+        printShadow(ver, xVer, yVer, Pal.LightGrey, { small: true });
+      }
     }
 
-    MC.render.drawToasts(toastView);
+    if (!captureMode) {
+      MC.render.drawToasts(toastView);
+    }
   }
 
   T.tick = function (raw) {

@@ -40,6 +40,28 @@ test("title: draws and selecting New Game enters Render", async () => {
   assert.equal(ctx.MC._mainMode, 1);
 });
 
+test("title: marketing capture mode hides Title chrome", async () => {
+  const printed = [];
+  const ctx = await loadSrcIntoVm({
+    extraGlobals: {
+      print: (s) => {
+        printed.push(String(s));
+      }
+    }
+  });
+
+  ctx.MC.config.title.marketingCaptureMode = true;
+
+  ctx.MC.mainTick();
+  assert.ok(printed.some((s) => s.includes("MORTGAGE")), "expected title to print MORTGAGE");
+
+  // Chrome that should not appear in capture mode.
+  assert.ok(!printed.some((s) => s.includes("New Game")), "expected menu to be hidden");
+  assert.ok(!printed.some((s) => s.includes("Controls")), "expected controls table to be hidden");
+  assert.ok(!printed.some((s) => s.includes(ctx.MC.config.title.subtitleText)), "expected subtitle to be hidden");
+  assert.ok(!printed.some((s) => s.includes(ctx.MC.config.meta.version)), "expected version to be hidden");
+});
+
 test("title: mouse click outside menu does not activate last-hovered item", async () => {
   let frame = 0;
   let x = 0;
@@ -157,6 +179,7 @@ test("title: toasts stack by message text (dedupe identical)", async () => {
   });
 
   assert.equal(ctx.MC._mainMode, 2);
+  ctx.MC.config.debug.enabled = true;
 
   // Frame 0: draw.
   frame = 0; ctx.MC.mainTick();

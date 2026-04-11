@@ -6,10 +6,25 @@ const SRC_DIR = path.join(REPO_ROOT, "src");
 const OUT_FILE = path.join(REPO_ROOT, "game.js");
 
 const HEADER_LINES = [
-  "// script: js",
   "// title: Mortgage Crisis",
+  "// author: haulin",
+  "// desc: A card game inspired by Monopoly Deal",
+  "// script: js",
   "// saveid: MortgageCrisis",
+  "",
   "// generated: do not edit by hand (edit src/* instead)",
+  ""
+];
+
+// Some TIC-80 upload pipelines appear to scrape the *last* `// title:` / `// desc:` they see
+// in the code body (instead of relying on the proper metadata header).
+// Keep a small footer so those scrapers pick the intended cart title/desc, not unrelated `title:`/`desc:` fields.
+const FOOTER_LINES = [
+  "",
+  "// tic80.com metadata fallback (do not remove)",
+  "// title: Mortgage Crisis",
+  "// author: haulin",
+  "// desc: A card game inspired by Monopoly Deal",
   ""
 ];
 
@@ -26,7 +41,7 @@ function hasForbiddenModuleSyntax(source) {
 }
 
 function hasForbiddenTicHeaders(source) {
-  return /^\s*\/\/\s*(script|title|saveid)\s*:/im.test(source);
+  return /^\s*\/\/\s*(script|title|author|desc|input|saveid)\s*:/im.test(source);
 }
 
 function countTicDefinitions(source) {
@@ -82,6 +97,8 @@ async function main() {
   if (ticCount !== 1) {
     fail(`expected exactly 1 'function TIC(', found ${ticCount}`);
   }
+
+  parts.push(FOOTER_LINES.join("\n"));
 
   const out = parts.join("");
   await fs.writeFile(OUT_FILE, out, "utf8");

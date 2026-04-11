@@ -4,11 +4,11 @@ A card game inspired by Monopoly Deal, built for the [TIC-80](https://tic80.com)
 
 Collect 3 complete property sets to win. Bank money, charge rent, steal properties, and cancel attacks with Just Say No. Play against an AI opponent.
 
-**Demo v0.21** — playable start to finish.  
+**Demo v0.22** — playable start to finish.  
 Full version in development.
 
-🎮 Play on itch.io *(link coming soon)*  
-🕹️ Play on tic80.com *(link coming soon)*
+🎮 Play on itch.io: [haulin.itch.io/mortgage-crisis](https://haulin.itch.io/mortgage-crisis)  
+🕹️ Play on tic80.com: [tic80.com/play?cart=4646](https://tic80.com/play?cart=4646)
 
 ---
 

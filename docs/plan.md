@@ -37,6 +37,7 @@ Documentation convention (for future phases):
 - **Phase 19 ✅**: Demo polish + targeting/overlay refactor (mouse/controller hint consistency, Wild single-destination nuance fixes, rowModels module). See `docs/phase19.md`.
 - **Phase 20 ✅**: Demo polish 2: deck rebalance, new `showcase` scenario, game-over golden rain FX, and how-to rent-cap note. See `docs/phase20.md`.
 - **Phase 21 ✅**: In-game About screen + README refresh + repo cleanup (license + moved reference/old files). See `docs/phase21.md`.
+- **Phase 22 ✅**: Publish demo pass: screenshot capture mode, publish links, and TIC-80 listing metadata compatibility. See `docs/phase22.md`.
 
 ### Deferred-items capture (scope creep safety net)
 
@@ -546,6 +547,13 @@ Done:
 - Docs/repo: update README (visitor-focused), add MIT `LICENSE`, move TIC-80 reference docs to `tic-80-docs/`, archive old experiments/assets under `other/`.
 - See `docs/phase21.md`.
 
+### Phase 22 ✅ — Publish Demo
+
+- Screenshot/marketing capture mode toggle to hide Title screen chrome for clean screenshots.
+- About + README now include itch.io + TIC-80 “play in browser” links (downloads/feedback hub + browser play).
+- TIC-80 metadata reliability: add required `author` tag and a cartridge-end metadata fallback for tic80.com scrapers.
+- See `docs/phase22.md`.
+
 ### Phase 50 — Features wishlist
 
 - Optional vertical area labels explaining the different zones (hand/bank/properties/opponent areas)
@@ -580,6 +588,7 @@ Done:
   - Flip a Wild property’s preferred color **in the source** (e.g. via context menu) so you can “pre-set” it before targeting/placing
 - Money/action card faces: dithered / lighter background treatment (sprite pattern or fast overlay)
 - (Optional, later) implement true “big card” rendering for previews once icons exist for all card types (keeps big-card work dependent on art readiness)
+- standalone Android build
 
 ### Content expansion
 

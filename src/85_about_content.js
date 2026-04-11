@@ -26,8 +26,14 @@
             ]
           },
 
-          { kind: "h", text: "Bugs & feedback" },
-          { kind: "p", text: "<c4>github.com/haulin/mortgage-crisis</c>" },
+          { kind: "h", text: "Play in browser" },
+          { kind: "p", text: "TIC-80: <c4>tic80.com/play?cart=4646</c>" },
+
+          { kind: "h", text: "Downloads & feedback" },
+          { kind: "p", text:
+            "itch.io: <c4>haulin.itch.io/mortgage-crisis</c>\n" +
+            "GitHub: <c4>github.com/haulin/mortgage-crisis</c>"
+          },
 
           { kind: "h", text: "Credits" },
           { kind: "p", text:

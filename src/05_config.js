@@ -6,11 +6,11 @@ MC.config = {
 };
 
 MC.config.meta = {
-  version: "Demo v0.21"
+  version: "Demo v0.22"
 };
 
 MC.config.debug = {
-  enabled: true
+  enabled: false
 };
 
 // Controller UX knobs. All values are in frames (TIC runs at 60fps).
@@ -80,6 +80,9 @@ MC.config.ui = {
 };
 
 MC.config.title = {
+  // Marketing screenshot mode: hide Title chrome (menu/controls/subtitle/version/toasts).
+  marketingCaptureMode: false,
+
   menuW: 90,
 
   logoScale: 3,

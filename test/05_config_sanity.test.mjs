@@ -219,6 +219,7 @@ test("config sanity: controls + ui knobs exist (avoid runtime fallbacks)", async
   assert.equal(typeof MC.config.ui.slyShowTargetGhosts, "boolean", "expected slyShowTargetGhosts boolean");
 
   // Title screen knobs.
+  requireBool(MC.config.title, "marketingCaptureMode");
   requirePosNum(MC.config.title, "menuW");
   requirePosNum(MC.config.title, "logoScale");
   requirePosNum(MC.config.title, "logoX");
