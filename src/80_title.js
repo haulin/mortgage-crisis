@@ -41,9 +41,9 @@
     }
 
     row("Move", "D-pad", "Arrows", "Hover");
-    row("Confirm", "A", "Z", "LMB");
-    row("Cancel", "B", "X", "RMB");
-    row("Inspect", "X", "A", "MMB");
+    row("Action", "A", "Z", "Left");
+    row("Cancel", "B", "X", "Right");
+    row("Inspect", "X", "A", "Middle");
   }
 
   function wrapI(i, n) {
@@ -68,7 +68,8 @@
     var menuItems = [
       { id: "startNewGame", text: "New Game", enabled: true },
       { id: "continueGame", text: "Continue", enabled: hasSession },
-      { id: "howToPlay", text: "How to Play", enabled: true }
+      { id: "howToPlay", text: "How to Play", enabled: true },
+      { id: "about", text: "About", enabled: true }
     ];
     if (devAvail) {
       menuItems.push({ id: "toggleDev", text: (toolsOn ? "Dev: ON" : "Dev: OFF"), enabled: true });
@@ -170,6 +171,10 @@
         else if (itSel.id === "howToPlay") {
           titleClearToasts(toastView);
           intent = { kind: "howToPlay" };
+        }
+        else if (itSel.id === "about") {
+          titleClearToasts(toastView);
+          intent = { kind: "about" };
         }
         else if (itSel.id === "toggleDev") {
           MC.debug.toolsOn = !MC.debug.toolsOn;

@@ -28,6 +28,8 @@ On boot you start on the **Title screen**:
 - **New Game** starts a fresh game.
 - If a game is already running, selecting **New Game** asks for confirmation (**A** confirm, **B** cancel).
 - **Continue** returns to the current in-memory game (disabled until you’ve started one).
+- **How to Play** opens the in-game how-to screen (**B** returns to Title).
+- **About** opens the in-game about screen (**B** returns to Title).
 - **Dev: ON/OFF** (dev-only) toggles dev tooling (debug buttons + DebugText/Render mode toggle).
 
 ## Controls (current)

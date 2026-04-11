@@ -25,4 +25,5 @@ MC.debug = {};
 MC.debug.toolsOn = false;
 MC.title = {};
 MC.howto = {};
+MC.about = {};
 

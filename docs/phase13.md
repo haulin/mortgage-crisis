@@ -1,54 +1,42 @@
 # Phase 13 — Menu as main entry point
 
-Phase 13 turns the Title screen into the **real entry point** for the cartridge, while keeping dev/test tooling available behind an explicit dev path.
+Phase 13 turns the Title screen into the cartridge’s **main entry point**: you start here, choose what to do, and can return here later.
+
+It also introduces an explicit **dev tools** path so play sessions can feel fresh by default while still being reproducible when debugging.
 
 ## What shipped
 
-### Boot flow: Title → (menu selection)
+### Interactive Title menu
 
-- The cartridge boots into the **Title** mode and stays there until the player chooses a menu item.
-- The Title menu is now **interactive**:
-  - **Up/Down**: change selection
-  - **A**: select
-- With **Dev tools OFF**, starting **New Game** uses a **time-based seed** so repeated New Games feel fresh.
-- With **Dev tools ON**, starting **New Game** remains **deterministic** (reproducible debugging).
+- **Up/Down**: change selection
+- **A**: select
+- Menu items:
+  - **New Game**: starts a fresh session
+    - if a session already exists, asks for confirmation before overwriting it
+  - **Continue**: resumes the current in-memory session (disabled until one exists)
+  - **How to Play**: still a placeholder at this phase (enabled next phase)
+  - **Dev tools toggle** (dev-only): enables extra debug affordances
 
-### Title menu items
+### Seed policy: fresh by default, reproducible in dev
 
-- **New Game**: starts a fresh game session (default scenario).
-  - If a game session already exists, the Title asks for confirmation before overwriting it (**A** confirm, **B** cancel).
-- **Continue**: returns to the current in-memory game session (disabled until you’ve started one).
-- **How to Play**: placeholder (disabled; implemented in Phase 14).
-- **Dev: ON/OFF** (only when `MC.config.debug.enabled` is true): toggles dev tooling.
-  - When **Dev** is ON:
-    - center-row debug buttons (**Step/Reset/Next**) are visible
-    - **Y** toggles **DebugText ↔ Render**
-  - When **Dev** is OFF:
-    - debug buttons are hidden
-    - **Y** does nothing
+- With dev tools **off**, starting a new game uses a **time-based seed** so repeated games differ.
+- With dev tools **on**, starting a new game remains **deterministic** for reproducible debugging.
 
-### Title feedback uses toasts
+### Title feedback uses in-game toast style
 
-- Title menu feedback (disabled items, dev toggle) uses the same **toast boxes** as in-game notifications.
-- Title toasts **stack**; identical messages dedupe by message text.
+- Disabled actions and status messages appear as toast boxes.
+- Toasts can stack, and identical messages dedupe.
 
-### Return to menu (in-game)
+### Return to Title from gameplay
 
-- The center button strip now includes **Menu** (below **End**).
-- Selecting **Menu** returns to the Title screen **without resetting** game state.
-- **Continue** returns you to the same session.
+- Gameplay includes a **Menu** action that returns to the Title screen without discarding the current session.
+- **Continue** resumes that same session.
 
 ### Version display
 
-- `MC.config.meta.version` is now shown on the **Title** screen (and removed from the in-game HUD hint).
+- The version string is shown on the Title screen.
 
-## Code / config touchpoints
+## Definition of done
 
-- `src/80_title.js`: title screen input + menu rendering + version display
-- `src/90_debug.js`: main tick wiring + title/menu transitions + dev-only Y toggle gating
-- `src/65_ui.js`: center-row **Menu** button + debug button gating + prompt escape via Menu
-- `src/60_render.js`: button rendering supports variable heights; removed in-game version hint; added Menu help text
-- `src/66_focus.js`: game-over autofocus prefers **Reset** when dev tools are ON, otherwise **Menu**
-- `src/00_prelude.js`: runtime flag `MC.debug.toolsOn` default
-- `src/05_config.js`: version bump
-
+- `npm test` passes
+- `npm run build` regenerates `game.js` (not stale vs `src/`)

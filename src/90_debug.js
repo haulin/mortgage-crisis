@@ -307,7 +307,7 @@ MC.debug.tickTextMode = function () {
 };
 
 // Main modes:
-// 0=DebugText, 1=Render, 2=Title, 3=HowTo
+// 0=DebugText, 1=Render, 2=Title, 3=HowTo, 4=About
 MC.mainTick = function () {
   var dbgEnabled = !!(MC.config.debug.enabled && MC.debug.toolsOn);
 
@@ -321,6 +321,11 @@ MC.mainTick = function () {
       if (intentT.kind === "howToPlay") {
         MC.render.vbankClearOverlay();
         MC._mainMode = 3;
+        return;
+      }
+      if (intentT.kind === "about") {
+        MC.render.vbankClearOverlay();
+        MC._mainMode = 4;
         return;
       }
 
@@ -351,6 +356,20 @@ MC.mainTick = function () {
     if (MC.howto && typeof MC.howto.tick === "function") intentH = MC.howto.tick(rawH);
     vbank(0);
     if (intentH && intentH.kind === "backToTitle") {
+      MC._mainMode = 2;
+      return;
+    }
+    return;
+  }
+
+  // About mode.
+  if (MC._mainMode === 4) {
+    var rawA = MC.controls.pollGlobals();
+    var intentA = null;
+    MC.render.vbankBeginOverlay();
+    if (MC.about && typeof MC.about.tick === "function") intentA = MC.about.tick(rawA);
+    vbank(0);
+    if (intentA && intentA.kind === "backToTitle") {
       MC._mainMode = 2;
       return;
     }

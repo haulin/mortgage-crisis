@@ -303,8 +303,7 @@
     return { items: items, contentH: y };
   }
 
-  function ensureLayouts(cfg, pages) {
-    var st = H.st;
+  function ensureLayouts(cfg, pages, st) {
     var n = pages.length;
     if (st.layoutByPage && st.layoutForN === n) return;
 
@@ -337,8 +336,7 @@
     st.layoutForN = n;
   }
 
-  function ensureScrollMemory(nPages) {
-    var st = H.st;
+  function ensureScrollMemory(nPages, st) {
     var arr = st.scrollByPage;
     var i;
     for (i = 0; i < nPages; i++) {
@@ -347,8 +345,8 @@
     if (arr.length > nPages) arr.length = nPages;
   }
 
-  function pagesFromContent() {
-    var c = H.CONTENT;
+  function pagesFromContent(content) {
+    var c = content;
     var pages = c && c.pages ? c.pages : [];
     if (!pages || !pages.length) return [];
     return pages;
@@ -369,7 +367,7 @@
     }
   }
 
-  function drawHowto(cfg, pages, layout, pageI, scrollY) {
+  function drawDocScreen(cfg, pages, layout, pageI, scrollY, opts) {
     var hc = cfg.howto;
     var W = cfg.screenW;
     var Hh = cfg.screenH;
@@ -453,13 +451,18 @@
     if (footerH > 0) rectSafe(0, Hh - footerH, W, footerH, hc.colPanel);
     if (footerH > 0) rectSafe(0, Hh - footerH - 1, W, 1, hc.colBg);
 
-    // Single-line header: "How to play (1/3): Quick Start" + controls on the right.
+    // Single-line header: "<Title> (1/3): Page Title" + controls on the right.
     if (headerH > 0) {
       // Separator line under the header bar.
       rectSafe(0, headerH - 1, W, 1, hc.colBorder);
       rectSafe(0, headerH, W, 1, hc.colBg);
 
-      var controls = "B:Back L/R:Page U/D:Scroll";
+      var headerTitle = (opts.headerTitle != null) ? String(opts.headerTitle) : "How to Play";
+      var allowPaging = (opts.allowPaging != null) ? !!opts.allowPaging : true;
+      var showPageCount = (opts.showPageCount != null) ? !!opts.showPageCount : true;
+      var showPagingControls = allowPaging && pages.length > 1;
+
+      var controls = "B:Back" + (showPagingControls ? " L/R:Page" : "") + " U/D:Scroll";
       var charW = hc.bodyCharW;
       var yH = Math.floor((headerH - hc.bodyLineH) / 2);
       if (yH < 0) yH = 0;
@@ -468,7 +471,9 @@
       if (xCtrl < hc.padX) xCtrl = hc.padX;
       printExSafe(controls, xCtrl, yH, hc.colMuted, true, true);
 
-      var prefix = "How to Play (" + (pageI + 1) + "/" + pages.length + "): ";
+      var prefix = headerTitle;
+      if (showPageCount) prefix += " (" + (pageI + 1) + "/" + pages.length + ")";
+      if (title) prefix += ": ";
       var x0 = hc.padX;
       var gapPx = 2 * charW;
       var wPrefix = printExSafe(prefix, x0, yH, hc.colMuted, false, true);
@@ -496,30 +501,36 @@
     }
   }
 
-  H.tick = function (raw) {
+  H.tickDocScreen = function (raw, opts) {
     var cfg = MC.config;
     if (!raw) raw = MC.controls.pollGlobals();
 
-    var pages = pagesFromContent();
+    var content = opts.content;
+    var pages = pagesFromContent(content);
+    var headerTitle = (opts.headerTitle != null) ? String(opts.headerTitle) : "How to Play";
+    var st = opts.st;
+    var ctrl = opts.ctrl;
+    var intentBack = opts.intentBack;
+
     if (!pages || pages.length === 0) {
       cls(MC.Pal.Black);
-      printExSafe("How to Play", 8, 8, MC.Pal.White, false, false);
+      printExSafe(headerTitle, 8, 8, MC.Pal.White, false, false);
       printExSafe("(missing content)", 8, 18, MC.Pal.LightGrey, false, true);
       return null;
     }
 
-    ensureLayouts(cfg, pages);
-    ensureScrollMemory(pages.length);
+    ensureLayouts(cfg, pages, st);
+    ensureScrollMemory(pages.length, st);
 
-    var st = H.st;
     st.pageI = wrapI(st.pageI, pages.length);
 
-    var actions = MC.controls.actions(H.ctrl, raw, cfg.controls);
+    var actions = MC.controls.actions(ctrl, raw, cfg.controls);
 
     // Mouse: header click pages left/right (Back is handled via right-click -> B).
+    var allowPaging = (opts.allowPaging != null) ? !!opts.allowPaging : true;
     var mouseCfg = cfg.mouse;
     var m = actions && actions.mouse ? actions.mouse : null;
-    if (mouseCfg && mouseCfg.enabled && m && m.avail && actions.a && actions.a.tap && m.left && m.left.tap) {
+    if (allowPaging && pages.length > 1 && mouseCfg && mouseCfg.enabled && m && m.avail && actions.a && actions.a.tap && m.left && m.left.tap) {
       var hc0 = cfg.howto;
       if (m.y < hc0.headerH) {
         if (m.x < (cfg.screenW / 2)) st.pageI = wrapI(st.pageI - 1, pages.length);
@@ -528,11 +539,13 @@
     }
 
     if (actions.b && actions.b.pressed) {
-      return { kind: "backToTitle" };
+      return intentBack;
     }
 
-    if (actions.nav && actions.nav.left) st.pageI = wrapI(st.pageI - 1, pages.length);
-    if (actions.nav && actions.nav.right) st.pageI = wrapI(st.pageI + 1, pages.length);
+    if (allowPaging && pages.length > 1) {
+      if (actions.nav && actions.nav.left) st.pageI = wrapI(st.pageI - 1, pages.length);
+      if (actions.nav && actions.nav.right) st.pageI = wrapI(st.pageI + 1, pages.length);
+    }
 
     var layout = st.layoutByPage ? st.layoutByPage[st.pageI] : null;
 
@@ -554,8 +567,20 @@
     scroll = clamp(scroll, 0, maxScroll);
     st.scrollByPage[st.pageI] = scroll;
 
-    drawHowto(cfg, pages, layout, st.pageI, scroll);
+    drawDocScreen(cfg, pages, layout, st.pageI, scroll, opts);
     return null;
+  };
+
+  H.tick = function (raw) {
+    return H.tickDocScreen(raw, {
+      content: H.CONTENT,
+      st: H.st,
+      ctrl: H.ctrl,
+      headerTitle: "How to Play",
+      showPageCount: true,
+      allowPaging: true,
+      intentBack: { kind: "backToTitle" }
+    });
   };
 })();
 

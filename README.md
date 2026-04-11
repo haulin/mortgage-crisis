@@ -1,114 +1,77 @@
-# Mortgage Crisis — TIC-80 Game
+# Mortgage Crisis
 
-## Project Overview
+A card game inspired by Monopoly Deal, built for the [TIC-80](https://tic80.com) fantasy console.
 
-This is a Monopoly Deal-inspired card game built for TIC-80 fantasy console.
-Working title: Mortgage Crisis (cannot use Monopoly branding, mechanics are not copyrightable).
-Target: 1v1 player vs AI, controller-first design for couch gaming on Google TV.
+Collect 3 complete property sets to win. Bank money, charge rent, steal properties, and cancel attacks with Just Say No. Play against an AI opponent.
 
-## Language
+**Demo v0.21** — playable start to finish.  
+Full version in development.
 
-JavaScript (TIC-80 JS mode; runtime historically Duktape and commonly QuickJS in newer builds).
+🎮 Play on itch.io *(link coming soon)*  
+🕹️ Play on tic80.com *(link coming soon)*
 
-- The **runtime cartridge** is `game.js`. It must start with TIC-80 JS headers (`// script: js`, etc.).
-- The **source of truth** lives in `src/` and is concatenated into `game.js`.
+---
 
-### JS engine compatibility note (Duktape vs QuickJS)
+## Feedback & Bugs
 
-Historically TIC-80 used **Duktape** for its JavaScript runtime. In Aug 2023, the upstream project switched to **QuickJS** (see commit [#1191: Duktape changed to QuickJS](https://github.com/nesbox/TIC-80/commit/530d7f825)).
+Found a bug? Have feedback? [Open an issue](https://github.com/haulin/mortgage-crisis/issues)
+— all reports welcome.
 
-Even though newer builds are likely QuickJS-based (and therefore support more modern JavaScript syntax), we intentionally write the cartridge in an **ES5-compatible** style to stay maximally compatible with:
+---
 
-- older TIC-80 builds/ports
-- community builds that may lag behind upstream
-- environments where the JS backend or feature set is unclear
+## About the Project
 
-Practical consequence: avoid modern syntax like optional chaining (`?.`) and nullish coalescing (`??`) in `src/`.
+Built on TIC-80 using JavaScript (ES5-compatible, Duktape/QuickJS portable). ~12k LOC, 200+ unit tests.
 
-## Documentation
+Developed with AI pair programming (Claude, GPT). One of the goals of this project was exploring what vibe-coding a complete game from scratch looks like in practice.
 
-- TIC80_API.md — full TIC-80 API reference, pasted from official docs
-- TIC-80.wiki/ — full offline clone of the TIC-80 GitHub wiki (local reference only)  
-Always consult these before suggesting APIs or capabilities.
-- [`docs/user-manual.md`](docs/user-manual.md) — user-facing guide (controls, UX behaviors, debug harness)
+Inspired by Monopoly Deal by Hasbro. Not affiliated with Hasbro.
 
-## Sprites & iconography
+---
 
-TIC-80 can rotate **sprites** (e.g. 180° via `spr(..., rotate=2)`), but cannot rotate `print()` text.
+## Development
 
-So **card values, rent amounts, and key icons** should be rendered using a small sprite atlas (digits + action icons). The mapping lives in `docs/sprites.md`.
+### Prerequisites
 
-## Development workflow
+- [TIC-80 Pro](https://nesbox.itch.io/tic80) (for external file workflow)
+- Node.js (for build + tests)
 
-- **Build**: generate the paste-ready cart:
+### Build
 
 ```bash
-npm run build
+npm run build    # concatenates src/ into game.js
+npm test         # unit tests
 ```
 
-- **Test**: minimal dependency-free test scaffold (loads `src/*.js` via Node `vm`):
+### Running
 
-```bash
-npm test
+In TIC-80: `import code game.js`
+
+Or paste `game.js` into the TIC-80 code editor
+
+(subject to size limits in non-Pro builds)
+
+### Project Structure
+
+```
+src/          source files (edit these, not game.js)
+docs/         phase plans, sprite map, user manual
+tic-80-docs/  TIC-80 API + offline wiki (reference)
+other/        old experiments and discarded assets
+game.js       generated cartridge (do not edit directly)
 ```
 
-### Testing workflow notes (practical)
+### Contributing
 
-- **Regression-first**: when fixing a bug (especially a visual/render bug), add at least one **assertion** or a small **new test** so we don’t re-break it later.
-- **Bundle load test**: a compiled-style “single script” bundle runs in a VM context to catch load-order/concat issues early.
-- **Renderer tests**: draw-call recording tests stub TIC-80 draw APIs like `rect`, `spr`, etc. and assert call ordering/positions.
-- **Debug harness controls (dev-only)**:
-  - `Y`: toggle DebugText ↔ Render
-  - In **DebugText** mode: `A` step, `B` next scenario, `X` reset scenario
-  - In **Render** mode: use the normal UI (D-pad navigate, `A` confirm/menu/target, `B` back/cancel, hold `X` for Inspect)
-- **Run in TIC-80**:
-  - Open a JS cart in TIC-80
-  - Recommended (PRO / external workflow): put `game.js` in the TIC-80 folder and run `import code game.js`
-  - Fallback: copy/paste `game.js` into the TIC-80 code editor (subject to code size limits in non-PRO)
+This is a personal project but issues and PRs are welcome.  
+See [`docs/development.md`](docs/development.md) for dev workflow notes.  
+See `AGENTS.md` for AI coding guidelines.
 
-Notes:
+---
 
-- `game.js` is **generated**; edit `src/`* instead.
-- Build details and guardrails are in `docs/phase00.md`.
-- Keep a TIC-80 cart with your sprites; pasting `game.js` updates code while preserving sprite assets.
+## License
 
-### Phase workflow (important)
-
-We work in small increments:
-
-- Plan one phase in `docs/phaseXX.md` (two-digit numbering: `phase00`, `phase01`, …)
-- Implement that phase
-- Update `docs/plan.md` → **Current progress** (mark the phase ✅)
-- Update [`docs/user-manual.md`](docs/user-manual.md) when player/tester-visible behavior changes (controls, prompts, targeting, debug)
-- Update this `README.md` if the developer workflow changes
-
-### Engineering guardrails (cartridge hygiene)
-
-- **No runtime fallbacks**: avoid `x = x || {}`, `|| []`, “should never happen” defaults in runtime code. Prefer canonical constructors/canonicalizers plus tests.
-- **No runtime shape asserts**: don’t ship “assert shape” helpers in `game.js`; enforce invariants in unit tests.
-- **Numeric coercion**: keep `|0` / `>>>0` localized to TIC-80 draw-call boundary wrappers (e.g. `rectSafe`, `sprSafe`) and deterministic engine/RNG hot spots.
-- **Namespaces**: module namespaces are created once in the prelude; don’t repeat `MC.ui = MC.ui || {}` in modules.
-- **Build artifact rule**: after any change in `src/` or `scripts/build.mjs`, run `npm test` and `npm run build` so committed `game.js` stays in sync.
-
-## Key Constraints
-
-- No DOM, no Node.js, no browser APIs — this is a fantasy console
-- No external libraries — only TIC-80 built-in functions
-- Code size limits depend on TIC-80 build (non-PRO paste workflow hits ~64KB; PRO supports much larger code buffers)
-- Single file cartridge output: all code in `game.js`
-
-## Input
-
-Controller-first, with optional mouse support (TIC-80 `mouse()`).
-
-Use btn() for held buttons, btnp() for single presses.
-Player 1 button IDs: UP=0 DOWN=1 LEFT=2 RIGHT=3 A=4 B=5 X=6 Y=7
-
-## Game Design
-
-- Card game based on Monopoly Deal mechanics
-- Property sets, money, action cards
-- Win condition: first to 3 complete property sets
-- Turn: draw 2 cards, play up to 3 cards
-- "Inspired by Monopoly Deal" — not affiliated with Hasbro
+MIT — see `LICENSE`.  
+Mechanics inspired by Monopoly Deal (Hasbro).
+All code and assets original.
 

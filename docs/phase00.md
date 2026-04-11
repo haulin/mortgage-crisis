@@ -164,8 +164,7 @@ Additionally, we keep a “compiled-style” bundle-load test that concatenates 
 ## Git / committing
 
 - `game.js` is generated but **committed**.
-- `.gitignore` includes `TIC-80.wiki/` and may include `.DS_Store` (already present in your repo).
-- Phase 00 should not add `src/` code that depends on the wiki; it’s reference only.
+- TIC-80 reference docs live under `tic-80-docs/` (API + wiki). Cartridge code should not depend on these; they’re reference-only.
 
 ## Verification checklist (manual)
 

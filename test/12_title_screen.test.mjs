@@ -137,20 +137,20 @@ test("title: toasts stack by message text (dedupe identical)", async () => {
   const ctx = await loadSrcIntoVm({
     extraGlobals: {
       btn: (i) => {
-        // Down on frames 1, 5, 7.
-        if (i === 1) return frame === 1 || frame === 5 || frame === 7;
-        // Up on frames 11 and 13.
-        if (i === 0) return frame === 11 || frame === 13;
-        // A press on frames 3, 9, 15 (release happens on the following frames).
-        if (i === 4) return frame === 3 || frame === 9 || frame === 15;
+        // Down on frames 1, 5, 7, 9.
+        if (i === 1) return frame === 1 || frame === 5 || frame === 7 || frame === 9;
+        // Up on frames 13, 15, 17.
+        if (i === 0) return frame === 13 || frame === 15 || frame === 17;
+        // A press on frames 3, 11, 19 (release happens on the following frames).
+        if (i === 4) return frame === 3 || frame === 11 || frame === 19;
         return false;
       },
       btnp: (i) => {
         // Press pulses for Down/Up.
-        if (i === 1 && (frame === 1 || frame === 5 || frame === 7)) return true;
-        if (i === 0 && (frame === 11 || frame === 13)) return true;
+        if (i === 1 && (frame === 1 || frame === 5 || frame === 7 || frame === 9)) return true;
+        if (i === 0 && (frame === 13 || frame === 15 || frame === 17)) return true;
         // A press pulse.
-        if (i === 4 && (frame === 3 || frame === 9 || frame === 15)) return true;
+        if (i === 4 && (frame === 3 || frame === 11 || frame === 19)) return true;
         return false;
       }
     }
@@ -172,13 +172,17 @@ test("title: toasts stack by message text (dedupe identical)", async () => {
   frame = 5; ctx.MC.mainTick();
   // Frame 6: idle.
   frame = 6; ctx.MC.mainTick();
-  // Frame 7: Down -> Dev toggle.
+  // Frame 7: Down -> About.
   frame = 7; ctx.MC.mainTick();
   // Frame 8: idle.
   frame = 8; ctx.MC.mainTick();
-  // Frame 9/10: A tap on Dev toggle -> toast "Dev tools enabled" (info).
+  // Frame 9: Down -> Dev toggle.
   frame = 9; ctx.MC.mainTick();
+  // Frame 10: idle.
   frame = 10; ctx.MC.mainTick();
+  // Frame 11/12: A tap on Dev toggle -> toast "Dev tools enabled" (info).
+  frame = 11; ctx.MC.mainTick();
+  frame = 12; ctx.MC.mainTick();
 
   const tv = ctx.MC.title.toastView;
   assert.ok(tv && Array.isArray(tv.toasts), "expected title.toastView.toasts");
@@ -187,17 +191,21 @@ test("title: toasts stack by message text (dedupe identical)", async () => {
   assert.ok(tv.toasts.some((t) => String(t.text || "").includes("Dev tools enabled")));
 
   // Repeat the Continue error: should dedupe by message text id (not add a third toast).
-  // Frame 11: Up -> How to Play.
-  frame = 11; ctx.MC.mainTick();
-  // Frame 12: idle.
-  frame = 12; ctx.MC.mainTick();
-  // Frame 13: Up -> Continue.
+  // Frame 13: Up -> About.
   frame = 13; ctx.MC.mainTick();
   // Frame 14: idle.
   frame = 14; ctx.MC.mainTick();
-  // Frame 15/16: A tap on disabled Continue again.
+  // Frame 15: Up -> How to Play.
   frame = 15; ctx.MC.mainTick();
+  // Frame 16: idle.
   frame = 16; ctx.MC.mainTick();
+  // Frame 17: Up -> Continue.
+  frame = 17; ctx.MC.mainTick();
+  // Frame 18: idle.
+  frame = 18; ctx.MC.mainTick();
+  // Frame 19/20: A tap on disabled Continue again.
+  frame = 19; ctx.MC.mainTick();
+  frame = 20; ctx.MC.mainTick();
 
   assert.equal(tv.toasts.length, 2, "expected identical toast to dedupe (still 2)");
 });

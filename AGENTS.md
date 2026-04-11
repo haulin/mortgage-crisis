@@ -11,6 +11,22 @@ Before committing to a first approach, briefly brainstorm the best options and t
 
 When you're asked questions just answer them rather than make changes that weren't agreed to yet. Updating the current plan is allowed.
 
+## Phase workflow (important)
+
+- Plan one phase in `docs/phaseXX.md` (two-digit numbering: `phase00`, `phase01`, …)
+- Implement that phase
+- Update `docs/plan.md` → **Current progress** (mark the phase ✅)
+- Update `docs/user-manual.md` when player/tester-visible behavior changes
+- Update `README.md` if the developer workflow changes
+
+### Phase docs: keep them conceptual (avoid staleness)
+
+When writing/updating `docs/phaseXX.md`:
+
+- Focus on **what shipped**, **why**, and **player-visible behavior**.
+- Avoid listing specific **file paths**, **function names**, internal **mode numbers**, or “key code touchpoints” sections unless it’s truly essential knowledge for the phase.
+- Prefer stable concepts + verification steps (`npm test`, `npm run build`) over implementation details that will go stale after refactors.
+
 ## Build artifact rule (important)
 
 This repo commits `game.js` as a generated artifact.
@@ -23,6 +39,7 @@ This repo commits `game.js` as a generated artifact.
 ## Version bump checklist (important)
 
 - When you finish a phase, bump `MC.config.meta.version` (in `src/05_config.js`).
+- Keep the demo version in `README.md` up to date too (it’s not read from config).
 - If the bump involves any `src/` change, follow the build artifact rule above so `game.js` stays in sync.
 
 ## Config knobs + numeric coercion policy (important)

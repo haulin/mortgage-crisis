@@ -6,7 +6,7 @@ MC.config = {
 };
 
 MC.config.meta = {
-  version: "Demo v0.20"
+  version: "Demo v0.21"
 };
 
 MC.config.debug = {

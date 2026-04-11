@@ -35,7 +35,8 @@ Documentation convention (for future phases):
 - **Phase 17 ✅**: Mouse controls (hover + click + drag-and-drop) layered on top of controller UX. See `docs/phase17.md`.
 - **Phase 18 ✅**: Demo-ready visuals: larger action icons + dithered panel fill + static tiled gameplay background; plasma kept as a separate showcase cart. See `docs/phase18.md`.
 - **Phase 19 ✅**: Demo polish + targeting/overlay refactor (mouse/controller hint consistency, Wild single-destination nuance fixes, rowModels module). See `docs/phase19.md`.
-- **Phase 20 ✅**: Demo polish 2: deck rebalance, new `showcase` scenario, game-over golden rain FX, and how-to rent-cap note. See `docs/plan.md` Phase 20 section.
+- **Phase 20 ✅**: Demo polish 2: deck rebalance, new `showcase` scenario, game-over golden rain FX, and how-to rent-cap note. See `docs/phase20.md`.
+- **Phase 21 ✅**: In-game About screen + README refresh + repo cleanup (license + moved reference/old files). See `docs/phase21.md`.
 
 ### Deferred-items capture (scope creep safety net)
 
@@ -52,7 +53,7 @@ When we decide “this is post‑Demo / Phase 50”, we must **immediately** cap
 - **Constraints**: no DOM/Node/browser APIs, no external libs, 8 banks of 64KB code limit
 - **Target**: **1v1 player vs AI**, controller-first (Google TV couch play)
 - **UI space**: 240×136 usable area
-- **Sprites**: `print()` text cannot be rotated 180°; use **sprites** for card values/rent/icons (rotate sprites with `spr(..., rotate=2)` for opponent). See `docs/sprites.md`.
+- **Sprites**: `print()` text cannot be rotated 180°; use **sprites** for card values/rent/icons (rotate sprites with `spr(..., rotate=2)` for opponent).
 
 ### Naming conventions (codebase)
 
@@ -536,16 +537,20 @@ Done:
 - "adding a property to a full set does not increase the rent" - add to how to, maybe paying a debt section. Wording is flexible.
 - Screenshot-friendly scenario showcasing everything at once (`showcase`)
 - Game over more exciting - non-blocking golden rain sparks animation
+- See `docs/phase20.md`.
 
-### Phase 21 - About page
+### Phase 21 ✅ — About page
 
-- About page - this is a demo, go here to give feedback, find full game later with these features, credits, legal, link to repo, update readme
-- Add as a separate menu item, reusing howto rendering engine, write new content (I have a content draft already)
+- About page: separate Title menu item, reusing the how-to rendering engine (single scroll page).
+- Content: demo status, feedback link, credits, legal.
+- Docs/repo: update README (visitor-focused), add MIT `LICENSE`, move TIC-80 reference docs to `tic-80-docs/`, archive old experiments/assets under `other/`.
+- See `docs/phase21.md`.
 
 ### Phase 50 — Features wishlist
 
 - Optional vertical area labels explaining the different zones (hand/bank/properties/opponent areas)
 - Continue Inspect overlay polish as needed (still not “big cards”)
+- Deferred: Refactor `MC.mainTick` mode dispatch (reduce repetition; move out of `src/90_debug.js` into a more intentional “main loop” module)
 - Reduce scenario list noise: merge `placeBasic` / `wildBasic` / `houseBasic` into a single “Basics” scenario (or otherwise consolidate) - also placeReceived and replace wild.
 - Deferred: Add an in-game animation speed toggle (slow/medium/fast) wired to `MC.config.ui.animSpeedMult` (the underlying multiplier exists; Phase 15 added the knob).
 - Deferred: Split `MC.ui.step` mode handling (browse/menu/targeting/prompt) into smaller per-mode helpers (reduce nesting + make input rules easier to audit)

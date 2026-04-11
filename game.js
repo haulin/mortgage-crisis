@@ -30,6 +30,7 @@ MC.debug = {};
 MC.debug.toolsOn = false;
 MC.title = {};
 MC.howto = {};
+MC.about = {};
 
 // ---- src/04_defs.js ----
 // Card/game definitions: enums + static data tables (treated as read-only).
@@ -270,7 +271,7 @@ MC.config = {
 };
 
 MC.config.meta = {
-  version: "Demo v0.20"
+  version: "Demo v0.21"
 };
 
 MC.config.debug = {
@@ -9837,9 +9838,9 @@ MC.anim.tickGameOverFx = function (state, view) {
     }
 
     row("Move", "D-pad", "Arrows", "Hover");
-    row("Confirm", "A", "Z", "LMB");
-    row("Cancel", "B", "X", "RMB");
-    row("Inspect", "X", "A", "MMB");
+    row("Action", "A", "Z", "Left");
+    row("Cancel", "B", "X", "Right");
+    row("Inspect", "X", "A", "Middle");
   }
 
   function wrapI(i, n) {
@@ -9864,7 +9865,8 @@ MC.anim.tickGameOverFx = function (state, view) {
     var menuItems = [
       { id: "startNewGame", text: "New Game", enabled: true },
       { id: "continueGame", text: "Continue", enabled: hasSession },
-      { id: "howToPlay", text: "How to Play", enabled: true }
+      { id: "howToPlay", text: "How to Play", enabled: true },
+      { id: "about", text: "About", enabled: true }
     ];
     if (devAvail) {
       menuItems.push({ id: "toggleDev", text: (toolsOn ? "Dev: ON" : "Dev: OFF"), enabled: true });
@@ -9966,6 +9968,10 @@ MC.anim.tickGameOverFx = function (state, view) {
         else if (itSel.id === "howToPlay") {
           titleClearToasts(toastView);
           intent = { kind: "howToPlay" };
+        }
+        else if (itSel.id === "about") {
+          titleClearToasts(toastView);
+          intent = { kind: "about" };
         }
         else if (itSel.id === "toggleDev") {
           MC.debug.toolsOn = !MC.debug.toolsOn;
@@ -10388,8 +10394,7 @@ MC.anim.tickGameOverFx = function (state, view) {
     return { items: items, contentH: y };
   }
 
-  function ensureLayouts(cfg, pages) {
-    var st = H.st;
+  function ensureLayouts(cfg, pages, st) {
     var n = pages.length;
     if (st.layoutByPage && st.layoutForN === n) return;
 
@@ -10422,8 +10427,7 @@ MC.anim.tickGameOverFx = function (state, view) {
     st.layoutForN = n;
   }
 
-  function ensureScrollMemory(nPages) {
-    var st = H.st;
+  function ensureScrollMemory(nPages, st) {
     var arr = st.scrollByPage;
     var i;
     for (i = 0; i < nPages; i++) {
@@ -10432,8 +10436,8 @@ MC.anim.tickGameOverFx = function (state, view) {
     if (arr.length > nPages) arr.length = nPages;
   }
 
-  function pagesFromContent() {
-    var c = H.CONTENT;
+  function pagesFromContent(content) {
+    var c = content;
     var pages = c && c.pages ? c.pages : [];
     if (!pages || !pages.length) return [];
     return pages;
@@ -10454,7 +10458,7 @@ MC.anim.tickGameOverFx = function (state, view) {
     }
   }
 
-  function drawHowto(cfg, pages, layout, pageI, scrollY) {
+  function drawDocScreen(cfg, pages, layout, pageI, scrollY, opts) {
     var hc = cfg.howto;
     var W = cfg.screenW;
     var Hh = cfg.screenH;
@@ -10538,13 +10542,18 @@ MC.anim.tickGameOverFx = function (state, view) {
     if (footerH > 0) rectSafe(0, Hh - footerH, W, footerH, hc.colPanel);
     if (footerH > 0) rectSafe(0, Hh - footerH - 1, W, 1, hc.colBg);
 
-    // Single-line header: "How to play (1/3): Quick Start" + controls on the right.
+    // Single-line header: "<Title> (1/3): Page Title" + controls on the right.
     if (headerH > 0) {
       // Separator line under the header bar.
       rectSafe(0, headerH - 1, W, 1, hc.colBorder);
       rectSafe(0, headerH, W, 1, hc.colBg);
 
-      var controls = "B:Back L/R:Page U/D:Scroll";
+      var headerTitle = (opts.headerTitle != null) ? String(opts.headerTitle) : "How to Play";
+      var allowPaging = (opts.allowPaging != null) ? !!opts.allowPaging : true;
+      var showPageCount = (opts.showPageCount != null) ? !!opts.showPageCount : true;
+      var showPagingControls = allowPaging && pages.length > 1;
+
+      var controls = "B:Back" + (showPagingControls ? " L/R:Page" : "") + " U/D:Scroll";
       var charW = hc.bodyCharW;
       var yH = Math.floor((headerH - hc.bodyLineH) / 2);
       if (yH < 0) yH = 0;
@@ -10553,7 +10562,9 @@ MC.anim.tickGameOverFx = function (state, view) {
       if (xCtrl < hc.padX) xCtrl = hc.padX;
       printExSafe(controls, xCtrl, yH, hc.colMuted, true, true);
 
-      var prefix = "How to Play (" + (pageI + 1) + "/" + pages.length + "): ";
+      var prefix = headerTitle;
+      if (showPageCount) prefix += " (" + (pageI + 1) + "/" + pages.length + ")";
+      if (title) prefix += ": ";
       var x0 = hc.padX;
       var gapPx = 2 * charW;
       var wPrefix = printExSafe(prefix, x0, yH, hc.colMuted, false, true);
@@ -10581,30 +10592,36 @@ MC.anim.tickGameOverFx = function (state, view) {
     }
   }
 
-  H.tick = function (raw) {
+  H.tickDocScreen = function (raw, opts) {
     var cfg = MC.config;
     if (!raw) raw = MC.controls.pollGlobals();
 
-    var pages = pagesFromContent();
+    var content = opts.content;
+    var pages = pagesFromContent(content);
+    var headerTitle = (opts.headerTitle != null) ? String(opts.headerTitle) : "How to Play";
+    var st = opts.st;
+    var ctrl = opts.ctrl;
+    var intentBack = opts.intentBack;
+
     if (!pages || pages.length === 0) {
       cls(MC.Pal.Black);
-      printExSafe("How to Play", 8, 8, MC.Pal.White, false, false);
+      printExSafe(headerTitle, 8, 8, MC.Pal.White, false, false);
       printExSafe("(missing content)", 8, 18, MC.Pal.LightGrey, false, true);
       return null;
     }
 
-    ensureLayouts(cfg, pages);
-    ensureScrollMemory(pages.length);
+    ensureLayouts(cfg, pages, st);
+    ensureScrollMemory(pages.length, st);
 
-    var st = H.st;
     st.pageI = wrapI(st.pageI, pages.length);
 
-    var actions = MC.controls.actions(H.ctrl, raw, cfg.controls);
+    var actions = MC.controls.actions(ctrl, raw, cfg.controls);
 
     // Mouse: header click pages left/right (Back is handled via right-click -> B).
+    var allowPaging = (opts.allowPaging != null) ? !!opts.allowPaging : true;
     var mouseCfg = cfg.mouse;
     var m = actions && actions.mouse ? actions.mouse : null;
-    if (mouseCfg && mouseCfg.enabled && m && m.avail && actions.a && actions.a.tap && m.left && m.left.tap) {
+    if (allowPaging && pages.length > 1 && mouseCfg && mouseCfg.enabled && m && m.avail && actions.a && actions.a.tap && m.left && m.left.tap) {
       var hc0 = cfg.howto;
       if (m.y < hc0.headerH) {
         if (m.x < (cfg.screenW / 2)) st.pageI = wrapI(st.pageI - 1, pages.length);
@@ -10613,11 +10630,13 @@ MC.anim.tickGameOverFx = function (state, view) {
     }
 
     if (actions.b && actions.b.pressed) {
-      return { kind: "backToTitle" };
+      return intentBack;
     }
 
-    if (actions.nav && actions.nav.left) st.pageI = wrapI(st.pageI - 1, pages.length);
-    if (actions.nav && actions.nav.right) st.pageI = wrapI(st.pageI + 1, pages.length);
+    if (allowPaging && pages.length > 1) {
+      if (actions.nav && actions.nav.left) st.pageI = wrapI(st.pageI - 1, pages.length);
+      if (actions.nav && actions.nav.right) st.pageI = wrapI(st.pageI + 1, pages.length);
+    }
 
     var layout = st.layoutByPage ? st.layoutByPage[st.pageI] : null;
 
@@ -10639,8 +10658,20 @@ MC.anim.tickGameOverFx = function (state, view) {
     scroll = clamp(scroll, 0, maxScroll);
     st.scrollByPage[st.pageI] = scroll;
 
-    drawHowto(cfg, pages, layout, st.pageI, scroll);
+    drawDocScreen(cfg, pages, layout, st.pageI, scroll, opts);
     return null;
+  };
+
+  H.tick = function (raw) {
+    return H.tickDocScreen(raw, {
+      content: H.CONTENT,
+      st: H.st,
+      ctrl: H.ctrl,
+      headerTitle: "How to Play",
+      showPageCount: true,
+      allowPaging: true,
+      intentBack: { kind: "backToTitle" }
+    });
   };
 })();
 
@@ -10838,6 +10869,77 @@ MC.anim.tickGameOverFx = function (state, view) {
             text:
               "If you have a Just Say No in hand, you can use it when an action targets you.\n" +
               "Important: for action-sourced debts, JSN is only allowed before any payment is made."
+          }
+        ]
+      }
+    ]
+  };
+})();
+
+// ---- src/84_about.js ----
+// MC.about: in-game About screen (uses the How-To doc renderer).
+(function initAboutModule() {
+  var A = MC.about;
+
+  A.ctrl = MC.controls.newState();
+  A.st = {
+    pageI: 0,
+    scrollByPage: [],
+    layoutByPage: null,
+    layoutForN: 0
+  };
+
+  A.tick = function (raw) {
+    return MC.howto.tickDocScreen(raw, {
+      content: A.CONTENT,
+      st: A.st,
+      ctrl: A.ctrl,
+      headerTitle: "About",
+      showPageCount: false,
+      allowPaging: false,
+      intentBack: { kind: "backToTitle" }
+    });
+  };
+})();
+
+// ---- src/85_about_content.js ----
+// About screen content.
+// Intended workflow: humans edit strings.
+(function initAboutContent() {
+  var A = MC.about;
+  var ver = MC.config.meta.version;
+
+  A.CONTENT = {
+    pages: [
+      {
+        id: "about",
+        title: "",
+        blocks: [
+          { kind: "h", text: "Mortgage Crisis - <c4>" + ver + "</c>" },
+          { kind: "p", text: "Collect <c4>3</c> complete property sets to win." },
+          { kind: "p", text: "Inspired by Monopoly Deal (Hasbro).\nNot affiliated with Hasbro." },
+
+          { kind: "p", text: "This is a demo. The full version will add:" },
+          {
+            kind: "bullets",
+            items: [
+              "over 100 cards (demo has 42)",
+              "smarter AI",
+              "music",
+              "rules variants",
+              "more polish"
+            ]
+          },
+
+          { kind: "h", text: "Bugs & feedback" },
+          { kind: "p", text: "<c4>github.com/haulin/mortgage-crisis</c>" },
+
+          { kind: "h", text: "Credits" },
+          { kind: "p", text:
+            "Design & code: <c4>haulin</c>\n" +
+            "AI pair programmers: Claude 4.6, GPT-5.2\n" +
+            "Built on TIC-80 fantasy console.\n" +
+            "MIT License"
           }
         ]
       }
@@ -11155,7 +11257,7 @@ MC.debug.tickTextMode = function () {
 };
 
 // Main modes:
-// 0=DebugText, 1=Render, 2=Title, 3=HowTo
+// 0=DebugText, 1=Render, 2=Title, 3=HowTo, 4=About
 MC.mainTick = function () {
   var dbgEnabled = !!(MC.config.debug.enabled && MC.debug.toolsOn);
 
@@ -11169,6 +11271,11 @@ MC.mainTick = function () {
       if (intentT.kind === "howToPlay") {
         MC.render.vbankClearOverlay();
         MC._mainMode = 3;
+        return;
+      }
+      if (intentT.kind === "about") {
+        MC.render.vbankClearOverlay();
+        MC._mainMode = 4;
         return;
       }
 
@@ -11199,6 +11306,20 @@ MC.mainTick = function () {
     if (MC.howto && typeof MC.howto.tick === "function") intentH = MC.howto.tick(rawH);
     vbank(0);
     if (intentH && intentH.kind === "backToTitle") {
+      MC._mainMode = 2;
+      return;
+    }
+    return;
+  }
+
+  // About mode.
+  if (MC._mainMode === 4) {
+    var rawA = MC.controls.pollGlobals();
+    var intentA = null;
+    MC.render.vbankBeginOverlay();
+    if (MC.about && typeof MC.about.tick === "function") intentA = MC.about.tick(rawA);
+    vbank(0);
+    if (intentA && intentA.kind === "backToTitle") {
       MC._mainMode = 2;
       return;
     }
